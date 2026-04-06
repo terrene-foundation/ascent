@@ -1107,7 +1107,7 @@ Total time: ~180 minutes (3 hours)
 
 ---
 
-## Time Budget Summary
+## Time Budget
 
 | Section                         | Slides | Time         |
 | ------------------------------- | ------ | ------------ |
@@ -1126,12 +1126,38 @@ Total time: ~180 minutes (3 hours)
 | Synthesis + Assessment          | 81-86  | ~13 min      |
 | **Total**                       |        | **~263 min** |
 
-**Note**: This module is content-heavy. To fit 180 minutes:
+**Note**: To fit 180 minutes:
 
-- Skip the ADVANCED slides (17, 35, 67, 68): saves ~12 min
-- Compress theory derivations (read key result, skip derivation steps): saves ~25 min
-- Shorten discussion to one scenario instead of two: saves ~5 min
-- Reduce break to 5 min: saves ~5 min
-- Total savings: ~47 min, bringing it to ~216 min. For strict 180, also skip the deep learning LR scheduling and attention slides (65-66), which are previewed more thoroughly in M5.
+- Skip all ADVANCED slides (19, 30, 48, 49, 63, 64, 78): saves ~21 min
+- Skip/compress THEORY slides (15, 17, 18, 22, 23, 24, 25, 28, 29, 34, 35, 38, 39, 40, 46, 47, 59, 62): saves ~64 min
+- Total savings: ~85 min, bringing total to ~179 min.
 
-**Mark as skippable**: Slides 15 (Eigengap), 17 (Info-Theoretic), 35 (Kernel PCA/ICA), 65 (LR Scheduling), 67 (Flash Attention), 68 (SAM/ViT), 74 (Engine Architecture SVG), 83 (Math Summary), 84 (Expert Summary).
+**Mark as skippable**:
+
+- Slide 15: Eigengap Heuristic
+- Slide 17: Information-Theoretic Clustering
+- Slide 18: Kailash Bridge -- AutoMLEngine for Clustering
+- Slide 19: Section Title -- 4.2 EM Algorithm and GMMs
+- Slide 22: The Log-Likelihood Problem
+- Slide 23: EM Algorithm -- E-Step
+- Slide 24: EM Algorithm -- M-Step
+- Slide 25: EM Convergence
+- Slide 28: The Curse of Dimensionality
+- Slide 29: PCA -- Finding the Best Shadow
+- Slide 30: PCA -- Why Eigenvalues = Variance
+- Slide 34: UMAP -- Topological Data Analysis
+- Slide 35: Kernel PCA and ICA
+- Slide 38: What Is an Anomaly?
+- Slide 39: Isolation Forest
+- Slide 40: Local Outlier Factor
+- Slide 46: Word2Vec
+- Slide 47: BERTopic -- The Modern Pipeline
+- Slide 48: Section Title -- 4.6 Drift Monitoring
+- Slide 49: Why Models Degrade
+- Slide 59: Backprop Computation Graph Walkthrough
+- Slide 62: CNN -- Convolution as Learned Features
+- Slide 63: CNN Architecture -- Conv + Pool + FC
+- Slide 64: ResNet -- The Skip Connection Revolution
+- Slide 78: Deep Learning Exercises
+
+**Best break point**: After Slide 25 (~80 minutes in).

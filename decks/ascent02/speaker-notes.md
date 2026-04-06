@@ -1029,3 +1029,37 @@ Total time: ~180 minutes (3 hours)
 | Synthesis + Closing                                  | 79-85     | ~14 min      |
 | Q&A buffers                                          | scattered | ~14 min      |
 | **Total**                                            |           | **~180 min** |
+
+---
+
+## Time Budget Summary
+
+| Section                                        | Slides | Time         |
+| ---------------------------------------------- | ------ | ------------ |
+| Title + Recap + Roadmap                        | 1-5    | ~8 min       |
+| Opening Case (Clinical Trial)                  | 6-8    | ~9 min       |
+| Foundations Block                              | 9-18   | ~24 min      |
+| 2.1 Bayesian Thinking (Conjugate Priors)       | 19-22  | ~12 min      |
+| 2.2 Estimation (MLE / MAP)                     | 23-27  | ~16 min      |
+| 2.3 Hypothesis Testing                         | 28-32  | ~20 min      |
+| Break                                          | --     | ~10 min      |
+| 2.4 Bootstrap                                  | 33-36  | ~10 min      |
+| 2.5 CUPED Variance Reduction                   | 37-40  | ~15 min      |
+| 2.6 Causal Inference (DiD, Double ML, Forests) | 41-53  | ~33 min      |
+| 2.7 Feature Engineering & Selection            | 54-62  | ~29 min      |
+| 2.8 Feature Store                              | 63-71  | ~34 min      |
+| Lab Setup + Exercises                          | 72-75  | ~12 min      |
+| Discussion Prompts                             | 76-78  | ~13 min      |
+| Synthesis + Closing                            | 79-85  | ~14 min      |
+| **Total**                                      |        | **~250 min** |
+
+**Breakdown**: CORE ~117 min + THEORY ~83 min + ADVANCED ~50 min. Overage: +70 min vs 180-min target.
+
+**Note**: To fit 180 minutes, skip 21 slides (~71 min saved, landing at ~179 min):
+
+- Skip all ADVANCED slides (16): 6 (Opening Case), 23 (MLE), 30 (Power Analysis), 31 (Multiple Testing — Bonferroni Trap), 33 (Theory Block B Header), 37 (CUPED — Variance Reduction), 39 (CUPED — Practical Impact), 45 (Difference-in-Differences), 49 (Double ML / Debiased ML), 50 (Causal Forests), 51 (Bayesian A/B Testing), 52 (Interference & Network Effects), 54 (Theory Block C Header), 74 (Lab — Datasets), 83 (Assessment Preview), 85 (Closing)
+- Skip THEORY deep-dives (5): 24 (MLE for the Normal — Derivation), 28 (Hypothesis Testing — The Framework), 29 (P-Value — What It Really Means), 38 (CUPED Variance Reduction — Full Derivation), 60 (Target Encoding — James-Stein Shrinkage)
+
+**Mark as skippable**: Slides 6 (Opening Case), 23 (MLE), 24 (MLE Derivation), 28 (Hypothesis Testing), 29 (P-Value), 30 (Power Analysis), 31 (Multiple Testing), 33 (Block B Header), 37 (CUPED), 38 (CUPED Derivation), 39 (CUPED Impact), 45 (DiD), 49 (Double ML), 50 (Causal Forests), 51 (Bayesian A/B), 52 (Interference), 54 (Block C Header), 60 (Target Encoding), 74 (Datasets), 83 (Assessment Preview), 85 (Closing).
+
+**Best break point**: After Slide 28 (~81 minutes in). Second option: after Slide 40 (~115 minutes in, end of CUPED).

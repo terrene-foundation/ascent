@@ -2569,3 +2569,34 @@ Total time: ~180 minutes (3 hours)
 **Transition**: "See you in Module 10 — where we teach your agents right from wrong."
 
 ---
+
+## Time Budget Summary
+
+| Section                        | Slides  | Time         |
+| ------------------------------ | ------- | ------------ |
+| Title + Recap + Case Study     | 1-9     | ~16 min      |
+| 9.1 LLM Architecture (A1-A3)   | 10-54   | ~56 min      |
+| 9.2 Prompt Engineering (B1-B3) | 55-73   | ~25 min      |
+| Break                          | --      | ~10 min      |
+| 9.3 RAG Systems (C1-C6)        | 74-107  | ~42 min      |
+| 9.4 AI Agents (D1-D4)          | 108-138 | ~37 min      |
+| 9.5 MCP (E)                    | 139-147 | ~10 min      |
+| 9.6 Nexus Deployment (F)       | 148-158 | ~12 min      |
+| 9.7 LLM Evaluation (G)         | 159-166 | ~9 min       |
+| 9.8 Kailash Integration (H)    | 167-175 | ~10 min      |
+| Lab + Discussion               | 176-180 | ~5 min       |
+| Synthesis + Assessment         | 181-183 | ~3 min       |
+| Appendix                       | 184-200 | ~19 min      |
+| **Total**                      |         | **~244 min** |
+
+**Note**: To fit 180 minutes:
+
+- Skip all ADVANCED slides (27): saves ~33 min
+- Skip selected THEORY slides (21): saves ~31 min
+- Total savings: ~64 min, bringing it to ~180 min.
+
+**Mark as skippable — ADVANCED** (27 slides): 17 (Inference Compute: FLOPs per Token), 19 (Data Quality and Processing), 27 (DeepSeek: The Efficiency Breakthrough), 34 (Quantization for Deployment), 39 (GRPO: How DeepSeek Trained R1), 41 (Multimodal LLMs), 42 (Kailash Bridge: LLM Fundamentals), 45 (Emergent Abilities and Phase Transitions), 51 (Qwen: The Multilingual Leader), 52 (Parallel Attention + FFN), 53 (Positional Encoding: ALiBi), 71 (Output Formatting Techniques), 74 (C1 — Why RAG?), 89 (ColBERT: Late Interaction), 93 (Building a RAG Pipeline: Step by Step), 97 (RAG Failure Modes), 105 (Hybrid RAG: Dense + Sparse Implementation), 108 (D1 — What Is an Agent?), 109 (The Agent Loop), 125 (Agent Evaluation), 126 (Agent Safety), 136 (Agent Memory Architecture), 148 (F — Kailash Nexus: Multi-Channel Deployment), 155 (Webhooks: Event-Driven Notifications), 169 (RAGResearchAgent), 182 (Kailash Engines — Cumulative Map), 192 (Agent Decision Trees: Which Pattern to Use?).
+
+**Mark as skippable — THEORY** (21 slides): 14 (GQA — Grouped-Query Attention), 15 (Model Sizes: Parameters and Memory), 16 (KV Cache — Why Inference Memory Grows), 20 (Tokenization: BPE), 23 (Test-Time Compute Scaling), 24 (A3 — The LLM Timeline), 26 (Google Gemini Evolution), 32 (Mixture-of-Experts (MoE) Architecture), 36 (Flash Attention), 37 (Context Window Evolution), 38 (Reasoning Models: The New Paradigm), 44 (Distributed Training at Scale), 50 (Token Economics), 59 (B2 — Zero-Shot Prompting), 60 (Few-Shot Prompting), 64 (ReAct: Reasoning + Acting), 81 (C3 — Text Embeddings), 113 (Plan-and-Execute Architecture), 114 (Reflexion Architecture), 131 (Debate Pattern: Agent Verification), 159 (G — LLM Benchmarks).
+
+**Best break point**: After Slide 60 (~81 minutes in). Second option: after Slide 107 (~132 minutes in, end of 9.3 RAG Systems).

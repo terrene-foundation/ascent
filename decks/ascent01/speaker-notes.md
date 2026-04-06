@@ -999,3 +999,34 @@ Total time: ~180 minutes (3 hours)
 | Synthesis + Closing                            | 79-82     | ~10 min                     |
 | Q&A buffers                                    | scattered | ~13 min                     |
 | **Total**                                      |           | **~180 min**                |
+
+---
+
+## Time Budget
+
+| Section                                        | Slides    | Time                        |
+| ---------------------------------------------- | --------- | --------------------------- |
+| Title + Intro + Setup                          | 1-5       | ~11 min                     |
+| Opening Case (HDB Flash Crash)                 | 6-8       | ~10 min                     |
+| Foundations: Python + Polars                   | 9-22      | ~52 min (incl. live coding) |
+| Theory Block A: Probability + Distributions    | 23-37     | ~35 min                     |
+| Theory Block B: Hypothesis Testing + Bootstrap | 38-43     | ~20 min                     |
+| Visualisation + Profiling + Cleaning           | 44-57     | ~40 min (incl. live coding) |
+| Additional Theory + Production Gotchas         | 58-72     | ~15 min (most skippable)    |
+| Lab Setup + Exercises                          | 73-75     | ~9 min                      |
+| Discussion Prompts                             | 76-78     | ~10 min                     |
+| Synthesis + Closing                            | 79-82     | ~10 min                     |
+| Q&A buffers                                    | scattered | ~13 min                     |
+| **Total (all slides)**                         |           | **~225 min**                |
+
+**Note**: To fit 180 minutes:
+
+- Skip all ADVANCED slides (2, 26, 32, 33, 37, 41, 43, 61, 67): saves ~27 min
+  - 2 (What You Will Learn Today), 26 (The Exponential Family), 32 (MLE Properties), 33 (Information Geometry), 37 (Bayesian Predictive Distribution), 41 (Permutation Tests), 43 (BCa Bootstrap Intervals), 61 (The Central Limit Theorem), 67 (Simpson's Paradox)
+- Compress THEORY slides 28, 29, 34 (show formula results only, skip derivations): saves ~10 min
+  - 28 (Maximum Likelihood Estimation), 29 (MLE for the Normal — Step by Step), 34 (Bayesian Thinking: Prior to Posterior)
+- Total savings: ~37 min, bringing total to ~178 min.
+
+**Mark as skippable**: Slides 2 (What You Will Learn Today), 26 (The Exponential Family), 28 (Maximum Likelihood Estimation), 29 (MLE for the Normal — Step by Step), 32 (MLE Properties), 33 (Information Geometry), 34 (Bayesian Thinking: Prior to Posterior), 37 (Bayesian Predictive Distribution), 41 (Permutation Tests), 43 (BCa Bootstrap Intervals), 61 (The Central Limit Theorem), 67 (Simpson's Paradox).
+
+**Best break point**: After Slide 25 (~80 minutes in).

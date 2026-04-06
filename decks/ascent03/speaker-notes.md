@@ -1174,4 +1174,22 @@ Total time: ~180 minutes (3 hours)
 | Lab + Discussions                                   | 72-76     | ~20 min                        |
 | Synthesis + Closing                                 | 77-99     | ~15 min (deep dives skippable) |
 | Q&A buffers                                         | scattered | ~13 min                        |
-| **Total**                                           |           | **~180 min**                   |
+| **Total**                                           |           | **~254 min**                   |
+
+---
+
+## Time Budget
+
+**Tier breakdown**: CORE ~98 min, THEORY ~129 min, ADVANCED ~27 min. Total ~254 min. Overage: **+74 min**.
+
+**To fit 180 minutes**:
+
+- Skip all ADVANCED slides (10 slides, saves ~27 min):
+  - Slide 17 (Double Descent), 42 (Shapley Formula), 44 (Counterfactual Explanations), 45 (Model Cards), 55 (Model Lifecycle), 57 (Model Promotion), 67 (Elastic Net), 73 (Dataset — HDB Resale), 75 (Discussion — 3am DriftMonitor), 80 (Kailash Engine Map)
+- Compress THEORY slides (13 slides, saves ~47 min):
+  - Slide 18 (Regularisation — Why Constrain), 19 (L1 vs L2), 20 (Bayesian Interpretation), 24 (XGBoost Objective), 25 (XGBoost Taylor Expansion), 30 (Kailash TrainingPipeline), 40 (Shapley Values Intuition), 48 (WorkflowBuilder), 61 (Production Pipeline), 70 (Fairness), 82-84 (Deep Dives: Reliability, MAS FEAT, Cross-Val)
+- Total savings: ~74 min, bringing total to ~180 min.
+
+**Mark as skippable**: Slides 17, 18, 19, 20, 22, 24, 25, 30, 40, 42, 44, 45, 48, 55, 57, 61, 67, 70, 73, 75, 80, 82, 83, 84.
+
+**Best break point**: After Slide 29 (~81 minutes in). Second option: after Slide 46 (~120 minutes in, end of SHAP/Explainability).

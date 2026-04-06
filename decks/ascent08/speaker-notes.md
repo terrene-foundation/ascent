@@ -2038,3 +2038,29 @@ Total time: ~180 minutes (3 hours)
 **Transition**: "Any final questions before we close? See you in Module 9."
 
 ---
+
+## Time Budget
+
+| Section                       | Slides  | Time         |
+| ----------------------------- | ------- | ------------ |
+| Title + Recap + Case Study    | 1-8     | ~13 min      |
+| 8.1 Text Preprocessing        | 9-26    | ~31 min      |
+| 8.2 BoW & TF-IDF              | 27-37   | ~21 min      |
+| 8.3 Word Embeddings           | 38-57   | ~38 min      |
+| 8.4 Recurrent Neural Networks | 58-77   | ~35 min      |
+| 8.5 Attention Mechanisms      | 78-91   | ~29 min      |
+| 8.6 The Transformer           | 92-115  | ~50 min      |
+| 8.7 Pre-training Paradigms    | 116-130 | ~34 min      |
+| 8.8 NLP Tasks & Decoding      | 131-142 | ~24 min      |
+| 8.9 Kailash & Synthesis       | 143-150 | ~20 min      |
+| **Total**                     |         | **~295 min** |
+
+**Note**: To fit 180 minutes:
+
+- Skip all ADVANCED slides (51, 100, 101, 106, 107, 108, 109, 113, 125): saves ~19 min
+- Skip deep THEORY derivations (7, 15, 16, 17, 21, 30, 31, 33, 39, 40, 41, 42, 43, 45, 46, 50, 53, 59, 61, 62, 63, 72, 79, 81, 82, 84, 85, 93, 94, 118, 121, 124, 126, 128, 133): saves ~96 min
+- Total savings: ~115 min, bringing it to ~180 min.
+
+**Mark as skippable**: Slides 7 (Why Domain-Specific Models Win), 15 (BPE Algorithm: Step by Step), 16 (BPE: Detailed Merge Example), 17 (WordPiece and Unigram), 21 (N-grams), 30 (TF-IDF: The Formula), 31 (TF-IDF: Worked Example), 33 (BM25: The Search Engine Standard), 39 (The Distributional Hypothesis), 40 (From Sparse to Dense), 41 (Word2Vec: Skip-gram), 42 (Skip-gram: The Objective), 43 (Negative Sampling), 45 (GloVe: Global Vectors), 46 (FastText: Subword Embeddings), 50 (Debiasing Approaches), 51 (ELMo: Contextual Embeddings), 53 (Training Word2Vec: Practical Details), 59 (Vanilla RNN: The Equation), 61 (Backpropagation Through Time), 62 (The Vanishing Gradient Problem), 63 (LSTM: Long Short-Term Memory), 72 (Seq2Seq: Encoder-Decoder), 79 (Bahdanau Attention), 81 (Self-Attention: Q, K, V), 82 (Scaled Dot-Product Attention), 84 (Self-Attention: Worked Example), 85 (Multi-Head Attention), 93 (Transformer: High-Level Architecture), 94 (Encoder Block: Detailed), 100 (RoPE), 101 (ALiBi), 106 (Flash Attention), 107 (GQA), 108 (Sparse Attention), 109 (Pre-LayerNorm vs Post-LayerNorm), 113 (Transformer Training at Scale), 118 (BERT: Masked Language Model), 121 (GPT: Causal Language Model), 124 (Scaling Laws: Chinchilla), 125 (Mixture of Experts), 126 (In-Context Learning), 128 (Instruction Tuning and RLHF), 133 (Decoding: Greedy and Beam Search).
+
+**Best break point**: After Slide 45 (~80 minutes in, end of 8.3 Word Embeddings first half). Second option: after Slide 91 (~145 minutes in, end of 8.5 Attention Mechanisms).

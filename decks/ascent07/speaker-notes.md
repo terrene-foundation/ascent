@@ -512,7 +512,7 @@ Total time: ~180 minutes (3 hours)
 - He/Kaiming init: for ReLU networks. Accounts for the 50% zeroing. W ~ N(0, sqrt(2/n_in)).
 - Rule of thumb: Xavier for tanh/sigmoid, He for ReLU/Leaky ReLU.
 - If beginners look confused: "Think of initialisation like tuning a guitar. If the strings are too slack (small weights) or too tight (large weights), no sound comes out. We have formulas for the right tension."
-- If experts look bored: "Xavier derivation: assume linear activations, iid inputs with variance 1, then Var(output) = n_in _ Var(W) _ Var(input). To preserve variance: Var(W) = 1/n_in. The harmonic mean of n_in and n_out gives the Glorot formula."
+- If experts look bored: "Xavier derivation: assume linear activations, iid inputs with variance 1, then Var(output) = n*in * Var(W) \_ Var(input). To preserve variance: Var(W) = 1/n_in. The harmonic mean of n_in and n_out gives the Glorot formula."
 
 **Transition**: "For very deep networks, there is an even more precise approach..."
 
@@ -1433,3 +1433,38 @@ Total time: ~180 minutes (3 hours)
 - Leave room visible. Do not advance past this slide.
 
 ---
+
+## Time Budget Summary
+
+| Section                              | Slides | Time         |
+| ------------------------------------ | ------ | ------------ |
+| Title + Recap                        | 1-4    | ~8 min       |
+| Opening (Feature Spectrum + AlexNet) | 5-8    | ~12 min      |
+| 7.1 Neural Networks                  | 9-13   | ~17 min      |
+| 7.2 Hidden Layers                    | 14-17  | ~13 min      |
+| 7.3 Where DL's Power Comes From      | 18-21  | ~13 min      |
+| 7.4 The Neuron                       | 22-24  | ~9 min       |
+| 7.5 Activations & Loss Functions     | 25-34  | ~33 min      |
+| 7.6 Chain Rule & Backpropagation     | 35-40  | ~22 min      |
+| 7.7 Vanishing Gradients              | 41-43  | ~10 min      |
+| 7.8 Parallelised Backpropagation     | 44-50  | ~23 min      |
+| 7.9 Optimisers                       | 51-57  | ~24 min      |
+| 7.10 Regularisation                  | 58-61  | ~15 min      |
+| 7.11 Convolutional Neural Networks   | 62-68  | ~26 min      |
+| 7.12 Embeddings & Generative Models  | 69-75  | ~24 min      |
+| PyTorch + Training Loop              | 76-78  | ~13 min      |
+| Production (OnnxBridge + Inference)  | 79-81  | ~13 min      |
+| Synthesis + Assessment               | 82-84  | ~8 min       |
+| Lab + Discussion                     | 85-86  | ~10 min      |
+| Preview + Close                      | 87-89  | ~7 min       |
+| **Total**                            |        | **~300 min** |
+
+**Note**: To fit 180 minutes:
+
+- Skip all ADVANCED slides (16): 22 (The Neuron), 30 (Loss Functions for Regression), 35 (The Chain Rule), 36 (Worked Example: 2-Layer Network), 42 (Exploding Gradients and Gradient Clipping), 50 (Mixed Precision Training), 51 (SGD), 52 (SGD with Momentum), 53 (AdaGrad and RMSProp), 60 (Layer Normalisation), 64 (CNN Architecture Components), 73 (Autoencoders), 80 (InferenceServer), 81 (ModelVisualizer: Training History), 82 (Module 7 Summary by Level), 83 (The Feature Engineering Spectrum: Complete): saves ~55 min
+- Skip THEORY slides (18): 12 (From OLS to Gradient Descent), 13 (Code: Linear Regression as a Neural Network), 20 (Depth = Hierarchical Feature Learning), 25 (Activation Functions: The Complete Catalog), 26 (Sigmoid and Tanh), 28 (GELU: The Transformer Activation), 29 (Softmax: The Output Activation), 31 (Loss Functions for Classification), 33 (Weight Initialisation), 34 (Fixup Initialisation for Deep ResNets), 38 (Backpropagation: The Algorithm), 45 (Data Parallelism in Detail), 57 (Learning Rate Schedules), 58 (Dropout), 59 (Batch Normalisation), 61 (Other Regularisation Techniques), 66 (ResNet: The Skip Connection Revolution), 72 (Generative Adversarial Networks): saves ~67 min
+- Total savings: ~122 min, bringing it to ~178 min.
+
+**Mark as skippable**: Slides 12, 13, 20, 22, 25, 26, 28, 29, 30, 31, 33, 34, 35, 36, 38, 42, 45, 50, 51, 52, 53, 57, 58, 59, 60, 61, 64, 66, 72, 73, 80, 81, 82, 83.
+
+**Best break point**: After Slide 27 — ReLU and Variants (~82 minutes in, ~63 minutes with skips). Second option: after Slide 43 — Dead Neurons (~132 minutes in, ~92 minutes with skips).

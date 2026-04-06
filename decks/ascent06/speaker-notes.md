@@ -1073,29 +1073,28 @@ Total time: ~180 minutes (3 hours)
 | Title + Recap                    | 1-4    | ~9 min       |
 | Opening Case (EU AI Act)         | 5-7    | ~10 min      |
 | 6.1 SFT / LoRA                   | 8-17   | ~28 min      |
-| 6.2 DPO / Preference Alignment   | 18-32  | ~32 min      |
+| 6.2 DPO / Preference Alignment   | 18-32  | ~34 min      |
 | Break                            | --     | ~10 min      |
-| 6.3 Reinforcement Learning       | 33-46  | ~35 min      |
+| 6.3 Reinforcement Learning       | 33-46  | ~39 min      |
 | 6.4 Advanced Alignment (Merging) | 47-51  | ~10 min      |
-| 6.5 PACT Governance              | 52-62  | ~30 min      |
+| 6.5 PACT Governance              | 52-62  | ~31 min      |
 | 6.6 Governed Agents              | 63-67  | ~14 min      |
 | 6.7 Governance at Scale          | 68-73  | ~15 min      |
 | 6.8 Capstone + Engine Maps       | 74-77  | ~10 min      |
 | Lab Setup                        | 78-80  | ~5 min       |
 | Discussion                       | 81-83  | ~14 min      |
 | Synthesis + Assessment + Closing | 84-90  | ~15 min      |
-| **Total**                        |        | **~237 min** |
+| **Total**                        |        | **~238 min** |
 
-**Note**: This module is the densest in the programme. To fit 180 minutes:
+**Breakdown by tier**: CORE: ~116 min | THEORY: ~91 min | ADVANCED: ~31 min
 
-- Skip ALL Advanced slides (28, 29, 31, 44, 45, 47, 48, 49, 50, 51, 72, 83, 85, 86): saves ~28 min
-- Compress the DPO derivation: show Steps 1, 5, 6 only (Bradley-Terry, cancellation, final loss), narrate the middle steps: saves ~8 min
-- Compress RL: show Bellman result + PPO result only, skip derivation steps and GAE/SAC: saves ~10 min
-- Shorten discussion to one alignment + one governance scenario: saves ~5 min
-- Total savings: ~51 min, bringing it to ~186 min. Close enough for a 3-hour session.
+**Overage**: +58 min over 180-min target.
 
-**Mark as skippable**: Slides 28 (GRPO), 29 (Beyond DPO), 31 (LLM-as-Judge Biases), 38 (Bellman Q-values), 42 (GAE), 43 (SAC), 44 (RLHF as RL), 45 (Offline RL), 47-51 (all of 6.4 Merging), 54 (EU Articles detail), 55 (Singapore AI Verify), 61 (TrustPosture), 72 (AIA), 83 (RL Discussion), 85 (Math Summary), 86 (Expert Summary).
+**Note**: To fit 180 minutes, skip 19 slides (10 ADVANCED + 9 THEORY) for ~179 min:
 
-**Best break point**: After 6.2 DPO derivation (~79 minutes in). This is the natural boundary between alignment and RL/governance.
+- ADVANCED (10): 13 (LoRA -- Forward Pass), 23 (DPO Derivation Step 3 -- Optimal Policy), 35 (Bellman Expectation Equation -- Derivation), 41 (PPO -- Clipped Objective Step 2), 50 (Differential Privacy in Alignment), 57 (D/T/R Addressing), 62 (Kailash Bridge -- GovernanceEngine), 71 (Dereliction -- When Agents Fail), 78 (Lab Setup), 81 (Discussion -- Alignment Choices)
+- THEORY (9): 8 (6.1 -- Supervised Fine-Tuning), 18 (6.2 -- Preference Alignment), 19 (The RLHF Pipeline), 20 (DPO -- Skip the Reward Model), 21 (DPO Derivation Step 1 -- Bradley-Terry Model), 25 (DPO Derivation Step 5 -- Substitute into Bradley-Terry), 26 (DPO Derivation Step 6 -- The DPO Loss), 30 (LLM Evaluation), 56 (PACT -- The Governance Grammar)
+
+**Best break point**: After Slide 30 (LLM Evaluation, ~81 minutes in). This is the natural boundary between alignment and RL/governance.
 
 **Live coding opportunities**: Slide 17 (AlignmentPipeline), Slide 32 (DPO training), Slide 46 (RLTrainer), Slide 62 (GovernanceEngine), Slide 67 (PactGovernedAgent).
