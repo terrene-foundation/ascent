@@ -30,8 +30,8 @@ from dotenv import load_dotenv
 from kaizen import InputField, OutputField, Signature
 from kaizen.core import BaseAgent
 from kailash_align import AdapterRegistry, AlignmentConfig, AlignmentPipeline
-from kailash_nexus import Nexus
-from kailash_pact import GovernanceEngine, PactGovernedAgent
+from nexus import Nexus
+from pact import GovernanceEngine, PactGovernedAgent
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment

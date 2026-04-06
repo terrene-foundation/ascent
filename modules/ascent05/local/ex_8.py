@@ -39,9 +39,9 @@ from kailash_ml.types import (
 from kaizen import Signature, InputField, OutputField
 from kaizen_agents import Delegate
 
-from kailash_nexus import Nexus
-from kailash_nexus.auth import JWTAuth, RBACMiddleware, Role, Permission
-from kailash_nexus.middleware import RequestLogger, RateLimiter
+from nexus import Nexus
+from nexus.auth import JWTAuth, RBACMiddleware, Role, Permission
+from nexus.middleware import RequestLogger, RateLimiter
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment

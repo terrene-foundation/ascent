@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 
 from kaizen_agents import Delegate
 from kaizen_agents.agents.specialized.react import ReActAgent
-from kailash_pact import GovernanceEngine, PactGovernedAgent
+from pact import GovernanceEngine, PactGovernedAgent
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment

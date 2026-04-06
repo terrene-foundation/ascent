@@ -25,10 +25,10 @@ import os
 
 import polars as pl
 
-from kailash_pact import GovernanceEngine, compile_org, Address
-from kailash_pact import GovernanceContext, RoleEnvelope, TaskEnvelope
-from kailash_pact import PactGovernedAgent, AuditChain
-from kailash_pact.governance import (
+from pact import GovernanceEngine, compile_org, Address
+from pact import GovernanceContext, RoleEnvelope, TaskEnvelope
+from pact import PactGovernedAgent, AuditChain
+from pact.governance import (
     ClearanceLevel,
     BudgetCascade,
     DerelictionHandler,
@@ -84,7 +84,7 @@ from pathlib import Path
 org_file = Path(tempfile.mktemp(suffix=".yaml"))
 org_file.write_text(org_yaml_content)
 
-from kailash_pact import load_org_yaml
+from pact import load_org_yaml
 
 # TODO: Load and compile the org YAML
 org = ____      # Hint: load_org_yaml(str(org_file))

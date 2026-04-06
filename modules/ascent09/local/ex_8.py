@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 from kaizen import InputField, OutputField, Signature
 from kaizen.core import BaseAgent
 from kaizen_agents import Delegate
-from kailash_nexus import Nexus
+from nexus import Nexus
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
