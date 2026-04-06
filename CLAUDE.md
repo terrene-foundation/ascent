@@ -42,23 +42,27 @@ Write complete solutions first in `modules/ascentNN/solutions/`, then strip to c
 | M4     | Light+      | ~40%          |
 | M5     | Light       | ~30%          |
 | M6     | Minimal     | ~20%          |
+| M7     | Light       | ~30%          |
+| M8     | Light       | ~30%          |
+| M9     | Minimal+    | ~25%          |
+| M10    | Minimal     | ~20%          |
 
-Each module reduces hand-holding. By M6, students write most code from documentation.
+Foundation Certificate (M1-M6) reduces hand-holding progressively. Advanced Certificate (M7-M10) assumes M1-M6 competence and maintains low scaffolding throughout.
 
 ## Course Structure
 
-| Module   | Title                                   | Kailash Frameworks                                                                                          |
-| -------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| ASCENT01 | Python & Data Fluency                   | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer                                            |
-| ASCENT02 | Statistical Foundations                 | kailash-ml: ExperimentTracker, ModelVisualizer                                                              |
-| ASCENT03 | Feature Engineering & Experiment Design | kailash-ml: FeatureEngineer, FeatureStore, ExperimentTracker                                                |
-| ASCENT04 | Supervised ML                           | kailash-ml: TrainingPipeline, ModelSpec, EvalSpec, HyperparameterSearch, ModelRegistry                      |
-| ASCENT05 | ML Engineering & Production             | Core SDK WorkflowBuilder, DataFlow, kailash-ml: EnsembleEngine, ModelVisualizer                             |
-| ASCENT06 | Unsupervised ML & Pattern Discovery     | kailash-ml: AutoMLEngine, DriftMonitor                                                                      |
-| ASCENT07 | Deep Learning                           | kailash-ml: OnnxBridge, InferenceServer                                                                     |
-| ASCENT08 | NLP & Transformers                      | kailash-ml: ModelVisualizer, AutoMLEngine (text)                                                            |
-| ASCENT09 | LLMs, AI Agents & RAG                   | Kaizen: Delegate, BaseAgent, Signature; Nexus, MCP                                                          |
-| ASCENT10 | Alignment, RL & Governance              | Align: AlignmentPipeline, AdapterRegistry; kailash-ml: RLTrainer; PACT: GovernanceEngine, PactGovernedAgent |
+| Module   | Title                                        | Kailash Frameworks                                                                                          |
+| -------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| ASCENT01 | Foundations — Statistics, Probability & Data | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer                                            |
+| ASCENT02 | Feature Engineering & Experiment Design      | kailash-ml: FeatureEngineer, FeatureStore, ExperimentTracker, ModelVisualizer                               |
+| ASCENT03 | Supervised ML — Theory to Production         | Core SDK WorkflowBuilder, DataFlow, kailash-ml: TrainingPipeline, HyperparameterSearch, ModelRegistry       |
+| ASCENT04 | Unsupervised ML, NLP & Deep Learning         | kailash-ml: AutoMLEngine, EnsembleEngine, DriftMonitor, InferenceServer; Nexus                              |
+| ASCENT05 | LLMs, AI Agents & RAG Systems                | Kaizen: Delegate, BaseAgent, Signature; kailash-ml agents; MCP                                              |
+| ASCENT06 | Alignment, Governance, RL & Production       | Align: AlignmentPipeline, AdapterRegistry; kailash-ml: RLTrainer; PACT; Nexus                               |
+| ASCENT07 | Deep Learning                                | kailash-ml: OnnxBridge, InferenceServer, TrainingPipeline, ModelVisualizer, ModelRegistry                   |
+| ASCENT08 | NLP & Transformers                           | kailash-ml: ModelVisualizer, AutoMLEngine, TrainingPipeline, OnnxBridge                                     |
+| ASCENT09 | LLMs, AI Agents & RAG                        | Kaizen: Delegate, BaseAgent, Signature, ReActAgent, Pipeline; Nexus, MCP                                    |
+| ASCENT10 | Alignment, RL & Governance                   | Align: AlignmentPipeline, AdapterRegistry; kailash-ml: RLTrainer; PACT: GovernanceEngine, PactGovernedAgent |
 
 ## Kailash Platform
 

@@ -1,87 +1,129 @@
-# ASCENT Implementation Plan — v4 Curriculum
+# ASCENT Implementation Plan — v5 Curriculum
 
 ## Execution Summary
 
-All deliverables being produced in parallel autonomous agent streams.
+All deliverables produced in parallel autonomous agent streams. Expanded from v4 (6 modules) to v5 (10 modules).
 
 ## Deliverable Status
 
 ### Phase 1: Content Foundation (Complete)
 
-- [x] 48/48 exercise solutions across 6 modules
-- [x] v4 curriculum alignment (renumbering, moves, adaptations)
+- [x] 80/80 exercise solutions across 10 modules (8 per module)
+- [x] v5 curriculum alignment (10 modules x 8 lessons = 80 lessons)
 - [x] Infrastructure: shared.run_profile, sg_weather.csv, uv.lock
 - [x] ASCENTDataLoader updated for local data/ directory
 - [x] 11/11 datasets generated
+- [x] pyproject.toml build config (hatchling packages directive)
 
-### Phase 2: Exercise Packaging (In Progress)
+### Phase 2: Exercise Packaging (Complete)
 
-- [ ] 48/48 local exercise files (stripped from solutions)
-- [ ] 48/48 Jupyter notebooks (converted from local)
-- [ ] 48/48 Colab notebooks (converted from local)
+- [x] 80/80 local exercise files (stripped from solutions)
+- [x] 80/80 Jupyter notebooks (converted from local)
+- [x] 80/80 Colab notebooks (converted from local)
 
-### Phase 3: Supplementary Materials (In Progress)
+### Phase 3: Supplementary Materials (Complete)
 
-- [ ] 10 Reveal.js lecture decks (1,333 slides)
-- [ ] 6 quiz files (~24-32 questions each)
-- [ ] Rust tutorials for packages 01-08
+- [x] 10 Reveal.js lecture decks (~1,398 slides)
+- [x] 10 speaker notes files
+- [x] 10 module READMEs with lesson plans
+- [x] 10 quiz files (M1-M6: 24-32 questions each, M7-M10: 16 questions each)
+- [x] 10 deck PDFs (decktape, 1280x720)
+- [x] Curriculum v5 document (expanded-curriculum-v5.md)
 
-### Phase 4: Validation
+### Phase 4: Textbook (In Progress)
 
-- [ ] Red team all 83 Python tutorials against SDK source
+- [x] 83/83 Python tutorial files across 9 sections
+- [ ] 68/68 Markdown tutorial files (33 complete, 35 in progress)
+- [ ] 68/68 HTML tutorial files (26 complete, 42 needed)
+
+### Phase 5: Validation
+
 - [ ] Red team all exercise solutions
 - [ ] Verify three-format consistency
 - [ ] Check no hardcoded keys/secrets
+- [ ] Check no PCML references
+- [ ] Validate PDFs render correctly
 
-## Module Mapping (v4)
+## Module Mapping (v5)
 
-| v4 Exercise   | Source                                       | Status                 |
-| ------------- | -------------------------------------------- | ---------------------- |
-| M1 ex_1 (1.1) | NEW: Python basics + weather                 | Written                |
-| M1 ex_2 (1.2) | NEW: Filter HDB                              | Written                |
-| M1 ex_3 (1.3) | NEW: Functions + aggregation                 | Written                |
-| M1 ex_4 (1.4) | ADAPTED from old M1 ex_1 (joins)             | Adapted                |
-| M1 ex_5 (1.5) | ADAPTED from old M1 ex_1 (windows)           | Adapted                |
-| M1 ex_6 (1.6) | NEW: Visualization                           | Written                |
-| M1 ex_7 (1.7) | ADAPTED from old M1 ex_3 (profiling)         | Adapted                |
-| M1 ex_8 (1.8) | ADAPTED from old M1 ex_5 (cleaning)          | Adapted                |
-| M2 ex_1 (2.1) | MOVED from M1 ex_2 (Bayesian)                | Moved + header updated |
-| M2 ex_2 (2.2) | NEW: MLE/MAP                                 | Written                |
-| M2 ex_3 (2.3) | MOVED from M1 ex_4 (Hypothesis)              | Moved + header updated |
-| M2 ex_4 (2.4) | NEW: Bootstrap                               | Written                |
-| M2 ex_5 (2.5) | EXISTING M2 ex_3 (CUPED)                     | Renumbered             |
-| M2 ex_6 (2.6) | EXISTING M2 ex_4 (DiD)                       | Renumbered             |
-| M2 ex_7 (2.7) | EXISTING M2 ex_1 (Feature eng)               | Renumbered             |
-| M2 ex_8 (2.8) | EXISTING M2 ex_2 (Feature store)             | Renumbered             |
-| M3 ex_1 (3.1) | NEW: Bias-variance                           | Written                |
-| M3 ex_2 (3.2) | EXISTING M3 ex_1 (Grad boost)                | Renumbered             |
-| M3 ex_3 (3.3) | EXISTING M3 ex_2 (Imbalance)                 | Renumbered             |
-| M3 ex_4 (3.4) | EXISTING M3 ex_3 (SHAP + LIME)               | Adapted                |
-| M3 ex_5 (3.5) | EXISTING M3 ex_4 (Workflow)                  | Renumbered             |
-| M3 ex_6 (3.6) | NEW: DataFlow persistence                    | Written                |
-| M3 ex_7 (3.7) | EXISTING M3 ex_5 (Registry/HPO)              | Renumbered             |
-| M3 ex_8 (3.8) | EXISTING M3 ex_6 (Production)                | Renumbered             |
-| M4 ex_1 (4.1) | EXISTING M4 ex_1 (Clustering)                | Kept                   |
-| M4 ex_2 (4.2) | NEW: EM/GMMs                                 | Written                |
-| M4 ex_3 (4.3) | NEW: PCA/UMAP                                | Written                |
-| M4 ex_4 (4.4) | EXISTING M4 ex_2 (Anomaly)                   | Adapted                |
-| M4 ex_5 (4.5) | EXISTING M4 ex_3 (NLP)                       | Adapted                |
-| M4 ex_6 (4.6) | EXISTING M4 ex_4 (Drift)                     | Renumbered             |
-| M4 ex_7 (4.7) | EXISTING M4 ex_5 (DL)                        | Adapted                |
-| M4 ex_8 (4.8) | EXISTING M4 ex_6 (Capstone)                  | Adapted                |
-| M5 ex_1 (5.1) | EXISTING (Delegate)                          | Kept                   |
-| M5 ex_2 (5.2) | EXISTING (CoT)                               | Kept                   |
-| M5 ex_3 (5.3) | EXISTING (ReAct)                             | Kept                   |
-| M5 ex_4 (5.4) | EXISTING (RAG)                               | Kept                   |
-| M5 ex_5 (5.5) | NEW: MCP server                              | Written                |
-| M5 ex_6 (5.6) | EXISTING M5 ex_5 (ML agents)                 | Renumbered             |
-| M5 ex_7 (5.7) | REWRITTEN (multi-agent with formal patterns) | Rewritten              |
-| M5 ex_8 (5.8) | NEW: Nexus deployment                        | Written                |
-| M6 ex_1 (6.1) | EXISTING (SFT)                               | Kept                   |
-| M6 ex_2 (6.2) | EXISTING (DPO)                               | Kept                   |
-| M6 ex_3 (6.3) | EXISTING M6 ex_5 (RL)                        | Renumbered             |
-| M6 ex_4 (6.4) | NEW: Advanced alignment/merging              | Written                |
-| M6 ex_5 (6.5) | EXISTING M6 ex_3 (PACT)                      | Renumbered             |
-| M6 ex_6 (6.6) | EXISTING M6 ex_4 (Governed)                  | Renumbered             |
-| M6 ex_7 (6.7) | NEW: Agent governance at scale               | Written                |
-| M6 ex_8 (6.8) | EXISTING M6 ex_6 (Capstone)                  | Adapted                |
+### Foundation Certificate (M1-M6)
+
+| v5 Exercise   | Source                                | Status   |
+| ------------- | ------------------------------------- | -------- |
+| M1 ex_1 (1.1) | Polars deep dive on HDB resale        | Complete |
+| M1 ex_2 (1.2) | Bayesian estimation                   | Complete |
+| M1 ex_3 (1.3) | DataExplorer profiling                | Complete |
+| M1 ex_4 (1.4) | Hypothesis testing                    | Complete |
+| M1 ex_5 (1.5) | Data cleaning pipeline                | Complete |
+| M1 ex_6-8     | Additional practice + integration     | Complete |
+| M2 ex_1 (2.1) | Feature engineering on ICU data       | Complete |
+| M2 ex_2 (2.2) | FeatureStore lifecycle                | Complete |
+| M2 ex_3 (2.3) | A/B testing + CUPED                   | Complete |
+| M2 ex_4 (2.4) | Causal inference (DiD)                | Complete |
+| M2 ex_5 (2.5) | Automated feature generation          | Complete |
+| M2 ex_6-8     | Additional practice + integration     | Complete |
+| M3 ex_1 (3.1) | Gradient boosting comparison          | Complete |
+| M3 ex_2 (3.2) | Class imbalance + calibration         | Complete |
+| M3 ex_3 (3.3) | SHAP interpretability                 | Complete |
+| M3 ex_4 (3.4) | Workflow orchestration                | Complete |
+| M3 ex_5 (3.5) | HyperparameterSearch + ModelRegistry  | Complete |
+| M3 ex_6 (3.6) | End-to-end pipeline                   | Complete |
+| M3 ex_7-8     | DataFlow + integration                | Complete |
+| M4 ex_1 (4.1) | Clustering comparison                 | Complete |
+| M4 ex_2 (4.2) | Anomaly detection + ensembles         | Complete |
+| M4 ex_3 (4.3) | NLP: BERTopic                         | Complete |
+| M4 ex_4 (4.4) | Drift monitoring                      | Complete |
+| M4 ex_5 (4.5) | Deep learning CNN                     | Complete |
+| M4 ex_6 (4.6) | InferenceServer + Nexus               | Complete |
+| M4 ex_7-8     | Additional practice + integration     | Complete |
+| M5 ex_1 (5.1) | Delegate + SimpleQAAgent              | Complete |
+| M5 ex_2 (5.2) | ChainOfThoughtAgent                   | Complete |
+| M5 ex_3 (5.3) | ReActAgent with tools                 | Complete |
+| M5 ex_4 (5.4) | RAG systems                           | Complete |
+| M5 ex_5 (5.5) | ML agent pipeline                     | Complete |
+| M5 ex_6 (5.6) | Multi-agent orchestration             | Complete |
+| M5 ex_7-8     | MCP + Nexus deployment                | Complete |
+| M6 ex_1 (6.1) | SFT fine-tuning                       | Complete |
+| M6 ex_2 (6.2) | DPO preference alignment              | Complete |
+| M6 ex_3 (6.3) | PACT governance                       | Complete |
+| M6 ex_4 (6.4) | Governed agents                       | Complete |
+| M6 ex_5 (6.5) | RL fundamentals                       | Complete |
+| M6 ex_6 (6.6) | Capstone: full platform               | Complete |
+| M6 ex_7-8     | Advanced alignment + agent governance | Complete |
+
+### Advanced Certificate (M7-M10)
+
+| v5 Exercise     | Source                       | Status   |
+| --------------- | ---------------------------- | -------- |
+| M7 ex_1 (7.1)   | Linear regression as neuron  | Complete |
+| M7 ex_2 (7.2)   | Hidden layers + XOR          | Complete |
+| M7 ex_3 (7.3)   | Activation functions         | Complete |
+| M7 ex_4 (7.4)   | Loss + initialization        | Complete |
+| M7 ex_5 (7.5)   | Backpropagation from scratch | Complete |
+| M7 ex_6 (7.6)   | Optimizers + LR scheduling   | Complete |
+| M7 ex_7 (7.7)   | CNN image classification     | Complete |
+| M7 ex_8 (7.8)   | Capstone: DL pipeline        | Complete |
+| M8 ex_1 (8.1)   | Text preprocessing           | Complete |
+| M8 ex_2 (8.2)   | BoW + TF-IDF                 | Complete |
+| M8 ex_3 (8.3)   | Word embeddings              | Complete |
+| M8 ex_4 (8.4)   | RNNs + LSTMs                 | Complete |
+| M8 ex_5 (8.5)   | Attention mechanisms         | Complete |
+| M8 ex_6 (8.6)   | Transformer architecture     | Complete |
+| M8 ex_7 (8.7)   | Transfer learning            | Complete |
+| M8 ex_8 (8.8)   | Capstone: NLP pipeline       | Complete |
+| M9 ex_1 (9.1)   | LLM architecture             | Complete |
+| M9 ex_2 (9.2)   | Prompt engineering           | Complete |
+| M9 ex_3 (9.3)   | RAG fundamentals             | Complete |
+| M9 ex_4 (9.4)   | Advanced RAG                 | Complete |
+| M9 ex_5 (9.5)   | Kaizen agents                | Complete |
+| M9 ex_6 (9.6)   | Multi-agent orchestration    | Complete |
+| M9 ex_7 (9.7)   | MCP integration              | Complete |
+| M9 ex_8 (9.8)   | Capstone: agent deployment   | Complete |
+| M10 ex_1 (10.1) | LoRA fine-tuning             | Complete |
+| M10 ex_2 (10.2) | DPO alignment                | Complete |
+| M10 ex_3 (10.3) | RL fundamentals              | Complete |
+| M10 ex_4 (10.4) | PPO training                 | Complete |
+| M10 ex_5 (10.5) | Model merging + export       | Complete |
+| M10 ex_6 (10.6) | PACT governance              | Complete |
+| M10 ex_7 (10.7) | Governed agents              | Complete |
+| M10 ex_8 (10.8) | Capstone: governed ML system | Complete |
