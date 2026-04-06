@@ -2,67 +2,62 @@
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` -- 10-module ASCENT structure, absolute directives, updated course structure table
+1. `CLAUDE.md` -- 10-module ASCENT structure, updated course structure table, scaffolding M1-M10
 2. `README.md` -- Programme overview
 3. `workspaces/curriculum/briefs/expanded-curriculum-v5.md` -- NEW: 10-module curriculum (replaces v4)
 4. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- Updated to v5, all phases tracked
 5. `rules/exercise-standards.md` -- exercise format, progressive scaffolding targets
-6. `scripts/py_to_notebook.py` -- .py→.ipynb converter
+6. `scripts/py_to_notebook.py` -- .py→.ipynb converter (auto-detects Kailash packages per exercise)
 
 ## Accomplished (Session 9)
 
-- **Build fix**: `pyproject.toml` lacked `[tool.hatch.build.targets.wheel] packages = ["shared"]` — `uv sync` now works
-- **10 deck PDFs**: All generated via decktape (M1-M8, M10) + Playwright fallback (M9). Sizes 2-10MB
-- **Curriculum v5**: `expanded-curriculum-v5.md` — 10 modules × 8 lessons = 80, Foundation M1-M6 + Advanced M7-M10
-- **CLAUDE.md updated**: Course structure table now matches actual module titles and frameworks; scaffolding table extended to M10
-- **Implementation plan v5**: `01-implementation-plan.md` updated from v4 (48 exercises) to v5 (80 exercises)
+- **Build fix**: `pyproject.toml` added `[tool.hatch.build.targets.wheel] packages = ["shared"]` — `uv sync` works
+- **10 deck PDFs**: Generated via decktape (M1-M8, M10) + Playwright fallback (M9). Sizes 2-10MB
+- **Curriculum v5**: 10 modules × 8 lessons = 80, Foundation M1-M6 + Advanced M7-M10
+- **CLAUDE.md**: Course structure table matches actual module titles; scaffolding table extended to M10
 - **Textbook complete**: 83 Python → 83 Markdown → 83 HTML (was 83/33/26). All 9 sections at full parity
-- **Red team round 2**: 3 exercise agents + quiz reviewer + curriculum reviewer ran in parallel. Fixed:
-  - M7 ex_3/ex_4: Training loops had no backpropagation (flat loss curves). Added full backward pass
-  - M9 ex_7: Wrong import `from kailash_mcp` → `from kailash.mcp_server`
-  - All modules: Standardized `kailash_pact` → `pact`, `kailash_nexus` → `nexus` (118 files touched)
-  - Quiz 10.A.3: Optimizer state math (16.8 MB → 33.6 MB, ratio 1667× → 833×)
-  - Quiz 10.D.3: Quantization explanation (metadata can't halve size — now cites GPTQ group quantization)
-- **NOT yet committed**: 118 modified files in working tree
+- **Red team round 2**: Fixed M7 ex_3/ex_4 backprop, M9 ex_7 import, quiz 10.A.3/10.D.3 math, standardized pact/nexus imports
+- **Pushed**: 7 commits to `terrene-foundation/ascent` main (46fb9a0)
 
 ## Outstanding — Next Session Work Queue
 
-### P1: Commit and Push
-- 118 modified files need staging and committing (verified: `git status --short | wc -l` = 118)
-- Logical commit split: (1) build fix, (2) curriculum v5 + plan, (3) red team fixes, (4) textbook completion
+### P1: Curriculum v5 Accuracy Fixes
+- V5 M5 exercise ordering wrong: says 5.5=ML Agent Pipeline but actual ex_5=MCP Servers
+  (verified: `head -5 modules/ascent05/solutions/ex_5.py` shows "MCP Servers and Tool Integration")
+- V5 M6 exercise ordering wrong: says 6.3=PACT but actual ex_3=RL, ex_4=Model Merging, ex_5=PACT
+- V5 lists ExperimentTracker for M1 lesson 1.4 but M1 has zero ExperimentTracker imports
+  (verified: `grep ExperimentTracker modules/ascent01/solutions/*.py` returns nothing)
+- V5 SDK coverage table undercounts: core SDK used in M2-M10, not just M3/M9; kailash-ml missing M9
+
+### P1: M1-M6 Module READMEs Wrong Exercise Counts
+- All say "5 Exercises" (M1-M2) or "6 Exercises" (M3-M6) but each has 8 exercise files
+  (verified: `head -10 modules/ascent01/README.md` says "Lab (3h) — 5 Exercises")
 
 ### P2: Speaker Note Time Calibration
-- ALL modules overrun 180min target: M1=882min, M7=497min, M8=473min, M9=494min, M10=542min
-- Systemic issue from session 8 — not addressed this session
+- ALL modules overrun 180min target: M1=882, M7=497, M8=473, M9=494, M10=542
+  (verified: grep + bc on ascent01 and ascent07 speaker-notes.md)
 - Options: add skip markers, reduce per-slide times, or accept longer delivery
 
 ### P2: Deck Audit Script Recalibration
-- `scripts/deck-audit.mjs` reports 84-98% overflow on ALL decks (M1 included) — systemic false positive
-- Screenshots show slides render correctly; the script measures Reveal.js transformed elements incorrectly
+- `scripts/deck-audit.mjs` reports 84-98% overflow on ALL decks — systemic false positive
+- Slides render correctly (screenshot verified); script measures Reveal.js transforms incorrectly
 
-### P2: M1-M6 Module READMEs Say Wrong Exercise Counts
-- READMEs say "5 Exercises" or "6 Exercises" but each module now has 8 exercise files
-- (verified: `head -10 modules/ascent01/README.md` says "Lab (3h) — 5 Exercises")
-
-### P3: Quiz Parity M1-M6 vs M7-M10
-- M1-M6: 24-25 questions each; M7-M10: 16 questions each
-- Consider adding 8-9 more questions per M7-M10 quiz for consistency
+### P3: Quiz Parity
+- M1-M6: 24-25 questions each; M7-M10: 16 each. Consider 8-9 more per M7-M10 quiz
 
 ## Oversight — Verify Before Starting
 
 - [ ] 80 exercises: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 80 (verified: 80)
 - [ ] 10 PDFs: `ls decks/ascent*/deck.pdf | wc -l` = 10 (verified: 10)
-- [ ] 83 textbook: `find textbook/markdown -name "*.md" | wc -l` = 83 (verified: 83)
-- [ ] No wrong imports: `grep -rn "kailash_pact\|kailash_nexus\|kailash_mcp" --include="*.py" modules/ | wc -l` = 0 (verified: 0)
-- [ ] Curriculum v5: `head -1 workspaces/curriculum/briefs/expanded-curriculum-v5.md` exists (verified)
+- [ ] 83 textbook MD: `find textbook/markdown -name "*.md" | wc -l` = 83 (verified: 83)
+- [ ] No wrong imports: `grep -rn "kailash_pact\|kailash_nexus\|kailash_mcp" --include="*.py" modules/` = 0 (verified: 0)
+- [ ] Remote current: `git log --oneline -1` = 46fb9a0 (verified)
 
 ## Oversight — Verify After Completing
 
-- [ ] Commit: `git log --oneline -3` shows session 9 commits
-- [ ] Push: `git push origin main` successful
+- [ ] Push: `git log --oneline -1 origin/main` matches local HEAD
 - [ ] Clean: `git status --short | wc -l` = 0
 
 ## Blockers
 
-- M9 deck PDF required Playwright fallback (decktape fails on M9 — Reveal.js version detection bug)
-- decktape version: npx decktape (global install), Playwright 1.59.1 in node_modules
+- M9 deck PDF requires Playwright fallback (decktape Reveal.js version detection fails on M9)
