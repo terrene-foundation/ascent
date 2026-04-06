@@ -77,36 +77,39 @@ async function auditDeck(module, port) {
       const currentSlide = Reveal.getCurrentSlide();
       if (!currentSlide) return issues;
 
+      // Use the slide's actual rendered bounds (accounts for Reveal.js transforms)
       const slideRect = currentSlide.getBoundingClientRect();
-      const viewportW = 1280;
-      const viewportH = 720;
+      const tolerance = 5; // px — ignore sub-pixel rounding from CSS transforms
 
-      // Check all children for overflow
+      // Check all children for overflow beyond the slide bounds
       const children = currentSlide.querySelectorAll('*');
       for (const child of children) {
         const rect = child.getBoundingClientRect();
+        // Skip invisible or zero-size elements
+        if (rect.width === 0 || rect.height === 0) continue;
+
         const tag = child.tagName.toLowerCase();
         const cls = child.className?.toString?.()?.slice(0, 40) || '';
 
-        // Right overflow
-        if (rect.right > viewportW + 2) {
+        // Right overflow (beyond slide right edge)
+        if (rect.right > slideRect.right + tolerance) {
           issues.push({
             type: 'RIGHT_OVERFLOW',
             tag,
             class: cls,
-            overflow: Math.round(rect.right - viewportW),
+            overflow: Math.round(rect.right - slideRect.right),
             width: Math.round(rect.width),
             text: child.textContent?.slice(0, 50) || ''
           });
         }
 
-        // Bottom overflow
-        if (rect.bottom > viewportH + 2) {
+        // Bottom overflow (beyond slide bottom edge)
+        if (rect.bottom > slideRect.bottom + tolerance) {
           issues.push({
             type: 'BOTTOM_OVERFLOW',
             tag,
             class: cls,
-            overflow: Math.round(rect.bottom - viewportH),
+            overflow: Math.round(rect.bottom - slideRect.bottom),
             height: Math.round(rect.height),
             text: child.textContent?.slice(0, 50) || ''
           });
@@ -165,7 +168,7 @@ const server = startServer(DECKS_DIR, PORT);
 
 try {
   if (targetModule === 'all') {
-    for (const mod of ['ascent01', 'ascent02', 'ascent03', 'ascent04', 'ascent05', 'ascent06']) {
+    for (const mod of ['ascent01', 'ascent02', 'ascent03', 'ascent04', 'ascent05', 'ascent06', 'ascent07', 'ascent08', 'ascent09', 'ascent10']) {
       await auditDeck(mod, PORT);
     }
   } else {
