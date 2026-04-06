@@ -1,71 +1,68 @@
-# Session Notes -- 2026-04-06 (Session 8)
+# Session Notes -- 2026-04-06 (Session 9)
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` -- 10-module ASCENT structure, absolute directives, Kailash engine table
-2. `README.md` -- Programme overview: 1,398 slides, 10 modules, Feature Engineering Spectrum
-3. `workspaces/decks/briefs/deck-brief.md` -- Reveal.js spec (three-layer slide architecture, 1280x720)
-4. `.claude/agents/education/kailash-tutor.md` -- 6 verified SDK API patterns
-5. `scripts/py_to_notebook.py` -- .py→.ipynb converter (now auto-detects Kailash packages per exercise)
-6. `rules/exercise-standards.md` -- exercise format, progressive scaffolding targets
+1. `CLAUDE.md` -- 10-module ASCENT structure, absolute directives, updated course structure table
+2. `README.md` -- Programme overview
+3. `workspaces/curriculum/briefs/expanded-curriculum-v5.md` -- NEW: 10-module curriculum (replaces v4)
+4. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- Updated to v5, all phases tracked
+5. `rules/exercise-standards.md` -- exercise format, progressive scaffolding targets
+6. `scripts/py_to_notebook.py` -- .py→.ipynb converter
 
-## Accomplished (Session 8)
+## Accomplished (Session 9)
 
-- **M7-M10 exercises complete**: 32 solutions + 32 local + 64 notebooks = 128 exercise files
-- **M7-M10 quizzes complete**: 64 AI-resilient questions (16 per module), all 4 types represented
-- **M7-M10 speaker notes complete**: 4 files (1450-2472 lines each), per-slide instructor guidance
-- **M7-M10 READMEs**: 4 module READMEs with lesson plans and dataset lists
-- **Red team round 1 converged**: 6 specialist panels, all CRITICAL/HIGH findings fixed
-  - Removed fake training data (M7 ex_6 Adam, ex_7 CNN) — zero-tolerance violation
-  - Fixed He init scale bug (extra 0.01× multiplier)
-  - Increased scaffolding levels in 6 under-stripped exercises (M7-M9)
-  - Fixed 4 quiz accuracy errors (M9 math, M10 contradiction, M10 percentages, M8 code comment)
-  - Fixed py_to_notebook.py to auto-detect kailash-kaizen/align/pact/nexus/mcp per exercise
-  - Cleaned mid-file imports (6 files) and unused load_dotenv imports (6 files)
-- **Pushed**: 3 commits to `terrene-foundation/ascent` main (a3e7cb3)
+- **Build fix**: `pyproject.toml` lacked `[tool.hatch.build.targets.wheel] packages = ["shared"]` — `uv sync` now works
+- **10 deck PDFs**: All generated via decktape (M1-M8, M10) + Playwright fallback (M9). Sizes 2-10MB
+- **Curriculum v5**: `expanded-curriculum-v5.md` — 10 modules × 8 lessons = 80, Foundation M1-M6 + Advanced M7-M10
+- **CLAUDE.md updated**: Course structure table now matches actual module titles and frameworks; scaffolding table extended to M10
+- **Implementation plan v5**: `01-implementation-plan.md` updated from v4 (48 exercises) to v5 (80 exercises)
+- **Textbook complete**: 83 Python → 83 Markdown → 83 HTML (was 83/33/26). All 9 sections at full parity
+- **Red team round 2**: 3 exercise agents + quiz reviewer + curriculum reviewer ran in parallel. Fixed:
+  - M7 ex_3/ex_4: Training loops had no backpropagation (flat loss curves). Added full backward pass
+  - M9 ex_7: Wrong import `from kailash_mcp` → `from kailash.mcp_server`
+  - All modules: Standardized `kailash_pact` → `pact`, `kailash_nexus` → `nexus` (118 files touched)
+  - Quiz 10.A.3: Optimizer state math (16.8 MB → 33.6 MB, ratio 1667× → 833×)
+  - Quiz 10.D.3: Quantization explanation (metadata can't halve size — now cites GPTQ group quantization)
+- **NOT yet committed**: 118 modified files in working tree
 
 ## Outstanding — Next Session Work Queue
 
-### P1: Deck PDFs (10 needed, 6 stale exist)
-- 6 existing PDFs are from old deck content; all 10 need regeneration
-- Use decktape or Playwright PDF: `decktape reveal deck.html deck.pdf`
-- KaTeX-heavy decks may need Playwright fallback (`page.pdf()` with `?print-pdf`)
-
-### P1: Curriculum Doc Update (v4 → v5)
-- `workspaces/curriculum/briefs/expanded-curriculum-v4.md` still says "6 modules × 8 lessons = 48"
-- Needs rewrite to 10 modules × 8 lessons = 80 lessons with M7-M10 lesson plans
-- (verified: `head -3 workspaces/curriculum/briefs/expanded-curriculum-v4.md` says "6 Modules")
-
-### P1: Textbook MD/HTML Completion
-- ~50 MD files and ~57 HTML files still needed across multiple sections
-- (verified: this was in session 6 notes, not rechecked — next session should audit)
+### P1: Commit and Push
+- 118 modified files need staging and committing (verified: `git status --short | wc -l` = 118)
+- Logical commit split: (1) build fix, (2) curriculum v5 + plan, (3) red team fixes, (4) textbook completion
 
 ### P2: Speaker Note Time Calibration
-- M7=300min, M8=293min, M9=244min vs 180min target (M10=180min is correct)
-- Systemic issue — M6 also overruns at 238min
+- ALL modules overrun 180min target: M1=882min, M7=497min, M8=473min, M9=494min, M10=542min
+- Systemic issue from session 8 — not addressed this session
 - Options: add skip markers, reduce per-slide times, or accept longer delivery
 
-### P2: Remaining Scaffolding Calibration
-- Red team fixed 6 worst offenders but other M7-M9 exercises may be slightly under-stripped
-- M10 exercises all hit 20% target (PASS)
+### P2: Deck Audit Script Recalibration
+- `scripts/deck-audit.mjs` reports 84-98% overflow on ALL decks (M1 included) — systemic false positive
+- Screenshots show slides render correctly; the script measures Reveal.js transformed elements incorrectly
 
-### P2: Deck Overflow Audit (M7-M10)
-- `scripts/deck-audit.mjs` exists but hasn't been run on new decks
+### P2: M1-M6 Module READMEs Say Wrong Exercise Counts
+- READMEs say "5 Exercises" or "6 Exercises" but each module now has 8 exercise files
+- (verified: `head -10 modules/ascent01/README.md` says "Lab (3h) — 5 Exercises")
+
+### P3: Quiz Parity M1-M6 vs M7-M10
+- M1-M6: 24-25 questions each; M7-M10: 16 questions each
+- Consider adding 8-9 more questions per M7-M10 quiz for consistency
 
 ## Oversight — Verify Before Starting
 
 - [ ] 80 exercises: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 80 (verified: 80)
-- [ ] 64 quiz questions (M7-M10): `for q in quiz_ascent{07,08,09,10}.py; do grep -c '"id":' modules/assessment/quizzes/$q; done` = 16 each (verified: 16,16,16,16)
-- [ ] 10 speaker notes: `ls decks/ascent*/speaker-notes.md | wc -l` = 10 (verified: 10)
-- [ ] No PCML: `grep -rli "pcml" --include="*.py" --include="*.md" modules/ | wc -l` = 0 (verified: 0)
-- [ ] Remote current: `git log --oneline -1` = a3e7cb3 (verified)
+- [ ] 10 PDFs: `ls decks/ascent*/deck.pdf | wc -l` = 10 (verified: 10)
+- [ ] 83 textbook: `find textbook/markdown -name "*.md" | wc -l` = 83 (verified: 83)
+- [ ] No wrong imports: `grep -rn "kailash_pact\|kailash_nexus\|kailash_mcp" --include="*.py" modules/ | wc -l` = 0 (verified: 0)
+- [ ] Curriculum v5: `head -1 workspaces/curriculum/briefs/expanded-curriculum-v5.md` exists (verified)
 
 ## Oversight — Verify After Completing
 
-- [ ] 10 PDFs: `ls decks/ascent*/deck.pdf | wc -l` = 10
-- [ ] Curriculum v5: `head -1 workspaces/curriculum/briefs/expanded-curriculum-v5.md` exists
-- [ ] Push: `git push origin main`
+- [ ] Commit: `git log --oneline -3` shows session 9 commits
+- [ ] Push: `git push origin main` successful
+- [ ] Clean: `git status --short | wc -l` = 0
 
 ## Blockers
 
-- decktape crashes on heavy KaTeX — use Playwright PDF fallback (`page.pdf()` with `?print-pdf`)
+- M9 deck PDF required Playwright fallback (decktape fails on M9 — Reveal.js version detection bug)
+- decktape version: npx decktape (global install), Playwright 1.59.1 in node_modules

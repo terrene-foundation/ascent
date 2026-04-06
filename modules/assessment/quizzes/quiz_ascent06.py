@@ -685,7 +685,7 @@ QUIZ = {
                 "data_access. What is the likely bug?"
             ),
             "code": (
-                "from kailash_pact import GovernanceEngine, compile_org\n"
+                "from pact import GovernanceEngine, compile_org\n"
                 "\n"
                 "org = compile_org(org_dict)  # compiles correctly\n"
                 "\n"

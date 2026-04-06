@@ -356,7 +356,7 @@ QUIZ = {
                 "always returns 404. What is wrong with this setup?"
             ),
             "code": (
-                "from kailash_nexus import Nexus\n"
+                "from nexus import Nexus\n"
                 "\n"
                 "app = Nexus()\n"
                 "app.start()  # Bug: starting before registering\n"
@@ -365,7 +365,7 @@ QUIZ = {
                 "app.register(credit_scoring_workflow)"
             ),
             "options": [
-                "A) Nexus must be imported from kailash.nexus, not kailash_nexus",
+                "A) Nexus must be imported from kailash.nexus, not nexus",
                 "B) app.register() must be called before app.start() — Nexus builds the route table at startup from the registered workflows. Registering after start does not add routes to the already-running server",
                 "C) workflow must be built with workflow.build() before registering with Nexus",
                 "D) Nexus requires an explicit port number: Nexus(port=8080)",
