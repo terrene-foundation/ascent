@@ -21,4 +21,4 @@
 
 ## Datasets
 
-Singapore HDB Resale (15M+), Economic Indicators (CPI/employment/FX), Taxi Trips (LTA), E-commerce A/B Test
+Singapore HDB Resale (15M+), MRT Stations, Schools, Economic Indicators (CPI/employment/FX), Singapore Weather

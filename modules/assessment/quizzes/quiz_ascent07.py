@@ -110,7 +110,7 @@ QUIZ = {
         {
             "id": "7.2.2",
             "lesson": "7.2",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "advanced",
             "question": (
                 "You visualize the decision boundary of a 2-hidden-layer network trained on "
@@ -348,7 +348,7 @@ QUIZ = {
         {
             "id": "7.9.1",
             "lesson": "7.9",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "intermediate",
             "question": (
                 "Exercise 6 compares SGD, SGD+Momentum, and Adam on MNIST. After 5 epochs: "
@@ -462,7 +462,7 @@ QUIZ = {
         {
             "id": "7.10.1",
             "lesson": "7.10",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "intermediate",
             "question": (
                 "After training a network with dropout=0.5, a student runs the same input "
@@ -491,6 +491,333 @@ QUIZ = {
                 "scaling."
             ),
             "learning_outcome": "Explain dropout behavior difference between training and evaluation modes",
+        },
+        # ── Lesson 7.3: Activation functions (additional) ───────────────
+        {
+            "id": "7.3.2",
+            "lesson": "7.3",
+            "type": "code_debug",
+            "difficulty": "intermediate",
+            "question": (
+                "In Exercise 3, a student implements the GELU activation. Their version "
+                "produces correct values for x=0 and x=2 but diverges for x=-3. "
+                "Which line contains the bug?"
+            ),
+            "code": (
+                "def gelu(z: float) -> float:\n"
+                "    # Option A (student version)\n"
+                "    return 0.5 * z * (1.0 + math.tanh(math.sqrt(2.0 / math.pi) * (z + 0.044715 * z ** 2)))\n"
+                "\n"
+                "def gelu_correct(z: float) -> float:\n"
+                "    # Option B (solution)\n"
+                "    return 0.5 * z * (1.0 + math.tanh(math.sqrt(2.0 / math.pi) * (z + 0.044715 * z ** 3)))\n"
+            ),
+            "options": [
+                "A) The outer coefficient should be 0.25, not 0.5 — the Gaussian CDF integrates to 0.5 at x=0",
+                "B) The exponent on z inside the tanh is z**2 instead of z**3. The correct GELU approximation uses the cubic term 0.044715·z³. For small positive z the error is minor, but for large negative z (x=-3), z² stays positive while z³ is negative, causing the tanh argument to point the wrong direction.",
+                "C) math.sqrt(2.0 / math.pi) should be math.sqrt(math.pi / 2.0) — the constant is inverted",
+                "D) The tanh should be replaced with sigmoid — GELU uses Φ(x) which is the sigmoid function",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The GELU approximation formula from the original paper is: "
+                "0.5 * z * (1 + tanh(sqrt(2/pi) * (z + 0.044715 * z^3))). "
+                "The exponent must be 3, not 2. For z=-3: "
+                "Correct: 0.044715 * (-3)^3 = 0.044715 * (-27) = -1.207 (large negative, tanh → -1, GELU → ~0). "
+                "Bug: 0.044715 * (-3)^2 = 0.044715 * 9 = +0.402 (positive, tanh → +1 incorrectly). "
+                "This is precisely why Exercise 3 tests the implementation at z=-3 — it reveals the z² vs z³ error "
+                "that is invisible for small values near zero."
+            ),
+            "learning_outcome": "Identify the cubic term in the GELU approximation formula",
+        },
+        {
+            "id": "7.3.3",
+            "lesson": "7.3",
+            "type": "output_interpret",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 3 prints gradient statistics for each activation function. "
+                "You see this output:\n\n"
+                "  sigmoid: mean|grad|=0.1562, zero_fraction=0.0%\n"
+                "  relu:    mean|grad|=0.5021, zero_fraction=49.8%\n"
+                "  gelu:    mean|grad|=0.5834, zero_fraction=0.0%\n\n"
+                "ReLU has 49.8% zero gradients but still converges faster than sigmoid. "
+                "How do you explain this apparent contradiction?"
+            ),
+            "options": [
+                "A) The gradient statistics are wrong — ReLU cannot have 49.8% zeros if it converges",
+                "B) 49.8% zero gradients for ReLU is expected: inputs drawn from N(0,1) have ~50% below zero. But the NON-ZERO gradients are all exactly 1.0 (no squashing), while sigmoid's non-zero gradients average 0.156 (max 0.25). The active neurons in ReLU get full gradient signal while sigmoid neurons get at most 25%. Mean gradient tells the wrong story — what matters is the magnitude of the non-zero gradients reaching early layers.",
+                "C) GELU is always slower than ReLU because zero_fraction=0.0% means all neurons are active and compute more expensive updates",
+                "D) The mean gradient is what determines convergence speed — sigmoid (0.156) is fastest since it has the lowest variance gradients",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The key insight from Exercise 3's gradient analysis: for inputs drawn from N(0,1) "
+                "(which is approximately what activations look like with He init), ~50% are below zero "
+                "so ReLU zeros those gradients. But the other 50% get gradient exactly 1.0. "
+                "Sigmoid's mean gradient of 0.156 means ALL gradients are reduced — the best case "
+                "is 0.25 and the worst case approaches 0. Across 5+ layers, ReLU's 50%-active "
+                "neurons still pass stronger gradient signal than sigmoid's 100%-active but squashed neurons. "
+                "GELU's zero_fraction=0.0% and mean=0.583 confirms it provides the strongest average signal "
+                "of the three, which explains its fastest convergence observed in Exercise 3."
+            ),
+            "learning_outcome": "Interpret gradient statistics to explain convergence differences between activations",
+        },
+        # ── Lesson 7.6: Optimizers and scheduling (additional) ──────────
+        {
+            "id": "7.6.3",
+            "lesson": "7.6",
+            "type": "code_debug",
+            "difficulty": "advanced",
+            "question": (
+                "A student copies the Adam implementation from Exercise 6 but gets "
+                "unexpectedly large updates in the first few steps. The bias correction "
+                "is the suspected cause. What is wrong?"
+            ),
+            "code": (
+                "# Student's Adam update (one parameter shown)\n"
+                "t_step += 1\n"
+                "m = beta1 * m + (1 - beta1) * grad\n"
+                "v = beta2 * v + (1 - beta2) * grad ** 2\n"
+                "# BUG: bias correction applied incorrectly\n"
+                "m_hat = m * (1 - beta1 ** t_step)\n"
+                "v_hat = v * (1 - beta2 ** t_step)\n"
+                "param -= lr * m_hat / (math.sqrt(v_hat) + eps)\n"
+            ),
+            "options": [
+                "A) beta1 and beta2 should be swapped — beta2 corrects the first moment, beta1 the second",
+                "B) The bias correction DIVIDES by (1 - beta^t), not MULTIPLIES. At t=1, (1-0.9^1)=0.1, so dividing by 0.1 amplifies m by 10x to correct for the cold-start bias. The student multiplies by 0.1, shrinking the estimate by 10x instead — producing near-zero effective updates in early steps.",
+                "C) The eps term should be inside the square root: math.sqrt(v_hat + eps)",
+                "D) t_step should start at 0, not be incremented before the update — off-by-one causes divergence",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Adam's bias correction formula is m_hat = m / (1 - beta1^t). "
+                "At step t=1 with beta1=0.9: denominator = 1 - 0.9 = 0.1, so m_hat = m / 0.1 = 10×m. "
+                "This amplification corrects for m being initialized at 0 — at t=1, m = (1-0.9)×grad = 0.1×grad, "
+                "so m_hat = 0.1×grad / 0.1 = grad. The correction restores the true first-moment estimate. "
+                "The student's version m_hat = m × (1-0.9^1) = m × 0.1 = 0.01×grad — a 100x underestimate "
+                "that collapses all early updates to near zero. This matches the implementation in Exercise 6 "
+                "where bc1 = 1 - beta1**t_step is used as the DIVISOR: m_hat = mW2[j][k] / bc1."
+            ),
+            "learning_outcome": "Implement Adam bias correction as division, not multiplication",
+        },
+        {
+            "id": "7.6.4",
+            "lesson": "7.6",
+            "type": "context_apply",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 6 implements cosine annealing with linear warmup. The schedule "
+                "prints: LR at step 0=0.000000, step 50=0.000500, step 100=0.001000 (peak), "
+                "step 500=0.000501, step 999=0.000001. A student wants to double the peak LR "
+                "to 0.002. They change only max_lr=0.002. What is the complete set of outputs "
+                "they should now expect at those same four steps?"
+            ),
+            "options": [
+                "A) step 0=0.000000, step 50=0.001000, step 100=0.002000, step 500=0.001001, step 999=0.000001",
+                "B) step 0=0.002000, step 50=0.001000, step 100=0.001000, step 500=0.001001, step 999=0.000001",
+                "C) step 0=0.000000, step 50=0.001000, step 100=0.002000, step 500=0.002000, step 999=0.002000",
+                "D) step 0=0.000000, step 50=0.000500, step 100=0.002000, step 500=0.001001, step 999=0.000001",
+            ],
+            "answer": "A",
+            "explanation": (
+                "The cosine_schedule function from Exercise 6 has two phases: "
+                "(1) Warmup [0, warmup_steps): LR = max_lr * step / warmup_steps. "
+                "At step 50: 0.002 * 50/100 = 0.001000. This scales linearly with max_lr. "
+                "(2) Cosine decay [warmup_steps, total_steps): min_lr + 0.5*(max_lr-min_lr)*(1+cos(π×progress)). "
+                "At step 500 (progress=0.4444): 1e-6 + 0.5*(0.002-1e-6)*(1+cos(0.4444π)) = ~0.001001. "
+                "At step 999 (progress≈1.0): cos(π)=-1, so LR → min_lr = 1e-6. "
+                "Only option A correctly shows the warmup slope doubling (step 50: 0.001000) "
+                "and the decay endpoint staying at min_lr=1e-6 regardless of max_lr."
+            ),
+            "learning_outcome": "Trace cosine schedule output values given a change to max_lr",
+        },
+        # ── Lesson 7.7: CNNs and OnnxBridge ─────────────────────────────
+        {
+            "id": "7.7.1",
+            "lesson": "7.7",
+            "type": "code_debug",
+            "difficulty": "intermediate",
+            "question": (
+                "In Exercise 7, a student implements conv2d. When they apply the horizontal "
+                "edge detector kernel [[-1,-1,-1],[0,0,0],[1,1,1]] to a 28×28 image with "
+                "padding=1, they expect a 28×28 output but get 30×30. What is wrong in "
+                "their padding implementation?"
+            ),
+            "code": (
+                "def conv2d(image, kernel, stride=1, padding=0):\n"
+                "    h, w = len(image), len(image[0])\n"
+                "    kh, kw = len(kernel), len(kernel[0])\n"
+                "    if padding > 0:\n"
+                "        # BUG: padding applied wrong\n"
+                "        padded = [[0.0] * (w + padding) for _ in range(h + padding)]\n"
+                "        for i in range(h):\n"
+                "            for j in range(w):\n"
+                "                padded[i + padding][j + padding] = image[i][j]\n"
+                "        image = padded\n"
+                "        h, w = len(image), len(image[0])\n"
+                "    out_h = (h - kh) // stride + 1\n"
+                "    out_w = (w - kw) // stride + 1\n"
+            ),
+            "options": [
+                "A) The output dimensions out_h and out_w should use ceiling division, not floor division",
+                "B) The padded array adds 'padding' columns/rows but should add '2 * padding'. padding=1 means one zero-row on each of the four sides. The student's code creates a (29×29) padded array, places the original image starting at (1,1), leaving only a right/bottom border — no top/left border. The correct size is (h + 2*padding) × (w + 2*padding) = 30×30, then the output formula gives (30-3)//1+1=28. The student's (29-3)//1+1=27 output would also be wrong.",
+                "C) stride=1 is wrong for a 28×28 image — stride should equal the kernel size (3)",
+                "D) The image coordinates i+padding and j+padding are off by one — should be i+padding-1 and j+padding-1",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Padding adds zeros around the image border. padding=1 means one row/column on EACH side: "
+                "top, bottom, left, right. So the padded size is (h + 2×1) × (w + 2×1) = 30×30. "
+                "The solution in Exercise 7 uses exactly this: "
+                "padded = [[0.0] * (w + 2*padding) for _ in range(h + 2*padding)]. "
+                "The student uses (h + padding) = 29, missing one full side. This causes the image to be "
+                "placed with a top-left offset (1,1) but no bottom-right border, so the convolution "
+                "center reaches outside the original image region and gives wrong spatial coverage. "
+                "The '28→28 with padding=1' identity holds only with the correct 2×padding expansion."
+            ),
+            "learning_outcome": "Apply correct 2*padding formula in conv2d zero-padding implementation",
+        },
+        {
+            "id": "7.7.2",
+            "lesson": "7.7",
+            "type": "architecture_decision",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 7 exports a trained CNN using OnnxBridge.export() with "
+                "input_shape=(1, 1, 28, 28). A student wants to export their model "
+                "to serve predictions on a mobile app. They call bridge.validate() "
+                "and get max_diff=1.2e-6. Should they proceed with deployment?"
+            ),
+            "options": [
+                "A) No — any non-zero max_diff means the ONNX model is incorrect and must be re-exported",
+                "B) Yes — max_diff=1.2e-6 is within acceptable floating-point tolerance. ONNX Runtime uses 32-bit float by default while the original model may use 64-bit. Differences of 1e-6 to 1e-5 are normal numerical precision artifacts, not errors. The bridge.validate() call in Exercise 7 is specifically designed to catch real discrepancies (>1e-3) that would indicate export failure.",
+                "C) No — mobile deployment requires quantization first; the full-precision ONNX model is too large",
+                "D) Yes — but only after converting max_diff from absolute to relative error and checking it is below 0.01%",
+            ],
+            "answer": "B",
+            "explanation": (
+                "OnnxBridge.validate() checks that the ONNX model produces outputs numerically equivalent "
+                "to the original. Floating-point precision differences between frameworks and data types "
+                "(float64 vs float32) routinely produce max_diff values of 1e-7 to 1e-5 — these are "
+                "not errors. A max_diff of 1.2e-6 on a classification task (softmax outputs in [0,1]) "
+                "means the probabilities differ in the 6th decimal place, which will NEVER change "
+                "the argmax (predicted class). The Exercise 7 solution prints this metric precisely "
+                "to teach students the threshold: differences < 1e-4 are safe, > 1e-2 indicate "
+                "a real export problem. Mobile deployment is indeed the ONNX use case — portable, "
+                "no Python runtime needed."
+            ),
+            "learning_outcome": "Interpret OnnxBridge.validate() max_diff output to approve ONNX export",
+        },
+        # ── Lesson 7.8: Capstone pipeline ────────────────────────────────
+        {
+            "id": "7.8.1",
+            "lesson": "7.8",
+            "type": "code_debug",
+            "difficulty": "advanced",
+            "question": (
+                "A student runs the Exercise 8 capstone pipeline. The TrainingPipeline "
+                "and ModelRegistry steps succeed, but InferenceServer crashes with "
+                "AttributeError: 'InferenceServer' object has no attribute 'predict'. "
+                "Their code is shown below. What is wrong?"
+            ),
+            "code": (
+                "# Exercise 8 capstone — Task 5\n"
+                "bridge = OnnxBridge()\n"
+                "onnx_path = bridge.export(\n"
+                "    model=result.model,\n"
+                "    input_shape=(1, len(pixel_cols)),\n"
+                "    output_path='fashion_mnist_cnn.onnx',\n"
+                ")\n"
+                "\n"
+                "# BUG: student's deployment code\n"
+                "server = InferenceServer(model_path=onnx_path, port=8090)\n"
+                "prediction = server.predict(sample)  # crashes here\n"
+            ),
+            "options": [
+                "A) model_path should be the pickle bytes, not the .onnx file path — InferenceServer takes a binary artifact",
+                "B) server.predict() must be called inside an async function after awaiting server.start(). InferenceServer is async throughout: the server must be started before it can accept predictions. The solution in Exercise 8 uses 'async def deploy_and_test()' with 'await server.start()' before 'await server.predict(sample)'.",
+                "C) The port 8090 is already in use — change to port 8091",
+                "D) InferenceServer.predict() takes a DataFrame, not a list — wrap sample in pl.DataFrame first",
+            ],
+            "answer": "B",
+            "explanation": (
+                "InferenceServer is an async component. The Exercise 8 solution wraps all server interaction "
+                "in 'async def deploy_and_test()' and runs it with asyncio.run(deploy_and_test()). "
+                "Inside that function: 'await server.start()' brings the HTTP server online, then "
+                "'prediction = await server.predict(sample)' sends a request to the running server. "
+                "Calling server.predict() synchronously without starting the server first means there is "
+                "no running server to receive the prediction request — hence the AttributeError (the "
+                "async method is not callable as a regular method). "
+                "This is the same async pattern used for OnnxBridge.export() and ModelRegistry.register_model() "
+                "throughout the capstone — all kailash-ml I/O operations are async."
+            ),
+            "learning_outcome": "Apply async start() before predict() when deploying with InferenceServer",
+        },
+        {
+            "id": "7.8.2",
+            "lesson": "7.8",
+            "type": "architecture_decision",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 8 calls registry.promote_model(name='fashion_mnist_cnn', "
+                "version=version.version, target_stage='production') immediately after "
+                "registering. A student asks: 'Why register AND promote separately — why "
+                "not just register with stage=production directly?' What is the correct answer?"
+            ),
+            "options": [
+                "A) ModelRegistry does not support setting stage at registration time — promote_model is the only way to set stage",
+                "B) The two-step pattern enforces a quality gate: register() creates an immutable versioned artifact with metrics (test_accuracy, train_time, n_params), then promote_model() is a deliberate approval action that can be gated by governance rules, automated CI checks, or human review. This separation means you can register many candidate versions and promote only the one meeting your accuracy threshold — crucial in production where a bad promote can break live traffic.",
+                "C) promote_model() compresses the model artifact for production — registration stores the full-size version",
+                "D) They are equivalent — register with stage='production' and separate register+promote produce identical ModelRegistry records",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The ModelRegistry two-step pattern in Exercise 8 reflects production ML lifecycle discipline. "
+                "register_model() is idempotent and additive — it captures the artifact with metrics at a "
+                "point in time. promote_model() is a deliberate state transition. In production systems "
+                "this separation enables: (1) A/B testing — register multiple versions, promote the winner. "
+                "(2) Rollback — demote the current production version and promote the previous one. "
+                "(3) Governance — an automated check or human approval between registration and promotion. "
+                "The capstone intentionally uses this two-step flow to teach the pattern, not just the API. "
+                "A model in 'staging' stage can be compared against 'production' before replacing it."
+            ),
+            "learning_outcome": "Explain the register-then-promote pattern in ModelRegistry for production governance",
+        },
+        {
+            "id": "7.8.3",
+            "lesson": "7.8",
+            "type": "output_interpret",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 8 prints this inference speed comparison output:\n\n"
+                "  Original model: 100 predictions in 0.842s (8.4ms/prediction)\n"
+                "  ONNX model: typically 2-5x faster due to graph optimizations\n\n"
+                "A student replicates the exercise but measures ONNX at 9.1ms/prediction — "
+                "SLOWER than the original 8.4ms. They ran the benchmark on a single sample "
+                "at a time in a loop. What is the most likely explanation and fix?"
+            ),
+            "options": [
+                "A) The ONNX export failed — the validation step should have caught this discrepancy",
+                "B) Single-sample inference benchmarks ONNX Runtime unfairly: ONNX's advantage comes from batched execution and warm JIT compilation. The first inference call incurs session initialization overhead (loading the model, allocating memory, JIT-compiling the graph). Measuring single samples in a loop gives mostly session overhead. Fix: warm up with 10 predictions before benchmarking, then measure in batches of 32+.",
+                "C) ONNX Runtime requires a GPU to be faster than Python — on CPU it is always slower",
+                "D) The model is too small for ONNX to optimize — ONNX only accelerates models with >10M parameters",
+            ],
+            "answer": "B",
+            "explanation": (
+                "ONNX Runtime provides two main speedup sources: (1) Graph-level optimizations applied once "
+                "at session creation (operator fusion: Conv+BatchNorm+ReLU → single kernel). "
+                "(2) Batched execution — CPU vectorization (SIMD) processes N inputs simultaneously. "
+                "Single-sample benchmarks miss both: the optimization overhead is amortized over a session, "
+                "not re-applied per call, and SIMD throughput requires a batch > 1. "
+                "Exercise 8 is explicit about the benefit: 'typically 2-5x faster due to graph optimizations' "
+                "— this refers to production batch inference, not latency-optimized single-sample serving. "
+                "A warm-up pass plus batch=32 benchmark would show the expected 2-5x speedup. "
+                "This is why InferenceServer handles batching internally — it accumulates requests before "
+                "forwarding to the ONNX runtime."
+            ),
+            "learning_outcome": "Benchmark ONNX inference correctly by accounting for warm-up and batch size",
         },
     ],
 }

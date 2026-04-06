@@ -304,7 +304,7 @@ QUIZ = {
         {
             "id": "9.E.2",
             "lesson": "9.E",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "intermediate",
             "question": (
                 "Exercise 7's MCP server startup logs show: 'Registered 8 tools: "
@@ -510,7 +510,7 @@ QUIZ = {
         {
             "id": "9.H.2",
             "lesson": "9.H",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "intermediate",
             "question": (
                 "Your deployed RAG agent via Nexus shows these metrics: "
@@ -539,6 +539,351 @@ QUIZ = {
                 "Without streaming, they wait 3.2s for nothing, then read — doubling perceived latency."
             ),
             "learning_outcome": "Analyze agent latency metrics and apply streaming to improve perceived performance",
+        },
+        # ── Section D: Agents (additional) ────────────────────────────
+        {
+            "id": "9.D.3",
+            "lesson": "9.D",
+            "type": "code_debug",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 5 builds a ReActAgent with three tools: data_summary, run_query, "
+                "and plot_chart. A student writes this import. What is wrong and what are the "
+                "correct import paths used in the solution?"
+            ),
+            "code": (
+                "# Student code\n"
+                "from kaizen.agents import ReActAgent          # Bug 1\n"
+                "from kaizen.core import Signature, InputField # Bug 2\n"
+                "\n"
+                "# Correct imports from ex_5.py solution:\n"
+                "# ??? "
+            ),
+            "options": [
+                "A) The imports are fine — both paths are valid aliases",
+                "B) Two bugs. Bug 1: ReActAgent lives at kaizen_agents.agents.specialized.react, not kaizen.agents. Bug 2: Signature and InputField live at kaizen (top-level), not kaizen.core. The correct imports from the ex_5 solution are: from kaizen_agents.agents.specialized.react import ReActAgent and from kaizen import Signature, InputField, OutputField. Using wrong paths causes ImportError at runtime, not at write time.",
+                "C) Only the ReActAgent path is wrong — Signature is correctly imported from kaizen.core",
+                "D) Both imports work but kaizen.agents is deprecated — switch to kaizen_agents",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Import paths in the Kailash Kaizen SDK follow package boundaries: "
+                "kaizen_agents is a separate installable package containing agent implementations "
+                "(ReActAgent, SimpleQAAgent, Delegate). kaizen is the core package containing "
+                "Signature, InputField, OutputField, and BaseAgent. "
+                "from kaizen.agents import ReActAgent fails because kaizen has no agents submodule. "
+                "from kaizen.core import Signature fails because Signature is exported from the "
+                "kaizen top-level, not from kaizen.core. "
+                "Both bugs produce ImportError but at the module level, so the entire script "
+                "fails before any user-visible work is done."
+            ),
+            "learning_outcome": "Use correct import paths for ReActAgent, BaseAgent, and Signature",
+        },
+        {
+            "id": "9.D.4",
+            "lesson": "9.D",
+            "type": "context_apply",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 5, Task 5 defines a DataAnalysisAgent by setting class attributes "
+                "signature, model, and max_llm_cost_usd on BaseAgent. It then calls "
+                "agent.run(dataset_summary=summary, analysis_question=...) and accesses "
+                "result.key_findings, result.recommended_model, etc. A student re-implements "
+                "this as a ReActAgent. What capability does the student lose and what capability "
+                "do they gain?"
+            ),
+            "options": [
+                "A) No difference — ReActAgent and BaseAgent+Signature produce identical behaviour",
+                "B) Losing: typed, guaranteed output fields (key_findings as list[str], recommended_model as str, etc.). result.key_findings is always a list because DataAnalysisSignature declares it as OutputField with type list[str]. With ReActAgent, the output is free-form text — downstream code cannot do result.key_findings without parsing. Gaining: the ability to call tools (run_query, plot_chart) mid-reasoning instead of answering from context alone.",
+                "C) Gaining: cheaper LLM calls because ReActAgent sends fewer tokens than BaseAgent",
+                "D) Losing: the ability to set max_llm_cost_usd — ReActAgent has no budget cap",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The BaseAgent+Signature pattern produces a typed API contract. "
+                "DataAnalysisSignature declares key_findings: list[str] = OutputField(...). "
+                "The framework guarantees result.key_findings is a Python list, not a string "
+                "like 'Key findings: 1. Revenue grew...' that needs parsing. "
+                "This matters in pipelines: the supervisor in Exercise 6 passes "
+                "financial_result.revenue_insights directly to supervisor.run() — "
+                "if that field were free-form text with variable format, the supervisor "
+                "would receive inconsistent input. "
+                "ReActAgent gains: tools (the agent can call data_summary(), run_query() "
+                "before answering). It loses: typed output (it returns a string or event stream). "
+                "Use BaseAgent when downstream code needs structured data; use ReActAgent "
+                "when the agent needs to explore before answering."
+            ),
+            "learning_outcome": "Choose between BaseAgent+Signature (typed output) and ReActAgent (tool use)",
+        },
+        # ── Section E: MCP (additional) ───────────────────────────────
+        {
+            "id": "9.E.3",
+            "lesson": "9.E",
+            "type": "code_debug",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 7, Task 3 registers train_classifier as an MCP tool. A student "
+                "refactors it but the agent receives 'Dataset not loaded' even though they "
+                "called explore_dataset first. What is the bug?"
+            ),
+            "code": (
+                "# Student refactor (BROKEN)\n"
+                "@server.tool()\n"
+                "async def train_classifier(\n"
+                "    dataset_name: str,\n"
+                "    target: str,\n"
+                "    features: str,\n"
+                ") -> str:\n"
+                "    data_cache = {}          # Bug: local variable shadows module-level cache\n"
+                "    if dataset_name not in data_cache:\n"
+                '        return f"Dataset not loaded."\n'
+                "    df = data_cache[dataset_name]\n"
+                "    ...\n"
+            ),
+            "options": [
+                "A) The @server.tool() decorator does not support async functions",
+                "B) The student created a local data_cache = {} inside the function, shadowing the module-level _data_cache dict that explore_dataset writes to. train_classifier checks its own empty local dict, finds nothing, and returns 'Dataset not loaded'. Fix: remove the local declaration and reference the module-level _data_cache directly, exactly as the ex_7 solution does.",
+                "C) train_classifier must call explore_dataset internally to ensure the dataset is loaded",
+                "D) The features parameter must be a list[str], not a comma-separated str",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The module-level _data_cache: dict[str, pl.DataFrame] = {} in the ex_7 "
+                "solution is the shared state between explore_dataset and train_classifier. "
+                "explore_dataset writes _data_cache[dataset_name] = df. "
+                "train_classifier reads _data_cache[dataset_name]. "
+                "When the student writes data_cache = {} inside train_classifier, Python "
+                "creates a new local variable that exists only for that function call. "
+                "It is always empty regardless of what explore_dataset did. "
+                "This is Python's scoping rule: assignment creates a local variable; "
+                "reading without assignment looks up the enclosing scope. "
+                "The fix is to delete the local assignment and reference _data_cache directly, "
+                "or use global _data_cache if modification is needed."
+            ),
+            "learning_outcome": "Understand Python scoping in MCP tools that share module-level state",
+        },
+        {
+            "id": "9.E.4",
+            "lesson": "9.E",
+            "type": "architecture_decision",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 7, Task 4 calls server.get_tools() to obtain mcp_tools, then passes "
+                "mcp_tools to ReActAgent(tools=mcp_tools). A teammate proposes instead importing "
+                "explore_dataset and train_classifier directly and passing them as tools. "
+                "Both approaches work locally. What breaks in production with the direct import "
+                "approach?"
+            ),
+            "options": [
+                "A) Direct import is strictly better — it removes the MCP overhead entirely",
+                "B) Direct import tightly couples the agent process to the tool implementation. In production: (1) tools cannot be updated without redeploying the agent, (2) tools cannot be shared with a second agent without duplicating code, (3) the tool host cannot be moved to a separate machine for scaling. server.get_tools() returns an abstraction — the agent uses tool descriptors (name, schema, call interface), not function references. This allows the tool server to evolve independently.",
+                "C) The @server.tool() decorator transforms the function signature — calling it directly gives wrong results",
+                "D) Direct import only fails if the dataset files are on a different filesystem",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The value of MCP is decoupling via protocol, not local performance. "
+                "server.get_tools() returns tool descriptors that the agent interacts with "
+                "through a defined interface (name, input schema, invocation). "
+                "When tools are imported directly as Python functions, the agent and tool "
+                "implementations share the same process and module namespace. "
+                "Consequences: (1) tool version pinned to agent deployment — no independent "
+                "updates; (2) tool state (_data_cache) lives in the agent process — two agents "
+                "cannot share a cache; (3) horizontal scaling duplicates tool state per worker. "
+                "The MCP server pattern (exercise 7's intent) allows: one tool server, multiple "
+                "agent consumers, independent deployment, and remote execution. "
+                "Locally both work because the process boundary is the same machine."
+            ),
+            "learning_outcome": "Justify MCP server.get_tools() over direct function import for production decoupling",
+        },
+        # ── Section F: Nexus (additional) ─────────────────────────────
+        {
+            "id": "9.F.3",
+            "lesson": "9.F",
+            "type": "code_debug",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 8 registers handle_query with Nexus using app.register(handle_query). "
+                "A student writes this deployment code. It raises an AttributeError at startup. "
+                "What is wrong?"
+            ),
+            "code": (
+                "from nexus import Nexus\n"
+                "\n"
+                "app = Nexus()\n"
+                "app.start()                  # Bug: starting before registering\n"
+                "app.register(handle_query)\n"
+            ),
+            "options": [
+                "A) handle_query must be an async function — Nexus does not support sync handlers",
+                "B) app.start() is called before app.register(handle_query). Nexus validates the handler registry at startup — if nothing is registered, start() has no routes to bind and raises an AttributeError. Fix: register first, then start, exactly as the Nexus pattern requires: app.register(handle_query) then app.start().",
+                "C) Nexus should be imported from kailash_nexus, not nexus",
+                "D) handle_query must accept a session parameter as its second argument",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The Nexus registration-before-start invariant is documented in rules/patterns.md: "
+                "app.register(my_workflow) — Register first. app.start() — Then start. "
+                "This mirrors how web frameworks work (Flask: register routes before app.run()). "
+                "When start() is called with no registered handlers, Nexus has nothing to bind "
+                "to its transport layers (HTTP, CLI, MCP). It raises AttributeError because the "
+                "internal route table is empty and the channel-binding code tries to access "
+                "handlers that do not exist. "
+                "The ex_8 solution does this correctly: app = Nexus(), then app.register(handle_query), "
+                "with start() called only when the server is ready to accept requests."
+            ),
+            "learning_outcome": "Register Nexus handlers before calling start() — order matters",
+        },
+        # ── Section G: RAGAS Evaluation ───────────────────────────────
+        {
+            "id": "9.G.3",
+            "lesson": "9.G",
+            "type": "output_interpret",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 4 runs RAGAS evaluation on a hybrid-search RAG system and prints "
+                "these scores: faithfulness=0.94, answer_relevancy=0.61, "
+                "context_recall=0.88, context_precision=0.71. "
+                "The system answers questions about Singapore financial regulations. "
+                "Which single metric most urgently needs improvement and what does it indicate?"
+            ),
+            "options": [
+                "A) faithfulness=0.94 — already high, but any hallucination in regulatory advice is critical",
+                "B) answer_relevancy=0.61. This is the lowest score and means the answers address the retrieved context but drift from the original question. In regulatory Q&A, a user asks about MAS AI governance and the answer covers broader AI governance globally. The retrieved context is correct (context_recall=0.88) and the answer stays grounded in it (faithfulness=0.94), but the answer does not tightly answer what was asked. Fix: tighten the generation prompt to enforce question-anchored answers.",
+                "C) context_precision=0.71 — too many irrelevant chunks are being retrieved and polluting the context",
+                "D) context_recall=0.88 — two of the three scores above are more concerning",
+            ],
+            "answer": "B",
+            "explanation": (
+                "RAGAS four-metric interpretation: "
+                "faithfulness (0.94): the answer's claims are grounded in the retrieved context. "
+                "High faithfulness means the model is not hallucinating. "
+                "answer_relevancy (0.61): the answer actually addresses the user's question. "
+                "Low relevancy means the model answers a related but different question. "
+                "context_recall (0.88): the retriever found most of the relevant documents. "
+                "context_precision (0.71): most retrieved documents are actually relevant. "
+                "Answer_relevancy at 0.61 is the weakest signal: the system retrieves the right "
+                "documents and generates faithful answers, but those answers drift from the "
+                "user's actual question. This is a generation prompt problem, not a retrieval "
+                "problem. Fixing context_precision first would not address it."
+            ),
+            "learning_outcome": "Interpret RAGAS metric profiles to identify retrieval vs generation failures",
+        },
+        # ── Section H: Agent Architecture (additional) ────────────────
+        {
+            "id": "9.H.3",
+            "lesson": "9.H",
+            "type": "architecture_decision",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 6 runs three specialist agents in sequence: financial_agent.run(), "
+                "then legal_agent.run(), then technical_agent.run(), before calling "
+                "supervisor.run(). Each specialist takes ~3 seconds. Total wall time is ~9s. "
+                "A student wants to reduce this to ~3s. What is the correct Kaizen pattern "
+                "and what is the risk of the student's proposed fix?"
+            ),
+            "code": (
+                "# Student proposal\n"
+                "import asyncio\n"
+                "results = await asyncio.gather(\n"
+                "    financial_agent.run(document=doc, question=q1),\n"
+                "    legal_agent.run(document=doc, question=q2),\n"
+                "    technical_agent.run(document=doc, question=q3),\n"
+                ")\n"
+            ),
+            "options": [
+                "A) asyncio.gather is correct — the three agents are independent and can run in parallel",
+                "B) asyncio.gather is architecturally correct since the three specialists are independent (no data dependencies). The risk is session isolation: if all three agents share a single session object (the bug from 9.H.1), parallel execution causes race conditions — two agents writing to the same session history simultaneously. In the ex_6 solution, each specialist is a separate BaseAgent instance with its own state, so asyncio.gather is safe. Always verify independence before parallelising.",
+                "C) asyncio.gather does not work with BaseAgent — use Pipeline.parallel() instead",
+                "D) Parallelising agents always causes token budget conflicts — keep them sequential",
+            ],
+            "answer": "B",
+            "explanation": (
+                "asyncio.gather is the correct Python primitive for parallel async coroutines. "
+                "Three agents with independent inputs (same doc, different questions) and "
+                "independent outputs have no data dependency — they are safe to parallelize. "
+                "The risk is shared mutable state. In Exercise 6, each specialist is a separate "
+                "class instance (FinancialAgent, LegalAgent, TechnicalAgent). Each has its own "
+                "internal state. No shared session object exists between them, so asyncio.gather "
+                "is safe and reduces wall time from ~9s to ~3s. "
+                "The session bug (9.H.1) would make this unsafe: if all three share one session, "
+                "parallel writes produce interleaved conversation history and incorrect responses. "
+                "The lesson: parallelism is safe when agents are stateless relative to each other."
+            ),
+            "learning_outcome": "Apply asyncio.gather for parallel independent agent execution with session safety",
+        },
+        # ── Section C: RAG (additional) ───────────────────────────────
+        {
+            "id": "9.C.3",
+            "lesson": "9.C",
+            "type": "context_apply",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 4 builds a RAGSignature with three OutputFields: answer (str), "
+                "sources (list[str]), and confidence (float). After running the capstone "
+                "in Exercise 8, a student notices confidence scores cluster between 0.82 "
+                "and 0.91 regardless of query difficulty — even for questions where the "
+                "retrieved context has no relevant information. What does this mean and "
+                "how should confidence be used?"
+            ),
+            "options": [
+                "A) Confidence scores above 0.8 confirm the answer is factually correct",
+                "B) Confidence is an LLM self-assessment, not a calibrated probability. The model reports high confidence by default because it is answering from text it generated. When the retrieved context has no relevant information, the model still generates a plausible-sounding answer and rates it 0.85+. True calibration requires: comparing confidence against ground-truth labels. For regulatory RAG, treat confidence as a rough signal — use it to flag LOW-confidence answers (below 0.6) for human review, but do not trust high scores as correctness guarantees.",
+                "C) The confidence field should be removed — it misleads users",
+                "D) confidence=0.82-0.91 means the retriever is performing well — high confidence indicates good context recall",
+            ],
+            "answer": "B",
+            "explanation": (
+                "LLM self-reported confidence (as an OutputField float) is not a calibrated "
+                "probability. It is the model's subjective assessment of its own output. "
+                "Research shows LLMs are systematically overconfident: they assign high "
+                "confidence even to hallucinated answers. "
+                "In the ex_8 RAGSignature, confidence: float = OutputField(...) asks the "
+                "model to score its own answer. The model does so relative to the context "
+                "it was given, not relative to ground truth. If the context is irrelevant, "
+                "the model answers from parametric memory and still rates itself ~0.85. "
+                "Practical use: confidence is useful for TRIAGE (route low-confidence "
+                "answers to human review) but NOT for certification (do not present "
+                "high-confidence answers as verified). For regulatory advice, add a "
+                "factual grounding check: verify that answer claims appear verbatim in sources."
+            ),
+            "learning_outcome": "Interpret LLM self-reported confidence as a triage signal, not a correctness guarantee",
+        },
+        # ── Section F: Nexus (additional) ─────────────────────────────
+        {
+            "id": "9.F.4",
+            "lesson": "9.F",
+            "type": "output_interpret",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 8, Task 6 runs a 5-query benchmark and prints: "
+                "'Avg latency: 2.34s, P95 latency: 4.71s'. "
+                "The average looks acceptable, but P95 is 2× the average. "
+                "What does this tell you about the latency distribution, and why does "
+                "P95 matter more than average for a production regulatory RAG service?"
+            ),
+            "options": [
+                "A) P95 > 2× average is normal — latency always has a long tail. No action needed.",
+                "B) P95=4.71s with avg=2.34s means the distribution has a heavy tail: most queries are fast (~2s) but ~5% of queries take 4.7s+. In a regulatory service used by compliance teams, those slow queries are not random — they are likely the most complex multi-clause questions. Users waiting 4.7s for a compliance answer experience the service as unreliable. SLA for production services is typically set at P95 or P99, not average. The 4.71s P95 fails a < 3s SLA even though average passes it.",
+                "C) P95=4.71s means the average calculation is wrong — outliers are skewing the mean",
+                "D) The benchmark only ran 5 queries — the P95 estimate is not statistically meaningful",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Latency percentiles reveal distribution shape that averages hide. "
+                "Avg=2.34s with P95=4.71s implies: ~80% of queries complete in ~2s, "
+                "but ~20% take 3s+, with ~5% taking 4.71s+. "
+                "This bi-modal or heavy-tailed distribution is common in LLM services "
+                "because generation time scales with output length, which varies. "
+                "Complex regulatory questions generate longer answers (more tokens = more time). "
+                "Why P95 matters: SLAs are defined on percentiles, not averages. "
+                "A service with avg=2.34s but P95=4.71s fails a '95% of requests under 3s' SLA. "
+                "Users experiencing the 4.71s tail perceive the service as slow, even if their "
+                "next query resolves in 1.8s. "
+                "For the ex_8 benchmark with only 5 queries, P95 is at the 5th observation "
+                "(worst case) — the student should run 50-100 queries for reliable percentile estimates."
+            ),
+            "learning_outcome": "Use P95 latency over average to set production SLAs for agent services",
         },
     ],
 }

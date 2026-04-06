@@ -81,7 +81,7 @@ QUIZ = {
         {
             "id": "8.B.1",
             "lesson": "8.B",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "intermediate",
             "question": (
                 "Exercise 2 computes TF-IDF on Parliament speeches. The word 'Singapore' "
@@ -170,7 +170,7 @@ QUIZ = {
         {
             "id": "8.C.2",
             "lesson": "8.C",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "intermediate",
             "question": (
                 "Exercise 3 visualizes Word2Vec embeddings with ModelVisualizer t-SNE. "
@@ -297,7 +297,7 @@ QUIZ = {
         {
             "id": "8.E.2",
             "lesson": "8.E",
-            "type": "output_interpretation",
+            "type": "output_interpret",
             "difficulty": "advanced",
             "question": (
                 "Exercise 5 visualizes attention weights. For 'The bank by the river', head 1 "
@@ -516,6 +516,333 @@ QUIZ = {
                 "expected word choices. Using BLEU for summarization penalizes good paraphrasing."
             ),
             "learning_outcome": "Choose BERTScore over BLEU for evaluating paraphrastic text generation",
+        },
+        # ── Section E (continued): Attention ────────────────────────────
+        {
+            "id": "8.E.3",
+            "lesson": "8.E",
+            "type": "output_interpret",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 5 prints a comparison table of attention vs LSTM across sequence "
+                "lengths. At seq_len=1000, LSTM path length is 1000 but attention memory is "
+                "1,000,000. A student says 'attention is clearly worse — it uses a million "
+                "cells.' What is the correct interpretation of this trade-off?"
+            ),
+            "options": [
+                "A) The student is right — attention is impractical for sequences longer than 512 tokens",
+                "B) The two numbers measure different costs. LSTM path length = 1000 means gradients travel through 1000 sequential steps during backprop, causing vanishing gradients. Attention memory = 1,000,000 is the O(n²) attention matrix size — a memory cost paid once per forward pass. Trading O(n) gradient path (reliability) for O(n²) memory (scalability) is the fundamental transformer trade-off. Modern architectures (FlashAttention, sparse attention) attack the memory cost while preserving the O(1) gradient path.",
+                "C) The LSTM path length should also be 1,000,000 — both scale quadratically",
+                "D) Attention memory is irrelevant for text — only vision tasks need large attention matrices",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Exercise 5 Task 5 prints exactly this table: seq_len=1000, lstm_path=1000, "
+                "attn_path=1, attn_memory=1,000,000. "
+                "The LSTM path is the number of sequential backprop steps — each step multiplies "
+                "the gradient by W_hh, causing exponential decay over 1000 steps. "
+                "The attention matrix (seq_len × seq_len) is computed in a single parallelizable "
+                "operation with a constant gradient path. The memory cost is real but addressable: "
+                "FlashAttention recomputes tiles to avoid materializing the full matrix. "
+                "The O(1) gradient path is why transformers train reliably on sequences where "
+                "LSTMs fail — this is the architectural insight Exercise 5 demonstrates numerically."
+            ),
+            "learning_outcome": "Interpret the attention vs LSTM scaling table from Exercise 5",
+        },
+        # ── Section F (continued): Transformer architecture ──────────────
+        {
+            "id": "8.F.3",
+            "lesson": "8.F",
+            "type": "code_debug",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 6 implements the transformer encoder layer. A student re-implements "
+                "the forward pass but gets worse results than the reference solution. "
+                "What is wrong with the order of operations?"
+            ),
+            "code": (
+                "def forward(self, X):\n"
+                "    # Bug: wrong sub-layer order\n"
+                "    attn_out, attn_weights = self.self_attention(X)\n"
+                "    ffn_out = [feed_forward(attn_out[i], ...) for i in range(len(X))]\n"
+                "    normed = [layer_norm(residual_add(X[i], ffn_out[i])) for i in range(len(X))]\n"
+                "    return normed, attn_weights\n"
+            ),
+            "options": [
+                "A) layer_norm should be applied before the residual addition, not after",
+                "B) The attention output is fed directly into the FFN, skipping the first residual connection and LayerNorm. The correct order is: (1) attention → residual(X + attn_out) → LayerNorm → normed1, then (2) FFN(normed1) → residual(normed1 + ffn_out) → LayerNorm → normed2. Skipping the intermediate residual/norm means the FFN receives raw attention output without gradient stabilization.",
+                "C) feed_forward should operate on the original X, not on attention output",
+                "D) The residual connection should add attn_out to ffn_out, not to X",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The correct transformer encoder layer has TWO residual+LayerNorm sub-layers. "
+                "From Exercise 6 ex_6.py: "
+                "normed1 = [layer_norm(residual_add(X[i], attn_out[i])) for i in range(len(X))], "
+                "then ffn_out = [feed_forward(normed1[i], ...) for i], "
+                "then normed2 = [layer_norm(residual_add(normed1[i], ffn_out[i])) for i]. "
+                "The buggy code skips normed1 entirely, feeding raw attention output into FFN "
+                "and applying only one residual connection. This breaks gradient flow through "
+                "the attention sub-layer and loses the stabilizing effect of the intermediate "
+                "LayerNorm. The two-sub-layer pattern is a structural invariant of all "
+                "standard transformer encoder implementations."
+            ),
+            "learning_outcome": "Implement the two-sub-layer residual+LayerNorm pattern in a transformer encoder",
+        },
+        {
+            "id": "8.F.4",
+            "lesson": "8.F",
+            "type": "context_apply",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 6 implements layer_norm(x) as: mean = sum(x)/len(x), "
+                "var = sum((v-mean)^2 for v in x)/len(x), return [(v-mean)/sqrt(var+eps)]. "
+                "A student replaces it with batch_norm which normalizes across the batch "
+                "dimension instead of the feature dimension. Why does this break the "
+                "transformer encoder?"
+            ),
+            "options": [
+                "A) Batch normalization is always slower than layer normalization",
+                "B) Batch normalization normalizes across the batch dimension: statistics depend on OTHER samples in the batch. For variable-length sequences and autoregressive inference (batch size = 1), batch statistics are unstable or undefined. Layer normalization normalizes each token's feature vector independently — the mean and variance are computed over the d_model features of that single token, making it batch-size-independent. This is why transformers universally use LayerNorm.",
+                "C) Batch normalization requires the model to be in eval() mode during inference",
+                "D) Batch normalization would work correctly — the performance difference is negligible",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Exercise 6 implements layer_norm over the feature dimension (len(x) = d_model), "
+                "computing statistics for a single token's vector. "
+                "Batch normalization computes mean/var across all samples in the batch for each "
+                "feature position. For NLP: (1) sequences have variable length, so padding "
+                "contaminates batch statistics; (2) during autoregressive generation, you process "
+                "one token at a time (batch=1), making batch statistics meaningless. "
+                "LayerNorm has no batch-size dependency — it normalizes each token's d_model "
+                "features regardless of sequence length or batch size. "
+                "This independence is why LayerNorm is universal in transformer architectures."
+            ),
+            "learning_outcome": "Explain why LayerNorm is required over BatchNorm in transformer encoders",
+        },
+        # ── Section G (continued): Transfer learning ────────────────────
+        {
+            "id": "8.G.3",
+            "lesson": "8.G",
+            "type": "code_debug",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 7 registers the best model in ModelRegistry. "
+                "A student writes the registration code but gets an AttributeError at runtime. "
+                "What is wrong?"
+            ),
+            "code": (
+                "registry = ModelRegistry()  # Bug: missing connection\n"
+                "version = await registry.register_model(\n"
+                "    name='sg_sentiment_classifier',\n"
+                "    artifact=pickle.dumps(result.best_model),\n"
+                "    metrics=[MetricSpec(name='f1', value=f1)],\n"
+                ")\n"
+                "await registry.promote_model(\n"
+                "    name='sg_sentiment_classifier',\n"
+                "    version=version.version,\n"
+                "    target_stage='production',\n"
+                ")\n"
+            ),
+            "options": [
+                "A) pickle.dumps() should be pickle.loads() — the artifact must be deserialized first",
+                "B) ModelRegistry requires a ConnectionManager as its first argument, and the connection must be initialized before passing it. The correct pattern from Exercise 7: conn = ConnectionManager('sqlite:///nlp_models.db'); await conn.initialize(); registry = ModelRegistry(conn); await registry.initialize(). ModelRegistry() with no arguments has no database to store model artifacts.",
+                "C) promote_model target_stage should be 'prod' not 'production'",
+                "D) register_model is synchronous — remove the await keyword",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Exercise 7 Task 5 shows the required initialization sequence: "
+                "conn = ConnectionManager('sqlite:///nlp_models.db'), "
+                "await conn.initialize(), registry = ModelRegistry(conn), "
+                "await registry.initialize(). "
+                "ModelRegistry is backed by a persistent store (SQLite in this exercise). "
+                "Calling ModelRegistry() without a ConnectionManager leaves it with no "
+                "storage backend, causing AttributeError when register_model tries to "
+                "write the artifact. Both the connection and the registry must be initialized "
+                "before use — the two-step init pattern (create + await .initialize()) is "
+                "the standard Kailash async resource pattern."
+            ),
+            "learning_outcome": "Initialize ModelRegistry with ConnectionManager before registering models",
+        },
+        {
+            "id": "8.G.4",
+            "lesson": "8.G",
+            "type": "architecture_decision",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 7 fine-tunes on sg_product_reviews.parquet. The AutoMLEngine "
+                "leaderboard shows the transformer-based trial achieved F1=0.91 but took "
+                "240 seconds, while TF-IDF+SVM achieved F1=0.84 in 8 seconds. A product "
+                "team needs predictions in under 50ms per request. Which model should you "
+                "register in ModelRegistry and promote to production?"
+            ),
+            "options": [
+                "A) Always register the highest F1 model — latency can be addressed later with hardware",
+                "B) Register both and promote the TF-IDF+SVM model to production. The transformer's higher F1 is valuable but 240s training time implies inference will also be slower. For a 50ms latency SLA, TF-IDF+SVM's lightweight scoring (dot product + threshold) is the safe choice. Register the transformer model at 'staging' for future optimization (batching, ONNX export via OnnxBridge, quantization).",
+                "C) Register neither — retrain a logistic regression model which is always fastest",
+                "D) Register the transformer model and set target_stage='production' — AutoMLEngine handles latency optimization automatically",
+            ],
+            "answer": "B",
+            "explanation": (
+                "ModelRegistry's promote_model takes a target_stage argument. "
+                "Exercise 7 promotes to 'production', but real deployments should match "
+                "the model to its serving constraints. "
+                "TF-IDF+SVM inference is microseconds: vectorize text (vocabulary lookup) + "
+                "dot product with support vectors. Transformer inference involves tokenization, "
+                "multiple attention layers, and a classification head — typically 20-100ms "
+                "without optimization. "
+                "The right workflow: promote TF-IDF+SVM to production immediately; "
+                "register transformer at staging; use OnnxBridge (Exercise 8) to export and "
+                "quantize the transformer, potentially meeting the 50ms SLA; then promote "
+                "the optimized transformer to production if latency is acceptable. "
+                "F1 vs latency is a business trade-off, not a purely technical one."
+            ),
+            "learning_outcome": "Match model selection to serving latency requirements using ModelRegistry stages",
+        },
+        {
+            "id": "8.F.5",
+            "lesson": "8.F",
+            "type": "context_apply",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 6 implements sinusoidal positional encoding: "
+                "PE(pos, 2i) = sin(pos / 10000^(2i/d)) and PE(pos, 2i+1) = cos(pos / 10000^(2i/d)). "
+                "A student simplifies it to use only sin for all dimensions: "
+                "PE(pos, i) = sin(pos / 10000^(i/d)) for all i. "
+                "The model trains normally but cannot generalize to sequences longer than those "
+                "seen during training. Why does the sin-only encoding fail to generalize?"
+            ),
+            "options": [
+                "A) sin is not differentiable, so gradients cannot flow through the positional encoding",
+                "B) The sin/cos pair encodes relative position via a linear transformation. For any offset k, PE(pos+k) can be expressed as a linear function of PE(pos) using a rotation matrix: [cos(kω), -sin(kω); sin(kω), cos(kω)]. With only sin, this rotation relationship breaks — you cannot express PE(pos+k) as a fixed linear transform of PE(pos). The model cannot extrapolate to unseen positions because it cannot compute their relationship to seen positions.",
+                "C) sin-only encoding produces duplicate encodings for positions that are multiples of 2π",
+                "D) The original sin/cos formula is from the Attention Is All You Need paper — any deviation violates the paper and will not work",
+            ],
+            "answer": "B",
+            "explanation": (
+                "The key property of sinusoidal PE is that PE(pos+k) = M_k × PE(pos) where "
+                "M_k is a fixed rotation matrix depending only on offset k, not on absolute pos. "
+                "This means the model can compute the relative displacement between any two "
+                "positions even if those absolute positions were never seen during training. "
+                "With sin-only: PE(pos, i) = sin(pos × ω_i). The relationship "
+                "sin((pos+k)×ω_i) = sin(pos×ω_i)cos(kω_i) + cos(pos×ω_i)sin(kω_i) still "
+                "requires cos(pos×ω_i), which is not available in a sin-only encoding. "
+                "The rotation matrix identity breaks, removing the length-generalization property. "
+                "Exercise 6 implements the correct sin/cos interleaving: even indices use sin, "
+                "odd indices use cos, at the same frequency — enabling relative position encoding."
+            ),
+            "learning_outcome": "Explain why sin/cos interleaving in positional encoding enables length generalization",
+        },
+        # ── Section H (continued): Capstone NLP Pipeline ────────────────
+        {
+            "id": "8.H.3",
+            "lesson": "8.H",
+            "type": "code_debug",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 8 exports the trained classifier with OnnxBridge. "
+                "A student modifies the export call and gets a shape mismatch error during "
+                "validation. What is wrong?"
+            ),
+            "code": (
+                "bridge = OnnxBridge()\n"
+                "onnx_path = bridge.export(\n"
+                "    model=result.model,\n"
+                "    input_shape=(len(feature_cols),),  # Bug: missing batch dimension\n"
+                "    output_path='nlp_classifier.onnx',\n"
+                ")\n"
+                "test_sample = [test_set.select(feature_cols).row(0)]\n"
+                "metrics = bridge.validate(onnx_path, test_data=test_sample, expected=[y_pred[0]])\n"
+            ),
+            "options": [
+                "A) result.model should be result.best_model — the .model attribute does not exist",
+                "B) input_shape must include the batch dimension as the first element. Exercise 8 uses input_shape=(1, len(feature_cols)) — shape (batch_size, n_features). ONNX models encode tensor shapes including batch. Passing (len(feature_cols),) without the batch dimension produces a 1D input tensor; when validate() feeds a 2D sample (1 × n_features), the dimensions mismatch.",
+                "C) output_path must end with .pt not .onnx — OnnxBridge uses PyTorch format",
+                "D) bridge.validate() must be called inside an async function with await",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Exercise 8 Task 5 calls: bridge.export(model=result.model, "
+                "input_shape=(1, len(feature_cols)), output_path='nlp_classifier.onnx'). "
+                "The shape (1, len(feature_cols)) means: batch_size=1, features=500. "
+                "ONNX traces the model's computation graph with a sample input of this shape. "
+                "If input_shape=(500,) (1D), ONNX traces a 1D path; at inference time the "
+                "test_sample is 2D (shape [1, 500]), causing the shape mismatch error. "
+                "The batch dimension is always present in ONNX models — even for single "
+                "predictions, the input is a 2D tensor with batch_size=1."
+            ),
+            "learning_outcome": "Specify correct input_shape with batch dimension in OnnxBridge.export()",
+        },
+        {
+            "id": "8.H.4",
+            "lesson": "8.H",
+            "type": "context_apply",
+            "difficulty": "intermediate",
+            "question": (
+                "Exercise 8 builds the TF-IDF vocabulary by taking token_freq.most_common(5000) "
+                "from the full corpus, then caps features at 500 with feature_cols[:500]. "
+                "A student argues: 'We should use ALL unique tokens as features for maximum "
+                "information.' Why does Exercise 8 use both the 5000-cap and the 500-cap?"
+            ),
+            "options": [
+                "A) Using all tokens would exceed the maximum feature limit set by TrainingPipeline",
+                "B) Two separate caps serve different purposes. The 5000-cap (most_common) removes rare tokens: a token appearing in 1-2 documents carries near-zero IDF signal and is likely a typo or noise. The 500-cap on feature columns limits the DataFrame width passed to TrainingPipeline — gradient boosting with 5000 sparse binary features overfits on typical NLP corpus sizes. Both caps control dimensionality, but the 5000-cap filters noise while the 500-cap controls model complexity.",
+                "C) most_common(5000) is a Polars limitation — Counter cannot store more than 5000 keys",
+                "D) The 500-cap is a display limitation in ModelVisualizer, not a model constraint",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Exercise 8 Task 2 comments: 'Cap features for tractability'. "
+                "The full sg_parliament_speeches corpus has thousands of unique tokens. "
+                "Rare tokens (doc_freq=1) have IDF = log(n_docs/2) — high IDF but zero "
+                "TF-IDF signal because they never co-occur with queries. "
+                "The most_common(5000) filter removes these singleton tokens. "
+                "The secondary cap to 500 features reflects that gradient boosting classifiers "
+                "trained on the parliament speeches dataset have sufficient signal in the "
+                "top-500 TF-IDF features. Using all 5000 adds compute cost without "
+                "commensurate accuracy gain on this corpus. "
+                "This two-stage filtering pattern (frequency floor + feature count cap) is "
+                "the standard approach for TF-IDF feature selection in production pipelines."
+            ),
+            "learning_outcome": "Explain vocabulary frequency capping and feature dimensionality reduction in TF-IDF pipelines",
+        },
+        {
+            "id": "8.H.5",
+            "lesson": "8.H",
+            "type": "architecture_decision",
+            "difficulty": "advanced",
+            "question": (
+                "Exercise 8 is the capstone: preprocess → TF-IDF embed → TrainingPipeline "
+                "(gradient boosting) → OnnxBridge export. A new requirement arrives: the "
+                "model must process streaming Parliament speeches in real-time as they are "
+                "transcribed (one sentence at a time). Which component of the Exercise 8 "
+                "pipeline requires the most significant rework?"
+            ),
+            "options": [
+                "A) OnnxBridge — ONNX models cannot process streaming input",
+                "B) The TF-IDF embedding step. Exercise 8 computes IDF at fit time over the full corpus: idf = {t: math.log(n_docs / (1 + doc_freq[t])) for t, df in doc_freq.items()}. For streaming, n_docs and doc_freq are unknown. A static IDF (computed once from a reference corpus and frozen) must replace the dynamic computation. The vocabulary (token_to_idx) must also be frozen. The TrainingPipeline and OnnxBridge export are unchanged — they operate on feature vectors, agnostic to how those vectors were computed.",
+                "C) TrainingPipeline — gradient boosting cannot process single-sample inputs",
+                "D) The normalize_text function — real-time text requires a different cleaning strategy",
+            ],
+            "answer": "B",
+            "explanation": (
+                "Exercise 8's IDF computation (Task 2) iterates over the entire corpus to "
+                "count doc_freq per token, then computes idf scores. This is a batch operation "
+                "requiring the full dataset. "
+                "For streaming: (1) fix the vocabulary (token_to_idx) from the training corpus "
+                "— new tokens get the <UNK> index; (2) fix the IDF scores — freeze "
+                "idf dict from training, never recompute on new documents. "
+                "This converts TF-IDF from a corpus-dependent transform to a stateless "
+                "vectorizer: given any text, compute TF against the fixed vocab, multiply by "
+                "the fixed IDF weights. "
+                "The OnnxBridge export already produces a stateless model artifact. "
+                "TrainingPipeline.predict() already handles single rows (Exercise 8 benchmark "
+                "loop calls pipeline.predict(row_df) one sample at a time). "
+                "Only the IDF computation needs redesign for streaming."
+            ),
+            "learning_outcome": "Identify the batch-dependent TF-IDF step that must be redesigned for streaming inference",
         },
     ],
 }
