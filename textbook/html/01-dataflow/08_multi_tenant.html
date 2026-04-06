@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 8: Multi-Tenant Context
+Switching &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-8-multi-tenant-context-switching">Chapter 8:
+Multi-Tenant Context Switching</h1>
+<h2 id="overview">Overview</h2>
+<p>Multi-tenant applications serve multiple organizations from a single
+deployment, and each tenant’s data must be isolated. DataFlow’s
+<code>TenantContextSwitch</code> provides <strong>sync and async context
+managers</strong> that set the active tenant for a block of code,
+automatically restore the previous context on exit (even after
+exceptions), and enforce tenant registration and lifecycle rules. This
+chapter teaches you how to register tenants, switch contexts, nest
+switches, deactivate tenants, and monitor switching statistics.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash DataFlow installed
+(<code>pip install kailash-dataflow</code>)</li>
+<li>Completed Chapters 1-4 (model definition and CRUD)</li>
+<li>Familiarity with Python context managers (<code>with</code> /
+<code>async with</code>)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-tenantcontextswitch">Concept 1:
+TenantContextSwitch</h3>
+<p>The <code>TenantContextSwitch</code> is accessed via
+<code>db.tenant_context</code>. It manages a registry of tenants and
+provides context managers (<code>switch()</code> for sync,
+<code>aswitch()</code> for async) that set the active tenant for the
+duration of a code block.</p>
+<ul>
+<li><strong>What</strong>: A manager that tracks registered tenants and
+provides safe context-switching between them</li>
+<li><strong>Why</strong>: Without explicit tenant context, queries could
+accidentally return or modify another tenant’s data. Context managers
+guarantee that the tenant is set on entry and restored on exit</li>
+<li><strong>How</strong>: Uses Python’s <code>contextvars</code> module
+to store the current tenant ID. Context managers save the current value,
+set the new one, and restore the original on exit – even if an exception
+occurs</li>
+<li><strong>When</strong>: Use tenant context switching in any
+multi-tenant application – SaaS platforms, shared infrastructure,
+white-label products</li>
+</ul>
+<h3 id="concept-2-tenant-registration">Concept 2: Tenant
+Registration</h3>
+<p>Before switching to a tenant, you must register it with
+<code>ctx.register_tenant(id, name, metadata)</code>. Registration
+creates a <code>TenantInfo</code> object with the tenant’s ID,
+human-readable name, optional metadata dict, and an <code>active</code>
+flag. Duplicate IDs and empty IDs are rejected with
+<code>ValueError</code>.</p>
+<h3 id="concept-3-sync-and-async-context-managers">Concept 3: Sync and
+Async Context Managers</h3>
+<p><code>ctx.switch(tenant_id)</code> is a synchronous context manager
+(<code>with</code> block). <code>ctx.aswitch(tenant_id)</code> is an
+asynchronous context manager (<code>async with</code> block). Both yield
+a <code>TenantInfo</code> object and restore the previous context on
+exit. Use <code>switch()</code> in sync code and <code>aswitch()</code>
+in async code.</p>
+<h3 id="concept-4-context-restoration-and-nesting">Concept 4: Context
+Restoration and Nesting</h3>
+<p>Context switches nest correctly. If you switch to tenant A, then
+switch to tenant B inside a nested block, exiting the inner block
+restores tenant A (not None). This works because each context manager
+saves the current value before switching and restores it on exit,
+forming a stack.</p>
+<ul>
+<li><strong>What</strong>: Automatic restoration of the previous tenant
+context when a switch block exits</li>
+<li><strong>Why</strong>: Without restoration, a function that switches
+tenants would permanently change the tenant for all subsequent code – a
+dangerous side effect</li>
+<li><strong>How</strong>: Each context manager saves the current
+<code>contextvars</code> token on entry and resets it on exit</li>
+<li><strong>When</strong>: Always use context managers for switching.
+Never set the tenant context directly – the context manager handles
+save/restore automatically</li>
+</ul>
+<h3 id="concept-5-tenant-lifecycle">Concept 5: Tenant Lifecycle</h3>
+<p>Tenants can be deactivated with
+<code>ctx.deactivate_tenant(id)</code> and reactivated with
+<code>ctx.activate_tenant(id)</code>. A deactivated tenant remains
+registered but cannot be switched to – attempts raise
+<code>ValueError</code>. This is useful for suspending tenants without
+losing their configuration.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 32%" />
+<col style="width: 15%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>db.tenant_context</code></td>
+<td>–</td>
+<td><code>TenantContextSwitch</code></td>
+<td>Access the tenant context manager</td>
+</tr>
+<tr>
+<td><code>ctx.register_tenant()</code></td>
+<td><code>id: str</code>, <code>name: str</code>,
+<code>metadata: dict = None</code></td>
+<td><code>TenantInfo</code></td>
+<td>Register a new tenant</td>
+</tr>
+<tr>
+<td><code>ctx.get_tenant()</code></td>
+<td><code>tenant_id: str</code></td>
+<td><code>TenantInfo</code> or <code>None</code></td>
+<td>Look up a tenant by ID</td>
+</tr>
+<tr>
+<td><code>ctx.list_tenants()</code></td>
+<td>–</td>
+<td><code>list[TenantInfo]</code></td>
+<td>All registered tenants</td>
+</tr>
+<tr>
+<td><code>ctx.switch()</code></td>
+<td><code>tenant_id: str</code></td>
+<td>context manager</td>
+<td>Sync context switch</td>
+</tr>
+<tr>
+<td><code>ctx.aswitch()</code></td>
+<td><code>tenant_id: str</code></td>
+<td>async context manager</td>
+<td>Async context switch</td>
+</tr>
+<tr>
+<td><code>ctx.get_current_tenant()</code></td>
+<td>–</td>
+<td><code>str</code> or <code>None</code></td>
+<td>Current tenant ID (None if no active switch)</td>
+</tr>
+<tr>
+<td><code>ctx.require_tenant()</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Current tenant ID; raises <code>RuntimeError</code> if None</td>
+</tr>
+<tr>
+<td><code>ctx.deactivate_tenant()</code></td>
+<td><code>tenant_id: str</code></td>
+<td><code>None</code></td>
+<td>Suspend a tenant (cannot switch to it)</td>
+</tr>
+<tr>
+<td><code>ctx.activate_tenant()</code></td>
+<td><code>tenant_id: str</code></td>
+<td><code>None</code></td>
+<td>Reactivate a suspended tenant</td>
+</tr>
+<tr>
+<td><code>ctx.is_tenant_registered()</code></td>
+<td><code>tenant_id: str</code></td>
+<td><code>bool</code></td>
+<td>Check if a tenant exists</td>
+</tr>
+<tr>
+<td><code>ctx.is_tenant_active()</code></td>
+<td><code>tenant_id: str</code></td>
+<td><code>bool</code></td>
+<td>Check if a tenant is active</td>
+</tr>
+<tr>
+<td><code>ctx.unregister_tenant()</code></td>
+<td><code>tenant_id: str</code></td>
+<td><code>None</code></td>
+<td>Remove a tenant entirely</td>
+</tr>
+<tr>
+<td><code>ctx.get_stats()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Switching statistics (totals, active count, etc.)</td>
+</tr>
+<tr>
+<td><code>get_current_tenant_id()</code></td>
+<td>–</td>
+<td><code>str</code> or <code>None</code></td>
+<td>Module-level helper for current tenant ID</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataflow <span class="im">import</span> DataFlow, TenantContextSwitch, TenantInfo, get_current_tenant_id</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co"># -- Setup -------------------------------------------------------------------</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>db_path <span class="op">=</span> os.path.join(tempfile.gettempdir(), <span class="st">&quot;textbook_dataflow_08.db&quot;</span>)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> DataFlow(database_url<span class="op">=</span><span class="ss">f&quot;sqlite:///</span><span class="sc">{</span>db_path<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="at">@db.model</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Project:</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    name: <span class="bu">str</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    status: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;active&quot;</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> main():</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> db.initialize()</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 1. ACCESS -- db.tenant_context property -----------------------------</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># TenantContextSwitch is accessed via db.tenant_context.</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="co"># It provides sync and async context managers for safely switching</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    <span class="co"># between tenant contexts with guaranteed isolation.</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    ctx <span class="op">=</span> db.tenant_context</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(ctx, TenantContextSwitch)</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;TenantContextSwitch accessible via db.tenant_context&quot;</span>)</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 2. REGISTER tenants -------------------------------------------------</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Register tenants before switching to them. Each tenant has an id,</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    <span class="co"># a human-readable name, and optional metadata.</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    tenant_a <span class="op">=</span> ctx.register_tenant(<span class="st">&quot;acme&quot;</span>, <span class="st">&quot;Acme Corporation&quot;</span>, {<span class="st">&quot;region&quot;</span>: <span class="st">&quot;APAC&quot;</span>})</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(tenant_a, TenantInfo)</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> tenant_a.tenant_id <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> tenant_a.name <span class="op">==</span> <span class="st">&quot;Acme Corporation&quot;</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> tenant_a.metadata <span class="op">==</span> {<span class="st">&quot;region&quot;</span>: <span class="st">&quot;APAC&quot;</span>}</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> tenant_a.active <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;Registered tenant: </span><span class="sc">{</span>tenant_a<span class="sc">.</span>name<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    tenant_b <span class="op">=</span> ctx.register_tenant(<span class="st">&quot;globex&quot;</span>, <span class="st">&quot;Globex Inc.&quot;</span>, {<span class="st">&quot;region&quot;</span>: <span class="st">&quot;EU&quot;</span>})</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> tenant_b.tenant_id <span class="op">==</span> <span class="st">&quot;globex&quot;</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Duplicate registration raises ValueError</span></span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>        ctx.register_tenant(<span class="st">&quot;acme&quot;</span>, <span class="st">&quot;Acme Again&quot;</span>)</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should raise ValueError&quot;</span></span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;already registered&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Invalid tenant_id raises ValueError</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>        ctx.register_tenant(<span class="st">&quot;&quot;</span>, <span class="st">&quot;Empty ID&quot;</span>)</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should raise ValueError&quot;</span></span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>        <span class="cf">pass</span></span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 3. LIST and GET tenants ---------------------------------------------</span></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    all_tenants <span class="op">=</span> ctx.list_tenants()</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(all_tenants) <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">all</span>(<span class="bu">isinstance</span>(t, TenantInfo) <span class="cf">for</span> t <span class="kw">in</span> all_tenants)</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>    found <span class="op">=</span> ctx.get_tenant(<span class="st">&quot;acme&quot;</span>)</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> found <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> found.tenant_id <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>    not_found <span class="op">=</span> ctx.get_tenant(<span class="st">&quot;nonexistent&quot;</span>)</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> not_found <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 4. SWITCH -- sync context manager -----------------------------------</span></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>    <span class="co"># with ctx.switch(tenant_id) sets the tenant for the block.</span></span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Previous context is restored on exit, even on exception.</span></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Before any switch, no tenant is active</span></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.get_current_tenant() <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> get_current_tenant_id() <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;Module-level helper also returns None&quot;</span></span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> ctx.switch(<span class="st">&quot;acme&quot;</span>) <span class="im">as</span> tenant_info:</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="bu">isinstance</span>(tenant_info, TenantInfo)</span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> tenant_info.tenant_id <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Inside the context, the current tenant is set</span></span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> get_current_tenant_id() <span class="op">==</span> <span class="st">&quot;acme&quot;</span>, <span class="st">&quot;Module-level helper reads context&quot;</span></span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f&quot;Inside sync switch: tenant=</span><span class="sc">{</span>ctx<span class="sc">.</span>get_current_tenant()<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>    <span class="co"># After the context manager exits, the previous context is restored</span></span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.get_current_tenant() <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;After sync switch: tenant restored to None&quot;</span>)</span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 5. ASWITCH -- async context manager ---------------------------------</span></span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>    <span class="co"># async with ctx.aswitch(tenant_id) -- same semantics for async code.</span></span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>    <span class="co"># contextvars automatically propagates context to async tasks.</span></span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="cf">with</span> ctx.aswitch(<span class="st">&quot;globex&quot;</span>) <span class="im">as</span> tenant_info:</span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> tenant_info.tenant_id <span class="op">==</span> <span class="st">&quot;globex&quot;</span></span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;globex&quot;</span></span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f&quot;Inside async switch: tenant=</span><span class="sc">{</span>ctx<span class="sc">.</span>get_current_tenant()<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.get_current_tenant() <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;After async switch: tenant restored to None&quot;</span>)</span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 6. NESTED switches --------------------------------------------------</span></span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Nested switches properly track and restore the previous context.</span></span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> ctx.switch(<span class="st">&quot;acme&quot;</span>):</span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> ctx.switch(<span class="st">&quot;globex&quot;</span>):</span>
+<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a>            <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;globex&quot;</span></span>
+<span id="cb1-114"><a href="#cb1-114" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-115"><a href="#cb1-115" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Inner switch exited -- restored to &quot;acme&quot;</span></span>
+<span id="cb1-116"><a href="#cb1-116" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-117"><a href="#cb1-117" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-118"><a href="#cb1-118" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Outer switch exited -- restored to None</span></span>
+<span id="cb1-119"><a href="#cb1-119" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.get_current_tenant() <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb1-120"><a href="#cb1-120" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Nested switches: proper context restoration verified&quot;</span>)</span>
+<span id="cb1-121"><a href="#cb1-121" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-122"><a href="#cb1-122" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 7. REQUIRE_TENANT -- strict enforcement -----------------------------</span></span>
+<span id="cb1-123"><a href="#cb1-123" aria-hidden="true" tabindex="-1"></a>    <span class="co"># require_tenant() raises RuntimeError if no tenant context is active.</span></span>
+<span id="cb1-124"><a href="#cb1-124" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Useful for operations that must run within a tenant scope.</span></span>
+<span id="cb1-125"><a href="#cb1-125" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-126"><a href="#cb1-126" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-127"><a href="#cb1-127" aria-hidden="true" tabindex="-1"></a>        ctx.require_tenant()</span>
+<span id="cb1-128"><a href="#cb1-128" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should raise RuntimeError&quot;</span></span>
+<span id="cb1-129"><a href="#cb1-129" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">RuntimeError</span> <span class="im">as</span> e:</span>
+<span id="cb1-130"><a href="#cb1-130" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;No tenant context is active&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb1-131"><a href="#cb1-131" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-132"><a href="#cb1-132" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> ctx.switch(<span class="st">&quot;acme&quot;</span>):</span>
+<span id="cb1-133"><a href="#cb1-133" aria-hidden="true" tabindex="-1"></a>        tenant_id <span class="op">=</span> ctx.require_tenant()</span>
+<span id="cb1-134"><a href="#cb1-134" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> tenant_id <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-135"><a href="#cb1-135" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-136"><a href="#cb1-136" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 8. DEACTIVATE and ACTIVATE tenants ----------------------------------</span></span>
+<span id="cb1-137"><a href="#cb1-137" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Deactivated tenants remain registered but cannot be switched to.</span></span>
+<span id="cb1-138"><a href="#cb1-138" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-139"><a href="#cb1-139" aria-hidden="true" tabindex="-1"></a>    ctx.deactivate_tenant(<span class="st">&quot;globex&quot;</span>)</span>
+<span id="cb1-140"><a href="#cb1-140" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.is_tenant_registered(<span class="st">&quot;globex&quot;</span>) <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb1-141"><a href="#cb1-141" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.is_tenant_active(<span class="st">&quot;globex&quot;</span>) <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb1-142"><a href="#cb1-142" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-143"><a href="#cb1-143" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Switching to a deactivated tenant raises ValueError</span></span>
+<span id="cb1-144"><a href="#cb1-144" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-145"><a href="#cb1-145" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> ctx.switch(<span class="st">&quot;globex&quot;</span>):</span>
+<span id="cb1-146"><a href="#cb1-146" aria-hidden="true" tabindex="-1"></a>            <span class="cf">pass</span></span>
+<span id="cb1-147"><a href="#cb1-147" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should raise ValueError&quot;</span></span>
+<span id="cb1-148"><a href="#cb1-148" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb1-149"><a href="#cb1-149" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;not active&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb1-150"><a href="#cb1-150" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-151"><a href="#cb1-151" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Reactivate the tenant</span></span>
+<span id="cb1-152"><a href="#cb1-152" aria-hidden="true" tabindex="-1"></a>    ctx.activate_tenant(<span class="st">&quot;globex&quot;</span>)</span>
+<span id="cb1-153"><a href="#cb1-153" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.is_tenant_active(<span class="st">&quot;globex&quot;</span>) <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb1-154"><a href="#cb1-154" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-155"><a href="#cb1-155" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Now switching works again</span></span>
+<span id="cb1-156"><a href="#cb1-156" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> ctx.switch(<span class="st">&quot;globex&quot;</span>):</span>
+<span id="cb1-157"><a href="#cb1-157" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;globex&quot;</span></span>
+<span id="cb1-158"><a href="#cb1-158" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Deactivate/activate: tenant lifecycle verified&quot;</span>)</span>
+<span id="cb1-159"><a href="#cb1-159" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-160"><a href="#cb1-160" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 9. SWITCH to unregistered tenant ------------------------------------</span></span>
+<span id="cb1-161"><a href="#cb1-161" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Raises ValueError with a helpful message listing available tenants.</span></span>
+<span id="cb1-162"><a href="#cb1-162" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-163"><a href="#cb1-163" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-164"><a href="#cb1-164" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> ctx.switch(<span class="st">&quot;unknown-corp&quot;</span>):</span>
+<span id="cb1-165"><a href="#cb1-165" aria-hidden="true" tabindex="-1"></a>            <span class="cf">pass</span></span>
+<span id="cb1-166"><a href="#cb1-166" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should raise ValueError&quot;</span></span>
+<span id="cb1-167"><a href="#cb1-167" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb1-168"><a href="#cb1-168" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;not registered&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb1-169"><a href="#cb1-169" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;Available tenants&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb1-170"><a href="#cb1-170" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-171"><a href="#cb1-171" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 10. UNREGISTER a tenant ---------------------------------------------</span></span>
+<span id="cb1-172"><a href="#cb1-172" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-173"><a href="#cb1-173" aria-hidden="true" tabindex="-1"></a>    ctx.register_tenant(<span class="st">&quot;temp&quot;</span>, <span class="st">&quot;Temporary Tenant&quot;</span>)</span>
+<span id="cb1-174"><a href="#cb1-174" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.is_tenant_registered(<span class="st">&quot;temp&quot;</span>) <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb1-175"><a href="#cb1-175" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-176"><a href="#cb1-176" aria-hidden="true" tabindex="-1"></a>    ctx.unregister_tenant(<span class="st">&quot;temp&quot;</span>)</span>
+<span id="cb1-177"><a href="#cb1-177" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.is_tenant_registered(<span class="st">&quot;temp&quot;</span>) <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb1-178"><a href="#cb1-178" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-179"><a href="#cb1-179" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Cannot unregister while active context</span></span>
+<span id="cb1-180"><a href="#cb1-180" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> ctx.switch(<span class="st">&quot;acme&quot;</span>):</span>
+<span id="cb1-181"><a href="#cb1-181" aria-hidden="true" tabindex="-1"></a>        <span class="cf">try</span>:</span>
+<span id="cb1-182"><a href="#cb1-182" aria-hidden="true" tabindex="-1"></a>            ctx.unregister_tenant(<span class="st">&quot;acme&quot;</span>)</span>
+<span id="cb1-183"><a href="#cb1-183" aria-hidden="true" tabindex="-1"></a>            <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should raise ValueError&quot;</span></span>
+<span id="cb1-184"><a href="#cb1-184" aria-hidden="true" tabindex="-1"></a>        <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb1-185"><a href="#cb1-185" aria-hidden="true" tabindex="-1"></a>            <span class="cf">assert</span> <span class="st">&quot;active context&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb1-186"><a href="#cb1-186" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-187"><a href="#cb1-187" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 11. STATS -- context switching statistics ---------------------------</span></span>
+<span id="cb1-188"><a href="#cb1-188" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-189"><a href="#cb1-189" aria-hidden="true" tabindex="-1"></a>    stats <span class="op">=</span> ctx.get_stats()</span>
+<span id="cb1-190"><a href="#cb1-190" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(stats, <span class="bu">dict</span>)</span>
+<span id="cb1-191"><a href="#cb1-191" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> stats[<span class="st">&quot;total_tenants&quot;</span>] <span class="op">==</span> <span class="dv">2</span>, <span class="st">&quot;Two registered tenants&quot;</span></span>
+<span id="cb1-192"><a href="#cb1-192" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> stats[<span class="st">&quot;active_tenants&quot;</span>] <span class="op">==</span> <span class="dv">2</span>, <span class="st">&quot;Both are active&quot;</span></span>
+<span id="cb1-193"><a href="#cb1-193" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> stats[<span class="st">&quot;total_switches&quot;</span>] <span class="op">&gt;</span> <span class="dv">0</span>, <span class="st">&quot;Switches have been performed&quot;</span></span>
+<span id="cb1-194"><a href="#cb1-194" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> stats[<span class="st">&quot;active_switches&quot;</span>] <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;No switch currently active&quot;</span></span>
+<span id="cb1-195"><a href="#cb1-195" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> stats[<span class="st">&quot;current_tenant&quot;</span>] <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;No current tenant outside switch&quot;</span></span>
+<span id="cb1-196"><a href="#cb1-196" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;Stats: </span><span class="sc">{</span>stats[<span class="st">&#39;total_switches&#39;</span>]<span class="sc">}</span><span class="ss"> total switches performed&quot;</span>)</span>
+<span id="cb1-197"><a href="#cb1-197" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-198"><a href="#cb1-198" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 12. Context restoration on exception --------------------------------</span></span>
+<span id="cb1-199"><a href="#cb1-199" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Even when an exception occurs, the previous context is restored.</span></span>
+<span id="cb1-200"><a href="#cb1-200" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-201"><a href="#cb1-201" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> ctx.switch(<span class="st">&quot;acme&quot;</span>):</span>
+<span id="cb1-202"><a href="#cb1-202" aria-hidden="true" tabindex="-1"></a>        <span class="cf">try</span>:</span>
+<span id="cb1-203"><a href="#cb1-203" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> ctx.switch(<span class="st">&quot;globex&quot;</span>):</span>
+<span id="cb1-204"><a href="#cb1-204" aria-hidden="true" tabindex="-1"></a>                <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;globex&quot;</span></span>
+<span id="cb1-205"><a href="#cb1-205" aria-hidden="true" tabindex="-1"></a>                <span class="cf">raise</span> <span class="pp">RuntimeError</span>(<span class="st">&quot;Simulated failure&quot;</span>)</span>
+<span id="cb1-206"><a href="#cb1-206" aria-hidden="true" tabindex="-1"></a>        <span class="cf">except</span> <span class="pp">RuntimeError</span>:</span>
+<span id="cb1-207"><a href="#cb1-207" aria-hidden="true" tabindex="-1"></a>            <span class="cf">pass</span></span>
+<span id="cb1-208"><a href="#cb1-208" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-209"><a href="#cb1-209" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Restored to &quot;acme&quot; despite exception in inner block</span></span>
+<span id="cb1-210"><a href="#cb1-210" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> ctx.get_current_tenant() <span class="op">==</span> <span class="st">&quot;acme&quot;</span></span>
+<span id="cb1-211"><a href="#cb1-211" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-212"><a href="#cb1-212" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> ctx.get_current_tenant() <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb1-213"><a href="#cb1-213" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Exception safety: context restored after error&quot;</span>)</span>
+<span id="cb1-214"><a href="#cb1-214" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-215"><a href="#cb1-215" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- Cleanup -------------------------------------------------------------</span></span>
+<span id="cb1-216"><a href="#cb1-216" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> db.stop()</span>
+<span id="cb1-217"><a href="#cb1-217" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-218"><a href="#cb1-218" aria-hidden="true" tabindex="-1"></a>asyncio.run(main())</span>
+<span id="cb1-219"><a href="#cb1-219" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-220"><a href="#cb1-220" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb1-221"><a href="#cb1-221" aria-hidden="true" tabindex="-1"></a>    os.unlink(db_path)</span>
+<span id="cb1-222"><a href="#cb1-222" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">OSError</span>:</span>
+<span id="cb1-223"><a href="#cb1-223" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb1-224"><a href="#cb1-224" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-225"><a href="#cb1-225" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;PASS: 01-dataflow/08_multi_tenant&quot;</span>)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Accessing TenantContextSwitch</strong>:
+<code>db.tenant_context</code> returns the context switch manager. This
+is your entry point for all multi-tenant operations.</p></li>
+<li><p><strong>Registering tenants</strong>:
+<code>register_tenant("acme", "Acme Corporation", {"region": "APAC"})</code>
+creates a <code>TenantInfo</code> with an ID, display name, and optional
+metadata. The tenant starts as active. Duplicate IDs and empty IDs are
+rejected.</p></li>
+<li><p><strong>Listing and getting tenants</strong>:
+<code>list_tenants()</code> returns all registered tenants.
+<code>get_tenant(id)</code> returns a single <code>TenantInfo</code> or
+<code>None</code>.</p></li>
+<li><p><strong>Sync context switch</strong>:
+<code>with ctx.switch("acme") as tenant_info:</code> sets the current
+tenant to “acme” for the duration of the block. Both
+<code>ctx.get_current_tenant()</code> and the module-level
+<code>get_current_tenant_id()</code> return the active tenant ID. On
+exit, the previous context (None) is restored.</p></li>
+<li><p><strong>Async context switch</strong>:
+<code>async with ctx.aswitch("globex")</code> works identically but for
+async code. Python’s <code>contextvars</code> module propagates the
+tenant context to async tasks automatically.</p></li>
+<li><p><strong>Nested switches</strong>: Switching to “acme”, then
+switching to “globex” inside a nested block, correctly restores “acme”
+when the inner block exits. The outer block then restores None. This
+forms a proper stack.</p></li>
+<li><p><strong>require_tenant()</strong>: A strict enforcement method
+that raises <code>RuntimeError</code> if called outside a tenant
+context. Use this at the top of functions that must never run without a
+tenant.</p></li>
+<li><p><strong>Deactivation and activation</strong>:
+<code>deactivate_tenant("globex")</code> keeps the tenant registered but
+prevents switching to it. <code>activate_tenant("globex")</code>
+re-enables it. This supports tenant suspension without data
+loss.</p></li>
+<li><p><strong>Unregistered tenant</strong>: Switching to a tenant that
+was never registered raises <code>ValueError</code> with a message
+listing available tenants – helpful for debugging typos.</p></li>
+<li><p><strong>Unregistration</strong>:
+<code>unregister_tenant("temp")</code> removes a tenant entirely. You
+cannot unregister a tenant while it is the active context.</p></li>
+<li><p><strong>Statistics</strong>: <code>get_stats()</code> returns a
+dictionary with <code>total_tenants</code>, <code>active_tenants</code>,
+<code>total_switches</code>, <code>active_switches</code>, and
+<code>current_tenant</code>. Useful for monitoring and
+dashboards.</p></li>
+<li><p><strong>Exception safety</strong>: Even when an exception occurs
+inside a nested switch, the context manager restores the previous
+tenant. This guarantees that errors never corrupt the tenant
+context.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 29%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Setting tenant context with a global variable</td>
+<td>Use <code>ctx.switch()</code> or <code>ctx.aswitch()</code> context
+managers</td>
+<td>Global variables are not restored on exit or exception. Context
+managers guarantee cleanup.</td>
+</tr>
+<tr>
+<td>Switching without registering first</td>
+<td>Call <code>ctx.register_tenant(id, name)</code> before
+<code>ctx.switch(id)</code></td>
+<td>Unregistered tenant IDs raise <code>ValueError</code>. Registration
+is required for safety.</td>
+</tr>
+<tr>
+<td>Using <code>switch()</code> in async code</td>
+<td>Use <code>aswitch()</code> in <code>async def</code> functions</td>
+<td><code>switch()</code> is synchronous. In async code,
+<code>aswitch()</code> integrates correctly with
+<code>contextvars</code>.</td>
+</tr>
+<tr>
+<td>Unregistering a tenant during an active context</td>
+<td>Exit all switch blocks for that tenant first</td>
+<td>Unregistering the active tenant would leave the context in an
+invalid state.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Register three tenants and write a loop that switches to each tenant
+in sequence, creates a <code>Project</code> record, and prints the
+current tenant inside each switch. Verify that no tenant context leaks
+between iterations.</li>
+<li>Write a function decorated with <code>require_tenant()</code> at the
+top that creates a record. Call it both inside and outside a
+<code>switch()</code> block to verify the enforcement behavior.</li>
+<li>Deactivate a tenant, attempt to switch to it (catching the error),
+reactivate it, and switch successfully. Print the stats before and after
+the full cycle.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>db.tenant_context</code> provides the
+<code>TenantContextSwitch</code> for multi-tenant isolation</li>
+<li>Tenants must be registered before they can be switched to</li>
+<li><code>switch()</code> and <code>aswitch()</code> are sync/async
+context managers that guarantee context restoration on exit</li>
+<li>Nested switches form a proper stack – inner exit restores the outer
+tenant, not None</li>
+<li><code>require_tenant()</code> enforces that code runs within a
+tenant context</li>
+<li>Tenants can be deactivated (suspended) and reactivated without
+losing registration</li>
+<li><code>get_stats()</code> provides monitoring data for tenant
+switching activity</li>
+<li>Context restoration is exception-safe – errors never corrupt the
+tenant state</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="09_provenance.md">Chapter 9: Data Provenance</a> – Track the
+origin, confidence, and change history of individual field values using
+typed provenance wrappers.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

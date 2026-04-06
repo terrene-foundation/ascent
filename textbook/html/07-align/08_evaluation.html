@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 8: Evaluation &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-8-evaluation">Chapter 8: Evaluation</h1>
+<h2 id="overview">Overview</h2>
+<p>After aligning a model, you need to measure whether it improved – and
+whether it lost capabilities in the process. The
+<strong>AlignmentEvaluator</strong> wraps the lm-eval-harness to run
+standard benchmarks (ARC, HellaSwag, TruthfulQA, MMLU) against your
+adapted model. <strong>EvalConfig</strong> controls which tasks to run,
+<strong>TaskResult</strong> captures per-task scores, and
+<strong>EvalResult</strong> aggregates everything into a single report.
+This chapter teaches you how to configure evaluations, interpret
+results, and integrate scores into the adapter registry.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="06_adapter_registry.md">Chapter 6: Adapter
+Registry</a></li>
+<li>Understanding of LLM evaluation benchmarks (helpful)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-task-presets">Concept 1: Task Presets</h3>
+<p>Kailash Align ships with two task presets:</p>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 72%" />
+<col style="width: 10%" />
+</colgroup>
+<thead>
+<tr>
+<th>Preset</th>
+<th>Tasks</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QUICK_TASKS</code></td>
+<td>arc_easy, hellaswag, truthfulqa_mc1</td>
+<td>~5 min</td>
+</tr>
+<tr>
+<td><code>STANDARD_TASKS</code></td>
+<td>arc_easy, hellaswag, truthfulqa_mc1, arc_challenge, mmlu,
+winogrande</td>
+<td>~30-60 min</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>What</strong>: Pre-defined lists of benchmark task names for
+common evaluation scenarios</li>
+<li><strong>Why</strong>: Choosing tasks manually is error-prone;
+presets ensure consistent evaluation across adapters</li>
+<li><strong>How</strong>:
+<code>EvalConfig(tasks=tuple(STANDARD_TASKS))</code> for thorough
+evaluation</li>
+<li><strong>When</strong>: Use QUICK_TASKS during development
+iterations; STANDARD_TASKS for promotion decisions</li>
+</ul>
+<h3 id="concept-2-evalconfig">Concept 2: EvalConfig</h3>
+<p>EvalConfig controls the evaluation run: which tasks, how many samples
+per task (<code>limit</code>), batch size, few-shot count, and device.
+The <code>use_adapter</code> flag determines whether to evaluate the
+adapter or the base model (useful for before/after comparison).</p>
+<ul>
+<li><strong>What</strong>: A frozen dataclass controlling evaluation
+parameters</li>
+<li><strong>Why</strong>: Reproducible evaluations require fixed
+configuration</li>
+<li><strong>How</strong>:
+<code>EvalConfig(tasks=("arc_easy", "mmlu"), limit=100, device="cuda")</code></li>
+<li><strong>When</strong>: Create one per evaluation run</li>
+</ul>
+<h3 id="concept-3-result-hierarchy">Concept 3: Result Hierarchy</h3>
+<p>Results are organized in two levels: <strong>TaskResult</strong>
+captures a single benchmark’s metrics (accuracy, normalized accuracy,
+standard error), and <strong>EvalResult</strong> aggregates multiple
+TaskResults with adapter metadata and timing.</p>
+<ul>
+<li><strong>What</strong>: A two-level result hierarchy – TaskResult per
+benchmark, EvalResult per evaluation run</li>
+<li><strong>Why</strong>: Per-task granularity lets you detect
+capability regressions on specific benchmarks</li>
+<li><strong>How</strong>: Access via
+<code>eval_result.task_results</code> (list) or
+<code>eval_result.summary</code> (quick accuracy lookup)</li>
+<li><strong>When</strong>: After every evaluation run, before promotion
+decisions</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 43%" />
+<col style="width: 9%" />
+<col style="width: 27%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EvalConfig()</code></td>
+<td><code>tasks</code>, <code>limit</code>, <code>batch_size</code>,
+<code>num_fewshot</code>, <code>device</code></td>
+<td><code>EvalConfig</code></td>
+<td>Configure an evaluation run</td>
+</tr>
+<tr>
+<td><code>TaskResult()</code></td>
+<td><code>task_name</code>, <code>metrics</code>,
+<code>num_samples</code>, <code>task_version</code></td>
+<td><code>TaskResult</code></td>
+<td>Single benchmark result</td>
+</tr>
+<tr>
+<td><code>TaskResult.to_dict()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Serialize for storage</td>
+</tr>
+<tr>
+<td><code>TaskResult.from_dict()</code></td>
+<td><code>data: dict</code></td>
+<td><code>TaskResult</code></td>
+<td>Deserialize</td>
+</tr>
+<tr>
+<td><code>EvalResult()</code></td>
+<td><code>adapter_name</code>, <code>adapter_version</code>,
+<code>task_results</code>, …</td>
+<td><code>EvalResult</code></td>
+<td>Aggregated evaluation report</td>
+</tr>
+<tr>
+<td><code>EvalResult.summary</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Task name -&gt; primary accuracy score</td>
+</tr>
+<tr>
+<td><code>AlignmentEvaluator()</code></td>
+<td><code>adapter_registry</code></td>
+<td><code>Evaluator</code></td>
+<td>Create evaluator with registry</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> AlignmentEvaluator, EvalConfig, EvalResult, TaskResult</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align.config <span class="im">import</span> QUICK_TASKS, STANDARD_TASKS</span></code></pre></div>
+<h3 id="evalconfig-defaults">EvalConfig Defaults</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>default_eval <span class="op">=</span> EvalConfig()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_eval.tasks <span class="op">==</span> (<span class="st">&quot;arc_easy&quot;</span>, <span class="st">&quot;hellaswag&quot;</span>, <span class="st">&quot;truthfulqa_mc1&quot;</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_eval.limit <span class="op">==</span> <span class="dv">100</span>, <span class="st">&quot;Default limit=100 for interactive use&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_eval.batch_size <span class="op">==</span> <span class="st">&quot;auto&quot;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_eval.num_fewshot <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;Uses task default&quot;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_eval.device <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;Auto-detect device&quot;</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_eval.local_files_only <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_eval.use_adapter <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>The defaults run the three QUICK_TASKS with 100 samples each. This
+takes about 5 minutes on a single GPU and gives a quick read on model
+quality.</p>
+<h3 id="evalconfig-validation">EvalConfig Validation</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    default_eval.limit <span class="op">=</span> <span class="dv">50</span>  <span class="co"># type: ignore[misc]</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised FrozenInstanceError&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">AttributeError</span>:</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: frozen dataclass</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    EvalConfig(limit<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># limit must be &gt;= 1</span></span></code></pre></div>
+<p>EvalConfig is frozen and validates that limit is at least 1.</p>
+<h3 id="custom-evalconfig">Custom EvalConfig</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>custom_eval <span class="op">=</span> EvalConfig(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    tasks<span class="op">=</span>(<span class="st">&quot;arc_easy&quot;</span>, <span class="st">&quot;arc_challenge&quot;</span>, <span class="st">&quot;mmlu&quot;</span>),</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    limit<span class="op">=</span><span class="dv">50</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    batch_size<span class="op">=</span><span class="st">&quot;16&quot;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    num_fewshot<span class="op">=</span><span class="dv">5</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    device<span class="op">=</span><span class="st">&quot;cpu&quot;</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    use_adapter<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_eval.tasks <span class="op">==</span> (<span class="st">&quot;arc_easy&quot;</span>, <span class="st">&quot;arc_challenge&quot;</span>, <span class="st">&quot;mmlu&quot;</span>)</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_eval.limit <span class="op">==</span> <span class="dv">50</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_eval.batch_size <span class="op">==</span> <span class="st">&quot;16&quot;</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_eval.num_fewshot <span class="op">==</span> <span class="dv">5</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_eval.device <span class="op">==</span> <span class="st">&quot;cpu&quot;</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_eval.use_adapter <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>Set <code>use_adapter=False</code> to evaluate the base model without
+the adapter. This is useful for measuring the delta that fine-tuning
+introduced.</p>
+<h3 id="task-presets">Task Presets</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(QUICK_TASKS, <span class="bu">list</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(QUICK_TASKS) <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;arc_easy&quot;</span> <span class="kw">in</span> QUICK_TASKS</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;hellaswag&quot;</span> <span class="kw">in</span> QUICK_TASKS</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;truthfulqa_mc1&quot;</span> <span class="kw">in</span> QUICK_TASKS</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(STANDARD_TASKS, <span class="bu">list</span>)</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(STANDARD_TASKS) <span class="op">==</span> <span class="dv">6</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;mmlu&quot;</span> <span class="kw">in</span> STANDARD_TASKS</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;winogrande&quot;</span> <span class="kw">in</span> STANDARD_TASKS</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;arc_challenge&quot;</span> <span class="kw">in</span> STANDARD_TASKS</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="co"># All quick tasks are in standard tasks</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> task <span class="kw">in</span> QUICK_TASKS:</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> task <span class="kw">in</span> STANDARD_TASKS, <span class="ss">f&quot;Quick task </span><span class="sc">{</span>task<span class="sc">}</span><span class="ss"> should also be in standard&quot;</span></span></code></pre></div>
+<p>QUICK_TASKS is a subset of STANDARD_TASKS. This means quick
+evaluations are directly comparable to standard ones on the overlapping
+benchmarks.</p>
+<h3 id="taskresult">TaskResult</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>task_result <span class="op">=</span> TaskResult(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    task_name<span class="op">=</span><span class="st">&quot;arc_easy&quot;</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    metrics<span class="op">=</span>{<span class="st">&quot;acc&quot;</span>: <span class="fl">0.75</span>, <span class="st">&quot;acc_norm&quot;</span>: <span class="fl">0.72</span>, <span class="st">&quot;acc_stderr&quot;</span>: <span class="fl">0.02</span>},</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    num_samples<span class="op">=</span><span class="dv">100</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    task_version<span class="op">=</span><span class="st">&quot;1.0&quot;</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> task_result.task_name <span class="op">==</span> <span class="st">&quot;arc_easy&quot;</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> task_result.metrics[<span class="st">&quot;acc&quot;</span>] <span class="op">==</span> <span class="fl">0.75</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> task_result.num_samples <span class="op">==</span> <span class="dv">100</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> task_result.task_version <span class="op">==</span> <span class="st">&quot;1.0&quot;</span></span></code></pre></div>
+<p>TaskResult captures the benchmark name, a metrics dictionary, sample
+count, and task version. The metrics dictionary follows lm-eval-harness
+conventions: <code>acc</code> (accuracy), <code>acc_norm</code>
+(length-normalized accuracy), and <code>acc_stderr</code> (standard
+error).</p>
+<h3 id="taskresult-serialization">TaskResult Serialization</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>task_dict <span class="op">=</span> task_result.to_dict()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> task_dict[<span class="st">&quot;task_name&quot;</span>] <span class="op">==</span> <span class="st">&quot;arc_easy&quot;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> task_dict[<span class="st">&quot;metrics&quot;</span>][<span class="st">&quot;acc&quot;</span>] <span class="op">==</span> <span class="fl">0.75</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Round-trip: to_dict -&gt; from_dict</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>restored <span class="op">=</span> TaskResult.from_dict(task_dict)</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> restored.task_name <span class="op">==</span> task_result.task_name</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> restored.metrics <span class="op">==</span> task_result.metrics</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> restored.num_samples <span class="op">==</span> task_result.num_samples</span></code></pre></div>
+<p>TaskResult supports round-trip serialization for storage in
+registries and databases.</p>
+<h3 id="evalresult-aggregated-report">EvalResult – Aggregated
+Report</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>eval_result <span class="op">=</span> EvalResult(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    adapter_name<span class="op">=</span><span class="st">&quot;my-adapter&quot;</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    adapter_version<span class="op">=</span><span class="st">&quot;3&quot;</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    task_results<span class="op">=</span>[</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>        TaskResult(</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>            task_name<span class="op">=</span><span class="st">&quot;arc_easy&quot;</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>            metrics<span class="op">=</span>{<span class="st">&quot;acc&quot;</span>: <span class="fl">0.75</span>, <span class="st">&quot;acc_norm&quot;</span>: <span class="fl">0.72</span>},</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>            num_samples<span class="op">=</span><span class="dv">100</span>,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        TaskResult(</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>            task_name<span class="op">=</span><span class="st">&quot;hellaswag&quot;</span>,</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>            metrics<span class="op">=</span>{<span class="st">&quot;acc&quot;</span>: <span class="fl">0.62</span>, <span class="st">&quot;acc_norm&quot;</span>: <span class="fl">0.58</span>},</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>            num_samples<span class="op">=</span><span class="dv">100</span>,</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>        TaskResult(</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>            task_name<span class="op">=</span><span class="st">&quot;truthfulqa_mc1&quot;</span>,</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>            metrics<span class="op">=</span>{<span class="st">&quot;acc&quot;</span>: <span class="fl">0.41</span>, <span class="st">&quot;mc2&quot;</span>: <span class="fl">0.55</span>},</span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>            num_samples<span class="op">=</span><span class="dv">100</span>,</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    eval_config<span class="op">=</span>{<span class="st">&quot;tasks&quot;</span>: [<span class="st">&quot;arc_easy&quot;</span>, <span class="st">&quot;hellaswag&quot;</span>, <span class="st">&quot;truthfulqa_mc1&quot;</span>], <span class="st">&quot;limit&quot;</span>: <span class="dv">100</span>},</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>    total_duration_seconds<span class="op">=</span><span class="fl">245.7</span>,</span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> eval_result.adapter_name <span class="op">==</span> <span class="st">&quot;my-adapter&quot;</span></span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> eval_result.adapter_version <span class="op">==</span> <span class="st">&quot;3&quot;</span></span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(eval_result.task_results) <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> eval_result.total_duration_seconds <span class="op">==</span> <span class="fl">245.7</span></span></code></pre></div>
+<p>EvalResult bundles all task results with adapter identification and
+timing information.</p>
+<h3 id="the-summary-property">The summary Property</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>summary <span class="op">=</span> eval_result.summary</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;arc_easy&quot;</span> <span class="kw">in</span> summary</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> summary[<span class="st">&quot;arc_easy&quot;</span>] <span class="op">==</span> <span class="fl">0.75</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;hellaswag&quot;</span> <span class="kw">in</span> summary</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> summary[<span class="st">&quot;hellaswag&quot;</span>] <span class="op">==</span> <span class="fl">0.62</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;truthfulqa_mc1&quot;</span> <span class="kw">in</span> summary</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> summary[<span class="st">&quot;truthfulqa_mc1&quot;</span>] <span class="op">==</span> <span class="fl">0.41</span></span></code></pre></div>
+<p>The <code>summary</code> property extracts the first metric
+containing <code>"acc"</code> from each task. This gives you a quick
+accuracy lookup without digging into individual TaskResults.</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># summary gracefully handles tasks with no &#39;acc&#39; key</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>no_acc_result <span class="op">=</span> EvalResult(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    adapter_name<span class="op">=</span><span class="st">&quot;test&quot;</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    adapter_version<span class="op">=</span><span class="st">&quot;1&quot;</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    task_results<span class="op">=</span>[</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>        TaskResult(</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>            task_name<span class="op">=</span><span class="st">&quot;custom_task&quot;</span>,</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>            metrics<span class="op">=</span>{<span class="st">&quot;f1&quot;</span>: <span class="fl">0.85</span>, <span class="st">&quot;precision&quot;</span>: <span class="fl">0.9</span>},</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>            num_samples<span class="op">=</span><span class="dv">50</span>,</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    eval_config<span class="op">=</span>{<span class="st">&quot;tasks&quot;</span>: [<span class="st">&quot;custom_task&quot;</span>]},</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    total_duration_seconds<span class="op">=</span><span class="fl">10.0</span>,</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> no_acc_result.summary <span class="op">==</span> {}, <span class="st">&quot;No &#39;acc&#39; metrics -&gt; empty summary&quot;</span></span></code></pre></div>
+<p>If a task has no accuracy metric, it is omitted from the summary
+rather than causing an error.</p>
+<h3 id="alignmentevaluator">AlignmentEvaluator</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>evaluator <span class="op">=</span> AlignmentEvaluator()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> evaluator._registry <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> AdapterRegistry</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>registry <span class="op">=</span> AdapterRegistry()</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>evaluator_with_registry <span class="op">=</span> AlignmentEvaluator(adapter_registry<span class="op">=</span>registry)</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> evaluator_with_registry._registry <span class="kw">is</span> registry</span></code></pre></div>
+<p>AlignmentEvaluator optionally takes an AdapterRegistry to
+automatically store evaluation results. Without a registry, results are
+returned but not persisted.</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create an EvalResult with results for all six STANDARD_TASKS. Use
+the <code>summary</code> property to find the task with the lowest
+accuracy. Which benchmark would you investigate first?</li>
+<li>Create two EvalConfigs: one with <code>use_adapter=True</code> and
+one with <code>use_adapter=False</code>. Explain how you would use them
+together to measure the improvement from fine-tuning.</li>
+<li>Write a function that takes two EvalResult objects (before and after
+fine-tuning) and returns a dictionary mapping task names to the accuracy
+delta (after - before). Which tasks improved? Which regressed?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>EvalConfig controls evaluation parameters: tasks, sample limit,
+batch size, device</li>
+<li>QUICK_TASKS (3 benchmarks, ~5 min) for iteration; STANDARD_TASKS (6
+benchmarks, ~60 min) for promotion</li>
+<li>TaskResult captures per-benchmark metrics; EvalResult aggregates
+into a report</li>
+<li>The <code>summary</code> property provides a quick accuracy lookup
+across all tasks</li>
+<li>Both TaskResult and EvalResult support round-trip serialization</li>
+<li>AlignmentEvaluator optionally integrates with AdapterRegistry for
+persistent storage</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="09_serving.md">Chapter 9: Serving Configuration</a> –
+Configure model serving with GGUF export, Ollama deployment, and vLLM
+backends.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

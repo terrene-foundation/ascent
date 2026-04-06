@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: LoRA
+Configuration &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-2-lora-configuration">Chapter 2: LoRA Configuration</h1>
+<h2 id="overview">Overview</h2>
+<p>LoRA (Low-Rank Adaptation) is the parameter-efficient fine-tuning
+strategy used by Kailash Align. Instead of updating all model weights,
+LoRA injects small trainable matrices into specific layers, dramatically
+reducing memory and compute requirements. This chapter teaches you how
+to configure LoRA parameters – rank, alpha, target modules, dropout, and
+bias – and understand their impact on training.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_alignment_config.md">Chapter 1: AlignmentConfig
+Basics</a></li>
+<li>Understanding of matrix decomposition concepts (helpful but not
+required)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-rank-and-alpha">Concept 1: Rank and Alpha</h3>
+<p><strong>Rank</strong> (<code>r</code>) controls the dimensionality of
+the low-rank matrices. Lower rank means fewer trainable parameters
+(faster, less memory) but less capacity to learn new behavior.
+<strong>Alpha</strong> (<code>alpha</code>) is a scaling factor applied
+to the LoRA update. The effective learning rate scales as
+<code>alpha / rank</code>, so the convention
+<code>alpha = 2 * rank</code> keeps the scaling constant as you change
+rank.</p>
+<ul>
+<li><strong>What</strong>: Two integers that control the size and
+scaling of LoRA adapter matrices</li>
+<li><strong>Why</strong>: They let you trade off between training
+speed/memory and model capacity</li>
+<li><strong>How</strong>: <code>LoRAConfig(rank=16, alpha=32)</code> –
+the default. Higher rank for more capacity, proportionally higher alpha
+to maintain scaling</li>
+<li><strong>When</strong>: Start with defaults; increase rank if the
+model underfits, decrease if you are memory-constrained</li>
+</ul>
+<h3 id="concept-2-target-modules">Concept 2: Target Modules</h3>
+<p>Target modules specify which layers in the base model receive LoRA
+adapters. The default targets attention projection layers
+(<code>q_proj</code>, <code>v_proj</code>, <code>k_proj</code>,
+<code>o_proj</code>). Adding MLP layers (<code>gate_proj</code>,
+<code>up_proj</code>) increases capacity at the cost of more
+parameters.</p>
+<ul>
+<li><strong>What</strong>: A tuple of layer name strings identifying
+which model components get LoRA matrices</li>
+<li><strong>Why</strong>: Not all layers benefit equally from
+fine-tuning; targeting attention projections is the most common and
+well-validated approach</li>
+<li><strong>How</strong>:
+<code>LoRAConfig(target_modules=("q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj"))</code></li>
+<li><strong>When</strong>: Extend beyond attention layers only when
+default targets underfit</li>
+</ul>
+<h3 id="concept-3-frozen-dataclass">Concept 3: Frozen Dataclass</h3>
+<p><code>LoRAConfig</code> is a <strong>frozen</strong> dataclass – once
+created, it cannot be modified. This prevents accidental mid-training
+config mutation and ensures reproducibility. To change a value, create a
+new <code>LoRAConfig</code>.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 38%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rank</code></td>
+<td><code>int</code></td>
+<td><code>16</code></td>
+<td>Low-rank matrix dimension (&gt;= 1)</td>
+</tr>
+<tr>
+<td><code>alpha</code></td>
+<td><code>int</code></td>
+<td><code>32</code></td>
+<td>Scaling factor (&gt;= 1)</td>
+</tr>
+<tr>
+<td><code>target_modules</code></td>
+<td><code>tuple[str,...]</code></td>
+<td><code>("q_proj", "v_proj", "k_proj", "o_proj")</code></td>
+<td>Which layers get LoRA adapters</td>
+</tr>
+<tr>
+<td><code>dropout</code></td>
+<td><code>float</code></td>
+<td><code>0.05</code></td>
+<td>Dropout rate on LoRA layers [0, 1)</td>
+</tr>
+<tr>
+<td><code>bias</code></td>
+<td><code>str</code></td>
+<td><code>"none"</code></td>
+<td>Bias training: none, all, lora_only</td>
+</tr>
+<tr>
+<td><code>task_type</code></td>
+<td><code>str</code></td>
+<td><code>"CAUSAL_LM"</code></td>
+<td>PEFT task type</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> math</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> LoRAConfig</span></code></pre></div>
+<h3 id="default-configuration">Default Configuration</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>default <span class="op">=</span> LoRAConfig()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.rank <span class="op">==</span> <span class="dv">16</span>, <span class="ss">f&quot;Default rank should be 16, got </span><span class="sc">{</span>default<span class="sc">.</span>rank<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.alpha <span class="op">==</span> <span class="dv">32</span>, <span class="ss">f&quot;Default alpha should be 32, got </span><span class="sc">{</span>default<span class="sc">.</span>alpha<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.target_modules <span class="op">==</span> (<span class="st">&quot;q_proj&quot;</span>, <span class="st">&quot;v_proj&quot;</span>, <span class="st">&quot;k_proj&quot;</span>, <span class="st">&quot;o_proj&quot;</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.dropout <span class="op">==</span> <span class="fl">0.05</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.bias <span class="op">==</span> <span class="st">&quot;none&quot;</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.task_type <span class="op">==</span> <span class="st">&quot;CAUSAL_LM&quot;</span></span></code></pre></div>
+<p>The defaults are well-tested starting points: rank 16 with alpha 32
+(2x scaling), attention projections only, 5% dropout, no bias
+training.</p>
+<h3 id="custom-configuration">Custom Configuration</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>custom <span class="op">=</span> LoRAConfig(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    rank<span class="op">=</span><span class="dv">64</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    alpha<span class="op">=</span><span class="dv">128</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    target_modules<span class="op">=</span>(<span class="st">&quot;q_proj&quot;</span>, <span class="st">&quot;v_proj&quot;</span>, <span class="st">&quot;k_proj&quot;</span>, <span class="st">&quot;o_proj&quot;</span>, <span class="st">&quot;gate_proj&quot;</span>, <span class="st">&quot;up_proj&quot;</span>),</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    dropout<span class="op">=</span><span class="fl">0.1</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    bias<span class="op">=</span><span class="st">&quot;lora_only&quot;</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.rank <span class="op">==</span> <span class="dv">64</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.alpha <span class="op">==</span> <span class="dv">128</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(custom.target_modules) <span class="op">==</span> <span class="dv">6</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;gate_proj&quot;</span> <span class="kw">in</span> custom.target_modules</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.dropout <span class="op">==</span> <span class="fl">0.1</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.bias <span class="op">==</span> <span class="st">&quot;lora_only&quot;</span></span></code></pre></div>
+<p>This high-capacity config targets 6 layers with rank 64. The
+<code>"lora_only"</code> bias setting trains bias terms only on
+LoRA-adapted layers.</p>
+<h3 id="immutability">Immutability</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    default.rank <span class="op">=</span> <span class="dv">32</span>  <span class="co"># type: ignore[misc]</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised FrozenInstanceError&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">AttributeError</span>:</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: frozen dataclass cannot be modified</span></span></code></pre></div>
+<p>Attempting to modify any field after creation raises
+<code>AttributeError</code>. Create a new config instead.</p>
+<h3 id="rank-validation">Rank Validation</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    LoRAConfig(rank<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;rank&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    LoRAConfig(rank<span class="op">=-</span><span class="dv">1</span>)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;rank&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span></code></pre></div>
+<p>Rank must be at least 1. Zero or negative values are rejected at
+creation time.</p>
+<h3 id="dropout-validation">Dropout Validation</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>zero_dropout <span class="op">=</span> LoRAConfig(dropout<span class="op">=</span><span class="fl">0.0</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> zero_dropout.dropout <span class="op">==</span> <span class="fl">0.0</span>, <span class="st">&quot;Zero dropout is valid&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    LoRAConfig(dropout<span class="op">=</span><span class="fl">1.0</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;dropout&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    LoRAConfig(dropout<span class="op">=-</span><span class="fl">0.1</span>)</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;dropout&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span></code></pre></div>
+<p>Dropout must be in the half-open interval <code>[0, 1)</code>. Zero
+is valid (no dropout). Values of 1.0 or above, and negative values, are
+rejected. <code>NaN</code> and <code>Inf</code> are also rejected.</p>
+<h3 id="target-modules-must-not-be-empty">Target Modules Must Not Be
+Empty</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    LoRAConfig(target_modules<span class="op">=</span>())</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;target_modules&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span></code></pre></div>
+<p>At least one target module is required – LoRA with no target layers
+would be a no-op.</p>
+<h3 id="bias-validation">Bias Validation</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> valid_bias <span class="kw">in</span> (<span class="st">&quot;none&quot;</span>, <span class="st">&quot;all&quot;</span>, <span class="st">&quot;lora_only&quot;</span>):</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    cfg <span class="op">=</span> LoRAConfig(bias<span class="op">=</span>valid_bias)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> cfg.bias <span class="op">==</span> valid_bias</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    LoRAConfig(bias<span class="op">=</span><span class="st">&quot;invalid&quot;</span>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;bias&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span></code></pre></div>
+<p>Only three bias strategies are supported: <code>"none"</code> (freeze
+all biases), <code>"all"</code> (train all biases), and
+<code>"lora_only"</code> (train biases only on LoRA-adapted layers).</p>
+<h3 id="common-patterns">Common Patterns</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Low-rank: fewer parameters, faster training, less capacity</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>low_rank <span class="op">=</span> LoRAConfig(rank<span class="op">=</span><span class="dv">4</span>, alpha<span class="op">=</span><span class="dv">8</span>)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> low_rank.rank <span class="op">==</span> <span class="dv">4</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> low_rank.alpha <span class="op">==</span> <span class="dv">8</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="co"># High-rank: more parameters, slower training, more capacity</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>high_rank <span class="op">=</span> LoRAConfig(rank<span class="op">=</span><span class="dv">128</span>, alpha<span class="op">=</span><span class="dv">256</span>)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> high_rank.rank <span class="op">==</span> <span class="dv">128</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Typical convention: alpha = 2 * rank</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.alpha <span class="op">==</span> default.rank <span class="op">*</span> <span class="dv">2</span>, <span class="st">&quot;Convention: alpha = 2 * rank&quot;</span></span></code></pre></div>
+<p>The <code>alpha = 2 * rank</code> convention keeps the effective LoRA
+scaling constant regardless of rank. This means changing rank only
+affects capacity, not the magnitude of updates.</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create three LoRAConfig instances: low-capacity (rank=4), medium
+(rank=16, default), and high-capacity (rank=128). For each, calculate
+the ratio <code>alpha / rank</code> and verify it equals 2.</li>
+<li>What happens if you try to create a LoRAConfig with
+<code>dropout=float("nan")</code>? Why does the validator reject
+it?</li>
+<li>Create a LoRAConfig that targets all six common layers
+(<code>q_proj</code>, <code>v_proj</code>, <code>k_proj</code>,
+<code>o_proj</code>, <code>gate_proj</code>, <code>up_proj</code>) with
+<code>bias="lora_only"</code>. In what scenario would you choose this
+over the default four-layer config?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>LoRAConfig</code> controls parameter-efficient fine-tuning
+through rank, alpha, target modules, dropout, and bias</li>
+<li>The <code>alpha = 2 * rank</code> convention maintains consistent
+update scaling across different rank values</li>
+<li>The config is frozen (immutable) after creation for
+reproducibility</li>
+<li>All fields are validated at creation time: rank &gt;= 1, alpha &gt;=
+1, dropout in [0, 1), bias in {none, all, lora_only}</li>
+<li>Target modules default to attention projections; add MLP layers for
+more capacity</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="03_sft_config.md">Chapter 3: SFT Configuration</a> –
+Configure Supervised Fine-Tuning parameters including learning rate,
+batch size, sequence length, and precision settings.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

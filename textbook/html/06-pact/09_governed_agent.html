@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 9: Governed Agent &amp;
+GovernanceContext &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-9-governed-agent-governancecontext">Chapter 9: Governed
+Agent &amp; GovernanceContext</h1>
+<h2 id="overview">Overview</h2>
+<p><strong>GovernanceContext</strong> is the frozen, read-only snapshot
+that agents receive instead of the mutable GovernanceEngine. This is the
+anti-self-modification defense: agents can check their own permissions
+but cannot escalate them. This chapter teaches you how to obtain a
+GovernanceContext, inspect its contents, and implement the
+governance-check-before-action pattern that production agents use.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="08_governance_engine.md">Chapter 8:
+GovernanceEngine</a></li>
+<li><a href="03_clearance.md">Chapter 3: Clearance Levels</a></li>
+<li><a href="04_envelopes.md">Chapter 4: Constraint Envelopes</a></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-governancecontext-the-frozen-snapshot">Concept 1:
+GovernanceContext — The Frozen Snapshot</h3>
+<p>GovernanceContext is an immutable (frozen) dataclass that captures a
+role’s governance state at a point in time. It contains the role
+address, trust posture, effective envelope, clearance, allowed actions,
+and compartments. Because it is frozen, agents cannot modify their own
+permissions.</p>
+<ul>
+<li><strong>What</strong>: A frozen snapshot of a role’s governance
+permissions at context-creation time</li>
+<li><strong>Why</strong>: Giving agents direct access to
+GovernanceEngine would allow self-modification — escalating clearance,
+widening envelopes, or changing org structure</li>
+<li><strong>How</strong>:
+<code>ctx = engine.get_context(role_address="...", posture=TrustPosture.SUPERVISED)</code></li>
+<li><strong>When</strong>: Every agent receives a GovernanceContext at
+initialization; it is the only governance object agents should hold</li>
+</ul>
+<h3 id="concept-2-trust-posture-capping">Concept 2: Trust Posture
+Capping</h3>
+<p>The effective clearance level is the minimum of the role’s granted
+clearance and the posture ceiling. Higher trust postures (DELEGATED)
+have higher ceilings; lower postures (PSEUDO_AGENT) cap clearance to
+PUBLIC regardless of what was granted.</p>
+<ul>
+<li><strong>What</strong>: A mechanism that limits effective clearance
+based on the operational trust posture</li>
+<li><strong>Why</strong>: Even a highly-cleared agent running in a
+low-trust mode should not access sensitive data</li>
+<li><strong>How</strong>:
+<code>effective = min(role_clearance.max_clearance, posture_ceiling[posture])</code></li>
+<li><strong>When</strong>: Automatically applied when
+<code>engine.get_context()</code> creates the snapshot</li>
+</ul>
+<h3 id="concept-3-the-check-before-action-pattern">Concept 3: The
+Check-Before-Action Pattern</h3>
+<p>Agents follow a two-step pattern: (1) quick check against the
+context’s <code>allowed_actions</code> set (no engine call), then (2)
+full verification through <code>engine.verify_action()</code> for the
+audit trail. If either step blocks, the agent raises
+<code>GovernanceBlockedError</code>.</p>
+<ul>
+<li><strong>What</strong>: A defense-in-depth pattern where agents
+verify governance before every action</li>
+<li><strong>Why</strong>: Quick local checks are fast but may miss
+dynamic state; full engine verification is authoritative but slower —
+combining both gives speed and correctness</li>
+<li><strong>How</strong>: Check
+<code>action in ctx.allowed_actions</code> first, then call
+<code>engine.verify_action()</code></li>
+<li><strong>When</strong>: Before every action that modifies state,
+accesses data, or spends budget</li>
+</ul>
+<h3 id="concept-4-security-invariants">Concept 4: Security
+Invariants</h3>
+<p>GovernanceContext enforces three security invariants: (1) frozen — no
+attribute mutation after creation, (2) unpicklable — cannot be
+serialized and forged, (3) no engine reference — the context has no
+access to mutable governance state.</p>
+<ul>
+<li><strong>What</strong>: Invariants that prevent privilege escalation,
+context forging, and self-modification</li>
+<li><strong>Why</strong>: Without these, a compromised agent could
+pickle a context, modify it, unpickle it, and gain elevated
+permissions</li>
+<li><strong>How</strong>: <code>@dataclass(frozen=True)</code>, custom
+<code>__reduce__</code> that raises TypeError, no engine attribute</li>
+<li><strong>When</strong>: Always enforced — these are not
+configurable</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Attribute</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>engine.get_context()</code></td>
+<td><code>role_address, posture</code> →
+<code>GovernanceContext</code></td>
+<td>Create a frozen governance snapshot</td>
+</tr>
+<tr>
+<td><code>ctx.role_address</code></td>
+<td><code>str</code></td>
+<td>The D/T/R address of the governed role</td>
+</tr>
+<tr>
+<td><code>ctx.posture</code></td>
+<td><code>TrustPosture</code></td>
+<td>Trust posture level</td>
+</tr>
+<tr>
+<td><code>ctx.effective_envelope</code></td>
+<td><code>ConstraintEnvelopeConfig</code></td>
+<td>Effective constraint envelope</td>
+</tr>
+<tr>
+<td><code>ctx.allowed_actions</code></td>
+<td><code>frozenset[str]</code></td>
+<td>Permitted actions</td>
+</tr>
+<tr>
+<td><code>ctx.clearance</code></td>
+<td><code>RoleClearance | None</code></td>
+<td>Clearance grant</td>
+</tr>
+<tr>
+<td><code>ctx.effective_clearance_level</code></td>
+<td><code>ConfidentialityLevel | None</code></td>
+<td>Posture-capped clearance</td>
+</tr>
+<tr>
+<td><code>ctx.compartments</code></td>
+<td><code>frozenset[str]</code></td>
+<td>Accessible compartments</td>
+</tr>
+<tr>
+<td><code>ctx.to_dict()</code></td>
+<td>→ <code>dict</code></td>
+<td>Safe serialization for logging</td>
+</tr>
+<tr>
+<td><code>GovernanceContext.from_dict()</code></td>
+<td><code>dict</code> → <code>GovernanceContext</code></td>
+<td>Reconstruct (emits warning)</td>
+</tr>
+<tr>
+<td><code>GovernanceBlockedError</code></td>
+<td>Exception</td>
+<td>Raised on blocked actions</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="setting-up-the-organization-and-engine">Setting up the
+organization and engine</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> (</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    GovernanceBlockedError, GovernanceContext, GovernanceEngine,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    GovernanceVerdict, RoleClearance, RoleDefinition, RoleEnvelope, VettingStatus,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact.config <span class="im">import</span> (</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    ConstraintEnvelopeConfig, DepartmentConfig, FinancialConstraintConfig,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    OperationalConstraintConfig, OrgDefinition, TeamConfig,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust <span class="im">import</span> ConfidentialityLevel, TrustPosture</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>org_def <span class="op">=</span> OrgDefinition(</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    org_id<span class="op">=</span><span class="st">&quot;agent-demo&quot;</span>,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;Agent Demo Corp&quot;</span>,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    departments<span class="op">=</span>[DepartmentConfig(department_id<span class="op">=</span><span class="st">&quot;ops&quot;</span>, name<span class="op">=</span><span class="st">&quot;Operations&quot;</span>)],</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    teams<span class="op">=</span>[TeamConfig(<span class="bu">id</span><span class="op">=</span><span class="st">&quot;deploy&quot;</span>, name<span class="op">=</span><span class="st">&quot;Deployment Team&quot;</span>, workspace<span class="op">=</span><span class="st">&quot;ws&quot;</span>)],</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    roles<span class="op">=</span>[</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;vp-ops&quot;</span>, name<span class="op">=</span><span class="st">&quot;VP Operations&quot;</span>, is_primary_for_unit<span class="op">=</span><span class="st">&quot;ops&quot;</span>),</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;deploy-lead&quot;</span>, name<span class="op">=</span><span class="st">&quot;Deployment Lead&quot;</span>,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>                       reports_to_role_id<span class="op">=</span><span class="st">&quot;vp-ops&quot;</span>, is_primary_for_unit<span class="op">=</span><span class="st">&quot;deploy&quot;</span>),</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;deploy-agent&quot;</span>, name<span class="op">=</span><span class="st">&quot;Deploy Agent&quot;</span>,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>                       reports_to_role_id<span class="op">=</span><span class="st">&quot;deploy-lead&quot;</span>, agent_id<span class="op">=</span><span class="st">&quot;agent-deploy-01&quot;</span>),</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>engine <span class="op">=</span> GovernanceEngine(org_def)</span></code></pre></div>
+<p>We define a simple three-role hierarchy: VP Operations → Deployment
+Lead → Deploy Agent. The agent role has an <code>agent_id</code>,
+marking it as an AI agent.</p>
+<h3 id="granting-clearance-and-setting-envelopes">Granting clearance and
+setting envelopes</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>engine.grant_clearance(<span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>, RoleClearance(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    max_clearance<span class="op">=</span>ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    compartments<span class="op">=</span><span class="bu">frozenset</span>({<span class="st">&quot;deployment-configs&quot;</span>}),</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    vetting_status<span class="op">=</span>VettingStatus.ACTIVE,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>))</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>engine.set_role_envelope(RoleEnvelope(</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">&quot;re-deploy-agent&quot;</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    defining_role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1&quot;</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    target_role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    envelope<span class="op">=</span>ConstraintEnvelopeConfig(</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        <span class="bu">id</span><span class="op">=</span><span class="st">&quot;env-deploy-agent&quot;</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>        confidentiality_clearance<span class="op">=</span>ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>        financial<span class="op">=</span>FinancialConstraintConfig(max_spend_usd<span class="op">=</span><span class="fl">100.0</span>),</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        operational<span class="op">=</span>OperationalConstraintConfig(</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>            allowed_actions<span class="op">=</span>[<span class="st">&quot;read&quot;</span>, <span class="st">&quot;deploy&quot;</span>, <span class="st">&quot;rollback&quot;</span>],</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>            blocked_actions<span class="op">=</span>[<span class="st">&quot;delete_production&quot;</span>, <span class="st">&quot;approve&quot;</span>],</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>))</span></code></pre></div>
+<p>The deploy lead defines the agent’s envelope: read, deploy, rollback
+are allowed; delete_production and approve are blocked.</p>
+<h3 id="getting-a-governancecontext">Getting a GovernanceContext</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>ctx <span class="op">=</span> engine.get_context(role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>, posture<span class="op">=</span>TrustPosture.SUPERVISED)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(ctx, GovernanceContext)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ctx.role_address <span class="op">==</span> <span class="st">&quot;D1-R1-T1-R1-R1&quot;</span></span></code></pre></div>
+<h3 id="verifying-immutability">Verifying immutability</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    ctx.posture <span class="op">=</span> TrustPosture.DELEGATED</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">AttributeError</span>:</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: frozen=True prevents mutation</span></span></code></pre></div>
+<h3 id="checking-allowed-actions">Checking allowed actions</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;deploy&quot;</span> <span class="kw">in</span> ctx.allowed_actions</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;delete_production&quot;</span> <span class="kw">not</span> <span class="kw">in</span> ctx.allowed_actions</span></code></pre></div>
+<h3 id="the-check-before-action-pattern">The check-before-action
+pattern</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> agent_perform_action(context, engine_ref, action):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> action <span class="kw">not</span> <span class="kw">in</span> context.allowed_actions:</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> GovernanceBlockedError(GovernanceVerdict(</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>            level<span class="op">=</span><span class="st">&quot;blocked&quot;</span>, reason<span class="op">=</span><span class="ss">f&quot;Action &#39;</span><span class="sc">{</span>action<span class="sc">}</span><span class="ss">&#39; not in allowed_actions&quot;</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>            role_address<span class="op">=</span>context.role_address, action<span class="op">=</span>action,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        ))</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    verdict <span class="op">=</span> engine_ref.verify_action(context.role_address, action)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> verdict.is_blocked:</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> GovernanceBlockedError(verdict)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ss">f&quot;Action &#39;</span><span class="sc">{</span>action<span class="sc">}</span><span class="ss">&#39; executed successfully&quot;</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> agent_perform_action(ctx, engine, <span class="st">&quot;deploy&quot;</span>)</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;successfully&quot;</span> <span class="kw">in</span> result</span></code></pre></div>
+<h3 id="posture-capped-clearance">Posture-capped clearance</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># SUPERVISED ceiling = RESTRICTED → effective = RESTRICTED</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ctx.effective_clearance_level <span class="op">==</span> ConfidentialityLevel.RESTRICTED</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co"># PSEUDO_AGENT ceiling = PUBLIC → effective = PUBLIC</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>pseudo_ctx <span class="op">=</span> engine.get_context(role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>, posture<span class="op">=</span>TrustPosture.PSEUDO_AGENT)</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> pseudo_ctx.effective_clearance_level <span class="op">==</span> ConfidentialityLevel.PUBLIC</span></code></pre></div>
+<h3 id="security-unpicklable-context">Security: unpicklable context</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pickle</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    pickle.dumps(ctx)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span> <span class="im">as</span> e:</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;cannot be pickled&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e).lower()</span></code></pre></div>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Add a second agent role</strong> — Define a
+“monitor-agent” under the deploy team with read-only actions. Create its
+context and verify it cannot deploy.</p></li>
+<li><p><strong>Budget checking</strong> — Extend
+<code>agent_perform_action</code> to check
+<code>ctx.effective_envelope.financial.max_spend_usd</code> before
+allowing actions that cost money. Simulate a $150 action and verify it
+raises GovernanceBlockedError.</p></li>
+<li><p><strong>Posture comparison</strong> — Get contexts for the same
+role at all three posture levels (DELEGATED, SUPERVISED, PSEUDO_AGENT).
+Create a table showing effective clearance level and allowed
+compartments at each posture.</p></li>
+</ol>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

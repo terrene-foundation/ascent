@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: ML to Nexus
+Deployment &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-2-ml-to-nexus-deployment">Chapter 2: ML to Nexus
+Deployment</h1>
+<h2 id="overview">Overview</h2>
+<p>After training and registering a model, the next step is making it
+available to consumers – web applications, APIs, and AI agents. This
+chapter teaches the deployment pipeline: export a trained model to ONNX
+format with <strong>OnnxBridge</strong>, load it into
+<strong>InferenceServer</strong> for predictions, and expose it through
+<strong>Nexus</strong> for multi-channel access (REST API + MCP tools
+simultaneously).</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_ml_to_registry.md">Chapter 1: ML to Registry
+Pipeline</a></li>
+<li>Kailash Nexus installed
+(<code>pip install kailash-nexus</code>)</li>
+<li>Understanding of ONNX format (helpful)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-deployment-pipeline">Concept 1: The Deployment
+Pipeline</h3>
+<p>The full path from a trained model to a production endpoint:</p>
+<pre><code>TrainingPipeline.train()
+    -&gt; OnnxBridge.export(model)           # Convert to ONNX
+    -&gt; OnnxBridge.validate(onnx_model)    # Verify correctness
+    -&gt; InferenceServer(model_path)        # Load for serving
+    -&gt; InferenceServer.predict(input)     # Single prediction
+    -&gt; Nexus.register(&quot;predict&quot;, workflow) # Expose via API+MCP
+    -&gt; Nexus.start()                      # Go live</code></pre>
+<ul>
+<li><strong>What</strong>: A six-step pipeline from training artifacts
+to live multi-channel endpoints</li>
+<li><strong>Why</strong>: Each step adds a capability – ONNX for
+portability, InferenceServer for caching, Nexus for multi-channel
+access</li>
+<li><strong>How</strong>: Chain the output of each step into the
+next</li>
+<li><strong>When</strong>: Whenever a model needs to serve live
+traffic</li>
+</ul>
+<h3 id="concept-2-onnxbridge">Concept 2: OnnxBridge</h3>
+<p>OnnxBridge converts trained models from their native format (sklearn,
+xgboost, etc.) to ONNX (Open Neural Network Exchange). ONNX models are
+portable across runtimes and languages, and enable hardware-specific
+optimizations.</p>
+<ul>
+<li><strong>What</strong>: A converter from ML framework models to ONNX
+format with validation</li>
+<li><strong>Why</strong>: ONNX decouples training framework from
+inference runtime, enabling optimized serving</li>
+<li><strong>How</strong>:
+<code>onnx_model = OnnxBridge.export(trained_model, input_schema)</code>
+then <code>OnnxBridge.validate(onnx_model)</code></li>
+<li><strong>When</strong>: After training, before loading into
+InferenceServer</li>
+</ul>
+<h3 id="concept-3-multi-channel-exposure-via-nexus">Concept 3:
+Multi-Channel Exposure via Nexus</h3>
+<p>When you register a handler with Nexus, it becomes available on
+multiple channels simultaneously:</p>
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Access Pattern</th>
+<th>Consumer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP</td>
+<td><code>POST /workflows/predict/execute</code></td>
+<td>Web apps, mobile</td>
+</tr>
+<tr>
+<td>MCP</td>
+<td>Tool: <code>workflow_predict</code></td>
+<td>AI agents</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>What</strong>: Single registration produces endpoints on all
+channels</li>
+<li><strong>Why</strong>: AI agents and web applications can both access
+the same model without separate integrations</li>
+<li><strong>How</strong>: <code>app.handler("predict")</code> registers
+a handler that Nexus exposes on all channels</li>
+<li><strong>When</strong>: Whenever the model needs to be accessible to
+both human and AI consumers</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 27%" />
+<col style="width: 16%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Class</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnnxBridge.export()</code></td>
+<td><code>model</code>, <code>input_schema</code></td>
+<td><code>onnx_model</code></td>
+<td>Convert to ONNX format</td>
+</tr>
+<tr>
+<td><code>OnnxBridge.validate()</code></td>
+<td><code>onnx_model</code></td>
+<td><code>bool</code></td>
+<td>Verify ONNX correctness</td>
+</tr>
+<tr>
+<td><code>InferenceServer()</code></td>
+<td><code>model_path</code></td>
+<td><code>InferenceServer</code></td>
+<td>Create a prediction server</td>
+</tr>
+<tr>
+<td><code>server.predict()</code></td>
+<td><code>input_data</code></td>
+<td><code>result</code></td>
+<td>Single prediction</td>
+</tr>
+<tr>
+<td><code>server.predict_batch()</code></td>
+<td><code>batch_data</code></td>
+<td><code>results</code></td>
+<td>Batch prediction</td>
+</tr>
+<tr>
+<td><code>Nexus()</code></td>
+<td><code>enable_durability</code>, <code>preset</code></td>
+<td><code>Nexus</code></td>
+<td>Create multi-channel platform</td>
+</tr>
+<tr>
+<td><code>@app.handler()</code></td>
+<td><code>name</code>, <code>description</code></td>
+<td>decorator</td>
+<td>Register a handler on all channels</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml <span class="im">import</span> InferenceServer, OnnxBridge</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span></code></pre></div>
+<h3 id="the-deployment-pipeline">The Deployment Pipeline</h3>
+<p>The full production path involves six steps. Here we demonstrate the
+Nexus registration pattern:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># InferenceServer configuration:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co"># server = InferenceServer(model_path=&quot;model.onnx&quot;)</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"># await server.initialize()</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># result = await server.predict(input_data)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"># results = await server.predict_batch(batch_data)</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co"># await server.warm_cache()  # Pre-load for low-latency</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co"># OnnxBridge configuration:</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"># onnx_model = OnnxBridge.export(trained_model, input_schema)</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co"># is_valid = OnnxBridge.validate(onnx_model)</span></span></code></pre></div>
+<p>InferenceServer handles model loading, warm caching (pre-loading into
+memory for low-latency first requests), and both single and batch
+predictions. OnnxBridge handles the conversion from native ML formats to
+ONNX.</p>
+<h3 id="nexus-handler-registration">Nexus Handler Registration</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="at">@app.handler</span>(<span class="st">&quot;predict&quot;</span>, description<span class="op">=</span><span class="st">&quot;Run model prediction&quot;</span>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> predict(features: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Handler that wraps InferenceServer.predict().&quot;&quot;&quot;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># In production:</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># result = await server.predict(json.loads(features))</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># return {&quot;prediction&quot;: result.prediction, &quot;confidence&quot;: result.confidence}</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">&quot;prediction&quot;</span>: <span class="dv">1</span>, <span class="st">&quot;confidence&quot;</span>: <span class="fl">0.92</span>}</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify registration</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> app._registry <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>The <code>@app.handler</code> decorator registers the function with
+Nexus. After <code>app.start()</code>, this handler is available as both
+a REST endpoint (<code>POST /workflows/predict/execute</code>) and an
+MCP tool (<code>workflow_predict</code>).</p>
+<h3 id="multi-channel-access">Multi-Channel Access</h3>
+<p>After registration, consumers access the model through their
+preferred channel:</p>
+<ul>
+<li><strong>Web applications</strong> call
+<code>POST /workflows/predict/execute</code> with feature data</li>
+<li><strong>AI agents</strong> call the <code>workflow_predict</code>
+MCP tool, enabling agents to use ML models as reasoning tools</li>
+<li><strong>CLI users</strong> interact through the Nexus CLI
+channel</li>
+</ul>
+<p>This single registration, multi-channel deployment pattern eliminates
+the need to build separate API and agent integrations.</p>
+<h3 id="production-pattern">Production Pattern</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># In production, combine all engines:</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">#   from kailash_ml import TrainingPipeline, ModelRegistry, InferenceServer, OnnxBridge</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">#   from nexus import Nexus</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">#   # Train</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   model, metrics = pipeline.train(data, target=&quot;y&quot;)</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   # Register</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co">#   version = await registry.register_model(&quot;model&quot;, artifact=pickle.dumps(model))</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="co">#   await registry.promote_model(&quot;model&quot;, version.version, &quot;production&quot;)</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="co">#   # Export and serve</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="co">#   onnx = OnnxBridge.export(model, schema)</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="co">#   server = InferenceServer(onnx_path)</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="co">#   await server.initialize()</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a><span class="co">#   # Deploy</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="co">#   app = Nexus(preset=&quot;production&quot;)</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="co">#   app.register(&quot;predict&quot;, prediction_workflow)</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="co">#   app.start()</span></span></code></pre></div>
+<p>The production pattern chains all four Kailash packages: kailash-ml
+(training + registry), OnnxBridge (export), InferenceServer (serving),
+and Nexus (multi-channel deployment).</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a Nexus app with two handlers: one for single predictions and
+one for batch predictions. Both should wrap an InferenceServer. What
+HTTP endpoints and MCP tools does this produce?</li>
+<li>Why is ONNX export important for production serving? What problems
+would arise if you served the pickle-serialized model directly?</li>
+<li>Describe the difference between <code>server.predict()</code> and
+<code>server.predict_batch()</code>. When would you use each in a Nexus
+handler?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>The deployment pipeline is: Train -&gt; ONNX Export -&gt;
+InferenceServer -&gt; Nexus</li>
+<li>OnnxBridge converts models to portable ONNX format with
+validation</li>
+<li>InferenceServer handles model loading, caching, and prediction
+(single + batch)</li>
+<li>Nexus exposes handlers on all channels simultaneously (HTTP +
+MCP)</li>
+<li>Single registration produces both REST API and MCP tool access</li>
+<li>AI agents can call ML models via MCP tools, enabling agent-driven
+data science</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="03_agent_with_tools.md">Chapter 3: Agent with ML Tools</a> –
+Give a Kaizen AI agent access to ML engines as tools.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

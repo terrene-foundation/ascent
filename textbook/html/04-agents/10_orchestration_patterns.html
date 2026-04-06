@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 10: Multi-Agent Orchestration
+Patterns &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-10-multi-agent-orchestration-patterns">Chapter 10:
+Multi-Agent Orchestration Patterns</h1>
+<h2 id="overview">Overview</h2>
+<p>Kailash Kaizen provides five formal multi-agent coordination
+patterns, each implementing a distinct collaboration model. All patterns
+inherit from <code>BaseMultiAgentPattern</code> and provide a uniform
+<code>execute()</code> interface. This chapter teaches you how to choose
+between supervisor-worker delegation, democratic consensus, adversarial
+debate, sequential handoff, and staged pipeline – and when each pattern
+is the right tool.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapters 1-9 (all individual agent types,
+GovernedSupervisor, Pipeline, ToT)</li>
+<li>Understanding of multi-agent composition from Chapter 8
+(Pipeline)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-basemultiagentpattern">Concept 1:
+BaseMultiAgentPattern</h3>
+<p>All orchestration patterns inherit from
+<code>BaseMultiAgentPattern</code>, which provides agent registration,
+execution lifecycle management, and result aggregation. This base class
+ensures that every pattern – regardless of its coordination model – has
+the same interface: register agents, call <code>execute()</code>, get
+results.</p>
+<ul>
+<li><strong>What</strong>: An abstract base class that defines the
+contract for all multi-agent patterns</li>
+<li><strong>Why</strong>: A uniform interface makes patterns
+interchangeable – you can swap supervisor-worker for consensus without
+changing the calling code</li>
+<li><strong>How</strong>: Subclass <code>BaseMultiAgentPattern</code>,
+implement the coordination logic, call <code>execute(task)</code> to
+run</li>
+<li><strong>When</strong>: When building a new coordination pattern that
+is not covered by the five built-in ones</li>
+</ul>
+<h3 id="concept-2-supervisor-worker-pattern">Concept 2:
+Supervisor-Worker Pattern</h3>
+<p>A supervisor agent delegates tasks to specialized worker agents, then
+aggregates their results. The supervisor decides what to delegate (using
+LLM reasoning, not code conditionals), and workers execute
+independently. A coordinator handles task distribution.</p>
+<ul>
+<li><strong>What</strong>: One supervisor + N workers, where the
+supervisor plans and workers execute</li>
+<li><strong>Why</strong>: Complex analysis benefits from specialist
+decomposition – one agent cannot be expert at everything</li>
+<li><strong>How</strong>:
+<code>create_supervisor_worker_pattern(supervisor, workers)</code>
+creates the pattern; <code>execute(task)</code> runs it</li>
+<li><strong>When</strong>: When a task naturally decomposes into
+specialist sub-tasks (e.g., data analysis split across data analyst,
+model builder, and evaluator)</li>
+</ul>
+<h3 id="concept-3-consensus-pattern">Concept 3: Consensus Pattern</h3>
+<p>Multiple agents propose solutions, vote on each other’s proposals,
+and an aggregator synthesizes the final decision. This is democratic
+decision-making for high-stakes scenarios where no single agent’s
+judgment should be definitive.</p>
+<ul>
+<li><strong>What</strong>: Proposers generate solutions, voters rank
+them, an aggregator produces the final verdict</li>
+<li><strong>Why</strong>: High-stakes decisions (model selection, risk
+assessment) benefit from diverse perspectives and democratic
+validation</li>
+<li><strong>How</strong>:
+<code>create_consensus_pattern(proposers, voters, aggregator)</code>
+sets up the pattern</li>
+<li><strong>When</strong>: When the cost of a wrong decision is high and
+multiple independent perspectives reduce risk</li>
+</ul>
+<h3 id="concept-4-debate-pattern">Concept 4: Debate Pattern</h3>
+<p>An adversarial pattern with three fixed roles: a proponent argues FOR
+a position, an opponent argues AGAINST, and a judge evaluates both
+arguments to decide. Multiple rounds of debate are supported. This
+forces robust reasoning through challenge.</p>
+<ul>
+<li><strong>What</strong>: Proponent + Opponent + Judge in structured
+argumentation rounds</li>
+<li><strong>Why</strong>: Adversarial challenge reveals weaknesses that
+collaborative agents miss – if an argument survives opposition, it is
+more robust</li>
+<li><strong>How</strong>:
+<code>create_debate_pattern(proponent, opponent, judge, rounds=3)</code>
+creates the debate</li>
+<li><strong>When</strong>: Risk assessment, policy review, production
+readiness evaluation – any decision where devil’s advocacy adds
+value</li>
+</ul>
+<h3 id="concept-5-handoff-and-sequential-pipeline-patterns">Concept 5:
+Handoff and Sequential Pipeline Patterns</h3>
+<p>Two sequential patterns for ordered execution.
+<strong>Handoff</strong> passes work between specialists in a relay-race
+fashion, where each agent handles one phase. <strong>Sequential
+Pipeline</strong> is similar but uses stage-level processing signatures
+with explicit input/output transformation at each stage.</p>
+<ul>
+<li><strong>What</strong>: Ordered agent chains where work flows from
+one specialist to the next</li>
+<li><strong>Why</strong>: Many real-world workflows are inherently
+sequential – ML pipelines (data prep, feature engineering, training,
+evaluation), document processing, approval chains</li>
+<li><strong>How</strong>: <code>create_handoff_pattern(agents)</code> or
+<code>create_sequential_pipeline(stages)</code> creates the chain</li>
+<li><strong>When</strong>: When each step requires a different
+specialization and order matters</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 30%" />
+<col style="width: 19%" />
+<col style="width: 24%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BaseMultiAgentPattern</code></td>
+<td>–</td>
+<td>(abstract)</td>
+<td>Base class for all patterns</td>
+</tr>
+<tr>
+<td><code>SupervisorWorkerPattern</code></td>
+<td>–</td>
+<td><code>SupervisorWorkerPattern</code></td>
+<td>Delegation-based coordination</td>
+</tr>
+<tr>
+<td><code>create_supervisor_worker_pattern()</code></td>
+<td><code>supervisor</code>, <code>workers: list</code></td>
+<td><code>SupervisorWorkerPattern</code></td>
+<td>Factory for supervisor-worker</td>
+</tr>
+<tr>
+<td><code>ConsensusPattern</code></td>
+<td>–</td>
+<td><code>ConsensusPattern</code></td>
+<td>Democratic voting coordination</td>
+</tr>
+<tr>
+<td><code>create_consensus_pattern()</code></td>
+<td><code>proposers</code>, <code>voters</code>,
+<code>aggregator</code></td>
+<td><code>ConsensusPattern</code></td>
+<td>Factory for consensus</td>
+</tr>
+<tr>
+<td><code>DebatePattern</code></td>
+<td>–</td>
+<td><code>DebatePattern</code></td>
+<td>Adversarial reasoning coordination</td>
+</tr>
+<tr>
+<td><code>create_debate_pattern()</code></td>
+<td><code>proponent</code>, <code>opponent</code>, <code>judge</code>,
+<code>rounds</code></td>
+<td><code>DebatePattern</code></td>
+<td>Factory for debate</td>
+</tr>
+<tr>
+<td><code>HandoffPattern</code></td>
+<td>–</td>
+<td><code>HandoffPattern</code></td>
+<td>Sequential specialist relay</td>
+</tr>
+<tr>
+<td><code>create_handoff_pattern()</code></td>
+<td><code>agents: list</code></td>
+<td><code>HandoffPattern</code></td>
+<td>Factory for handoff</td>
+</tr>
+<tr>
+<td><code>SequentialPipelinePattern</code></td>
+<td>–</td>
+<td><code>SequentialPipelinePattern</code></td>
+<td>Stage-based sequential processing</td>
+</tr>
+<tr>
+<td><code>create_sequential_pipeline()</code></td>
+<td><code>stages: list</code></td>
+<td><code>SequentialPipelinePattern</code></td>
+<td>Factory for sequential pipeline</td>
+</tr>
+</tbody>
+</table>
+<h3 id="agent-roles">Agent Roles</h3>
+<p>Each pattern uses specialized agent classes:</p>
+<table>
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 73%" />
+</colgroup>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Agent Classes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Supervisor-Worker</td>
+<td><code>SupervisorAgent</code>, <code>WorkerAgent</code>,
+<code>CoordinatorAgent</code></td>
+</tr>
+<tr>
+<td>Consensus</td>
+<td><code>ProposerAgent</code>, <code>VoterAgent</code>,
+<code>AggregatorAgent</code></td>
+</tr>
+<tr>
+<td>Debate</td>
+<td><code>ProponentAgent</code>, <code>OpponentAgent</code>,
+<code>JudgeAgent</code></td>
+</tr>
+<tr>
+<td>Handoff</td>
+<td><code>HandoffAgent</code></td>
+</tr>
+<tr>
+<td>Sequential Pipeline</td>
+<td><code>PipelineStageAgent</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.patterns.patterns <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Supervisor-Worker</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    SupervisorWorkerPattern,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    SupervisorAgent,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    WorkerAgent,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    CoordinatorAgent,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    create_supervisor_worker_pattern,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    TaskDelegationSignature,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Consensus</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    ConsensusPattern,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    ProposerAgent,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    VoterAgent,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    AggregatorAgent,</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    create_consensus_pattern,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Debate</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    DebatePattern,</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    ProponentAgent,</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    OpponentAgent,</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    JudgeAgent,</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    create_debate_pattern,</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Handoff</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    HandoffPattern,</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>    HandoffAgent,</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    create_handoff_pattern,</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Sequential Pipeline</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    SequentialPipelinePattern,</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    PipelineStageAgent,</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    create_sequential_pipeline,</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Base</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    BaseMultiAgentPattern,</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<p>All patterns and their agent classes are imported from
+<code>kaizen_agents.patterns.patterns</code>. Each pattern has a class
+(e.g., <code>SupervisorWorkerPattern</code>), role-specific agents
+(e.g., <code>SupervisorAgent</code>, <code>WorkerAgent</code>), and a
+factory function (e.g.,
+<code>create_supervisor_worker_pattern</code>).</p>
+<h3 id="pattern-hierarchy">Pattern Hierarchy</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(SupervisorWorkerPattern, BaseMultiAgentPattern)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(ConsensusPattern, BaseMultiAgentPattern)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(DebatePattern, BaseMultiAgentPattern)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(HandoffPattern, BaseMultiAgentPattern)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(SequentialPipelinePattern, BaseMultiAgentPattern)</span></code></pre></div>
+<p>All five patterns inherit from <code>BaseMultiAgentPattern</code>.
+This guarantees a uniform <code>execute()</code> interface across all
+coordination models.</p>
+<h3 id="supervisor-worker-pattern">Supervisor-Worker Pattern</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># A supervisor delegates tasks to workers and aggregates results.</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co"># The supervisor decides WHAT to delegate (LLM reasoning, not code).</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Use case: Complex analysis split across specialist agents.</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">#   supervisor = SupervisorAgent(model=model, ...)</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   workers = [</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">#       WorkerAgent(model=model, role=&quot;data_analyst&quot;, ...),</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#       WorkerAgent(model=model, role=&quot;model_builder&quot;, ...),</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co">#   ]</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co">#   pattern = create_supervisor_worker_pattern(supervisor, workers)</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="co">#   result = await pattern.execute(&quot;Analyze and model the dataset&quot;)</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> SupervisorAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> WorkerAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> CoordinatorAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> TaskDelegationSignature <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>The supervisor uses LLM reasoning to decompose the task and assign
+sub-tasks to workers. The <code>CoordinatorAgent</code> handles
+distribution logistics. <code>TaskDelegationSignature</code> defines the
+structured delegation I/O.</p>
+<h3 id="consensus-pattern">Consensus Pattern</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Multiple agents propose solutions, vote, then aggregate.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Democratic decision-making for high-stakes decisions.</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Use case: Model selection -- 3 agents each recommend a model,</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># then vote on which recommendation to adopt.</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   proposers = [ProposerAgent(...) for _ in range(3)]</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co">#   voters = [VoterAgent(...) for _ in range(3)]</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   aggregator = AggregatorAgent(...)</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co">#   pattern = create_consensus_pattern(proposers, voters, aggregator)</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co">#   result = await pattern.execute(&quot;Select the best model for credit scoring&quot;)</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ProposerAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> VoterAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> AggregatorAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>Consensus requires 2N+1 agents: N proposers, N voters, and 1
+aggregator. Proposers generate diverse solutions, voters rank them, and
+the aggregator synthesizes the final decision.</p>
+<h3 id="debate-pattern">Debate Pattern</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Adversarial: proponent argues FOR, opponent argues AGAINST,</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co"># judge decides. Forces robust reasoning through challenge.</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Use case: Risk assessment -- proponent argues the model is safe,</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co"># opponent challenges with failure scenarios, judge decides.</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   proponent = ProponentAgent(model=model, position=&quot;Model is production-ready&quot;)</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">#   opponent = OpponentAgent(model=model, position=&quot;Model has risks&quot;)</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   judge = JudgeAgent(model=model)</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co">#   pattern = create_debate_pattern(proponent, opponent, judge, rounds=3)</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="co">#   result = await pattern.execute(&quot;Should we deploy the credit scoring model?&quot;)</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ProponentAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> OpponentAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> JudgeAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>Debate is a fixed three-agent pattern: proponent, opponent, judge.
+The <code>rounds</code> parameter controls how many back-and-forth
+exchanges occur before the judge renders a verdict.</p>
+<h3 id="handoff-pattern">Handoff Pattern</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Sequential specialists -- each agent handles one phase, then</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co"># hands off to the next. Like a relay race.</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Use case: ML pipeline stages -- data prep -&gt; feature eng -&gt; training -&gt; eval</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co">#   agents = [</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co">#       HandoffAgent(model=model, role=&quot;data_prep&quot;),</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co">#       HandoffAgent(model=model, role=&quot;feature_eng&quot;),</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co">#       HandoffAgent(model=model, role=&quot;trainer&quot;),</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co">#       HandoffAgent(model=model, role=&quot;evaluator&quot;),</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co">#   ]</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="co">#   pattern = create_handoff_pattern(agents)</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="co">#   result = await pattern.execute(&quot;Build an end-to-end model&quot;)</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> HandoffAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>Handoff is the simplest sequential pattern – each agent receives the
+previous agent’s output and passes its own output to the next.</p>
+<h3 id="sequential-pipeline-pattern">Sequential Pipeline Pattern</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Similar to handoff but with stage-level processing signatures.</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Each stage processes and transforms the output for the next stage.</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">#   stages = [</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co">#       PipelineStageAgent(model=model, stage_name=&quot;research&quot;),</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co">#       PipelineStageAgent(model=model, stage_name=&quot;analyze&quot;),</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co">#       PipelineStageAgent(model=model, stage_name=&quot;recommend&quot;),</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="co">#   ]</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   pipeline = create_sequential_pipeline(stages)</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="co">#   result = await pipeline.execute(&quot;Evaluate market opportunity&quot;)</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> PipelineStageAgent <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>Sequential Pipeline adds stage-level processing signatures to the
+handoff model. Each <code>PipelineStageAgent</code> has a
+<code>stage_name</code> and explicit input/output transformation.</p>
+<h3 id="choosing-the-right-pattern">Choosing the Right Pattern</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 38%" />
+<col style="width: 14%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Best For</th>
+<th>Agent Count</th>
+<th>Key Characteristic</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Supervisor</td>
+<td>Complex delegated tasks</td>
+<td>1 + N</td>
+<td>Top-down decomposition</td>
+</tr>
+<tr>
+<td>Consensus</td>
+<td>High-stakes decisions</td>
+<td>2N + 1</td>
+<td>Democratic validation</td>
+</tr>
+<tr>
+<td>Debate</td>
+<td>Risk assessment, policy review</td>
+<td>3 (fixed)</td>
+<td>Adversarial challenge</td>
+</tr>
+<tr>
+<td>Handoff</td>
+<td>Sequential specialist pipeline</td>
+<td>N</td>
+<td>Relay-race execution</td>
+</tr>
+<tr>
+<td>Pipeline</td>
+<td>Data transformation chains</td>
+<td>N</td>
+<td>Stage-level transformation</td>
+</tr>
+</tbody>
+</table>
+<p>All patterns use LLM reasoning for decisions (not code conditionals).
+The supervisor does not use <code>if-else</code> to delegate; it reasons
+about the task and decides.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 28%" />
+<col style="width: 49%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Using debate for collaborative tasks</td>
+<td>Use consensus or ensemble instead</td>
+<td>Debate is adversarial by design – it challenges rather than
+collaborates</td>
+</tr>
+<tr>
+<td>Using consensus for simple decisions</td>
+<td>Use a single agent or supervisor-worker</td>
+<td>Consensus overhead (2N+1 agents) is wasted on decisions that do not
+need multiple perspectives</td>
+</tr>
+<tr>
+<td>Hardcoding delegation logic in supervisor</td>
+<td>Let the supervisor LLM reason about task decomposition</td>
+<td>Code-based delegation violates the LLM-First rule and breaks on
+novel tasks</td>
+</tr>
+<tr>
+<td>Using handoff when stages are independent</td>
+<td>Use <code>Pipeline.parallel()</code> for concurrent execution</td>
+<td>Sequential execution of independent tasks wastes time</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>For each of the five patterns, describe a real-world use case in ML
+engineering where that pattern would be the best choice. Explain why the
+other four patterns would be worse fits for each case.</li>
+<li>Draw the agent communication diagram for a consensus pattern with 3
+proposers, 3 voters, and 1 aggregator. How many total LLM calls are
+needed if each agent makes one call?</li>
+<li>Design a debate pattern for evaluating whether a trained model
+should be deployed to production. Define the proponent’s position, the
+opponent’s position, and what criteria the judge should use. How many
+rounds would you configure, and why?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Five formal patterns cover the full spectrum of multi-agent
+coordination: supervisor-worker, consensus, debate, handoff, and
+sequential pipeline</li>
+<li>All patterns inherit from <code>BaseMultiAgentPattern</code> with a
+uniform <code>execute()</code> interface</li>
+<li>Factory functions (<code>create_*_pattern()</code>) are the
+recommended entry point for each pattern</li>
+<li>Pattern choice depends on the task: delegation for complex
+decomposition, consensus for high-stakes decisions, debate for
+adversarial validation, handoff/pipeline for sequential processing</li>
+<li>All patterns use LLM reasoning for decisions – deterministic routing
+is not permitted in agent decision paths</li>
+<li>Agent roles (SupervisorAgent, ProposerAgent, JudgeAgent, etc.)
+encode the responsibilities specific to each pattern</li>
+</ul>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

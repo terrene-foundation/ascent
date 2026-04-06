@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 7: Governed
+Supervisor &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-7-governed-supervisor">Chapter 7: Governed
+Supervisor</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>GovernedSupervisor</strong> orchestrates multi-agent
+execution under PACT governance. It enforces budget limits, data
+clearance levels, tool allowlists, and audit trails – providing a safe
+operating envelope for autonomous agent teams. This chapter teaches you
+the three-layer progressive API, constraint envelopes, governance
+subsystems, and the <code>SupervisorResult</code> dataclass.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapters 1-6 (all individual agent types)</li>
+<li>Familiarity with async/await and <code>asyncio.run()</code></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-progressive-disclosure-three-layers">Concept 1:
+Progressive Disclosure (Three Layers)</h3>
+<p>GovernedSupervisor hides its full 20-concept surface area behind
+three progressive layers. Layer 1 requires only a model and budget.
+Layer 2 adds tools, clearance, and thresholds. Layer 3 exposes the full
+governance subsystems. This means beginners can start with two
+parameters while experts access everything.</p>
+<ul>
+<li><strong>What</strong>: A three-tier API where each layer reveals
+more configuration options</li>
+<li><strong>Why</strong>: Multi-agent governance is inherently complex –
+progressive disclosure prevents beginners from drowning in options</li>
+<li><strong>How</strong>: Layer 1:
+<code>GovernedSupervisor(model, budget_usd)</code>. Layer 2: add
+<code>tools</code>, <code>data_clearance</code>,
+<code>warning_threshold</code>. Layer 3: access <code>.audit</code>,
+<code>.budget</code>, <code>.accountability</code> directly</li>
+<li><strong>When</strong>: Start at Layer 1, escalate to Layer 2 when
+you need tool restrictions or clearance, Layer 3 for programmatic
+governance inspection</li>
+</ul>
+<h3 id="concept-2-pact-default-deny">Concept 2: PACT Default-Deny</h3>
+<p>PACT governance follows a default-deny model: an empty tools list
+means no tools are allowed, <code>PUBLIC</code> clearance means no
+sensitive data access, and a $1 budget means minimal spending. Every
+capability must be explicitly granted. This is the opposite of an “allow
+all, restrict later” approach.</p>
+<ul>
+<li><strong>What</strong>: A governance model where all capabilities
+start at zero and must be explicitly enabled</li>
+<li><strong>Why</strong>: Default-deny prevents accidental access to
+tools, data, or budgets that were not intentionally granted</li>
+<li><strong>How</strong>: Empty <code>tools=[]</code>,
+<code>ConfidentialityLevel.PUBLIC</code>, minimal
+<code>budget_usd</code> are the defaults</li>
+<li><strong>When</strong>: Always – this is the foundation of PACT
+governance, not an option</li>
+</ul>
+<h3 id="concept-3-constraint-envelope">Concept 3: Constraint
+Envelope</h3>
+<p>The constraint envelope encapsulates all operational limits:
+financial (budget), operational (max children, max depth), temporal
+(timeout), and data access (clearance level). It is returned as a deep
+copy each time, ensuring consumers cannot mutate the supervisor’s
+internal state.</p>
+<ul>
+<li><strong>What</strong>: An immutable snapshot of all constraints
+governing agent execution</li>
+<li><strong>Why</strong>: Centralizing constraints in one object makes
+it possible to inspect, serialize, and audit the full operating
+envelope</li>
+<li><strong>How</strong>: <code>supervisor.envelope</code> returns a
+deep copy with <code>.financial</code>, <code>.operational</code>,
+<code>.temporal</code>, and <code>.data_access</code> sections</li>
+<li><strong>When</strong>: Use for inspection, logging, or passing
+constraints to child agents</li>
+</ul>
+<h3 id="concept-4-governance-subsystems">Concept 4: Governance
+Subsystems</h3>
+<p>Layer 3 exposes seven governance subsystems as read-only proxies:
+audit trail, budget tracker, accountability tracker, cascade manager,
+clearance enforcer, dereliction detector, bypass manager, and vacancy
+manager. Each proxy allows query methods but blocks mutation.</p>
+<ul>
+<li><strong>What</strong>: Read-only views into the internal governance
+machinery</li>
+<li><strong>Why</strong>: Observability without risk – you can inspect
+any governance state without accidentally modifying it</li>
+<li><strong>How</strong>: <code>supervisor.audit</code>,
+<code>supervisor.budget</code>, <code>supervisor.accountability</code>,
+etc.</li>
+<li><strong>When</strong>: For monitoring dashboards, compliance
+reports, post-run analysis</li>
+</ul>
+<h3 id="concept-5-supervisorresult">Concept 5: SupervisorResult</h3>
+<p><code>SupervisorResult</code> is a frozen (immutable) dataclass
+returned by <code>supervisor.run()</code>. It contains the execution
+outcome, per-task results, budget consumption, audit trail, events, and
+plan. Immutability guarantees that results cannot be tampered with after
+execution.</p>
+<ul>
+<li><strong>What</strong>: A frozen dataclass capturing the complete
+outcome of a supervised run</li>
+<li><strong>Why</strong>: Immutability ensures audit integrity – results
+cannot be modified after the fact</li>
+<li><strong>How</strong>: Access fields like
+<code>result.success</code>, <code>result.budget_consumed</code>,
+<code>result.audit_trail</code></li>
+<li><strong>When</strong>: Always – every <code>supervisor.run()</code>
+returns a <code>SupervisorResult</code></li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 40%" />
+<col style="width: 12%" />
+<col style="width: 27%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GovernedSupervisor()</code></td>
+<td><code>model</code>, <code>budget_usd</code>, <code>tools</code>,
+<code>data_clearance</code>, …</td>
+<td><code>GovernedSupervisor</code></td>
+<td>Create a governed supervisor</td>
+</tr>
+<tr>
+<td><code>supervisor.run()</code></td>
+<td><code>task: str</code>,
+<code>execute_node: Callable = None</code></td>
+<td><code>SupervisorResult</code></td>
+<td>Execute a task under governance (async)</td>
+</tr>
+<tr>
+<td><code>supervisor.envelope</code></td>
+<td>–</td>
+<td><code>Envelope</code> (copy)</td>
+<td>Get the constraint envelope (deep copy)</td>
+</tr>
+<tr>
+<td><code>supervisor.record_tool_use()</code></td>
+<td><code>tool: str</code>, <code>params: dict</code>,
+<code>blocked: bool</code>, <code>reason: str</code></td>
+<td><code>None</code></td>
+<td>Record a tool invocation in the audit trail</td>
+</tr>
+<tr>
+<td><code>supervisor.record_cost()</code></td>
+<td><code>amount: float</code>, <code>source: str</code></td>
+<td><code>None</code></td>
+<td>Record a cost against the session budget</td>
+</tr>
+<tr>
+<td><code>SupervisorResult()</code></td>
+<td><code>success</code>, <code>results</code>,
+<code>budget_consumed</code>, <code>budget_allocated</code>, …</td>
+<td><code>SupervisorResult</code></td>
+<td>Frozen execution outcome</td>
+</tr>
+<tr>
+<td><code>supervisor.audit</code></td>
+<td>–</td>
+<td>Read-only proxy</td>
+<td>Audit trail subsystem</td>
+</tr>
+<tr>
+<td><code>supervisor.budget</code></td>
+<td>–</td>
+<td>Read-only proxy</td>
+<td>Budget tracker subsystem</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> math</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents <span class="im">import</span> GovernedSupervisor, SupervisorResult</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.supervisor <span class="im">import</span> HoldRecord</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust <span class="im">import</span> ConfidentialityLevel</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<p><code>GovernedSupervisor</code> and <code>SupervisorResult</code> are
+top-level exports from <code>kaizen_agents</code>.
+<code>ConfidentialityLevel</code> comes from the Kailash trust module
+and defines PACT data clearance levels.</p>
+<h3 id="layer-1-minimal-instantiation">Layer 1: Minimal
+Instantiation</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>supervisor <span class="op">=</span> GovernedSupervisor(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    budget_usd<span class="op">=</span><span class="fl">10.0</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(supervisor, GovernedSupervisor)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> supervisor.model <span class="op">==</span> model</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> supervisor.tools <span class="op">==</span> [], <span class="st">&quot;Default-deny: no tools allowed&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> supervisor.clearance_level <span class="op">==</span> ConfidentialityLevel.PUBLIC</span></code></pre></div>
+<p>Two parameters. Everything else gets PACT defaults: no tools
+(default-deny), PUBLIC clearance, no special thresholds. This is the
+entry point for beginners.</p>
+<h3 id="layer-2-configured-supervisor">Layer 2: Configured
+Supervisor</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>configured <span class="op">=</span> GovernedSupervisor(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    budget_usd<span class="op">=</span><span class="fl">25.0</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    tools<span class="op">=</span>[<span class="st">&quot;read_file&quot;</span>, <span class="st">&quot;grep&quot;</span>, <span class="st">&quot;write_report&quot;</span>],</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    data_clearance<span class="op">=</span><span class="st">&quot;restricted&quot;</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    warning_threshold<span class="op">=</span><span class="fl">0.70</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    timeout_seconds<span class="op">=</span><span class="fl">600.0</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    max_children<span class="op">=</span><span class="dv">15</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    max_depth<span class="op">=</span><span class="dv">3</span>,</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    policy_source<span class="op">=</span><span class="st">&quot;jack.hong@example.com&quot;</span>,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> configured.tools <span class="op">==</span> [<span class="st">&quot;read_file&quot;</span>, <span class="st">&quot;grep&quot;</span>, <span class="st">&quot;write_report&quot;</span>]</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> configured.clearance_level <span class="op">==</span> ConfidentialityLevel.RESTRICTED</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(configured.tools) <span class="op">==</span> <span class="dv">3</span></span></code></pre></div>
+<p>Layer 2 adds operational configuration: which tools are allowed, what
+data the supervisor can access, when to warn about budget consumption,
+execution timeout, and organizational accountability via
+<code>policy_source</code>.</p>
+<h3 id="budget-validation">Budget Validation</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    GovernedSupervisor(model<span class="op">=</span>model, budget_usd<span class="op">=-</span><span class="fl">1.0</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Negative budget should raise ValueError&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    GovernedSupervisor(model<span class="op">=</span>model, budget_usd<span class="op">=</span><span class="bu">float</span>(<span class="st">&quot;inf&quot;</span>))</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Infinite budget should raise ValueError&quot;</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    GovernedSupervisor(model<span class="op">=</span>model, budget_usd<span class="op">=</span><span class="bu">float</span>(<span class="st">&quot;nan&quot;</span>))</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;NaN budget should raise ValueError&quot;</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span></code></pre></div>
+<p>PACT governance strictly validates financial constraints. Negative,
+infinite, and NaN budgets are all rejected with <code>ValueError</code>.
+This prevents accidental creation of unconstrained supervisors.</p>
+<h3 id="timeout-validation">Timeout Validation</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    GovernedSupervisor(model<span class="op">=</span>model, timeout_seconds<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Zero timeout should raise ValueError&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    GovernedSupervisor(model<span class="op">=</span>model, timeout_seconds<span class="op">=-</span><span class="dv">10</span>)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Negative timeout should raise ValueError&quot;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span></code></pre></div>
+<p>Timeouts must be positive. Zero and negative values are rejected – a
+supervisor with no timeout would run indefinitely.</p>
+<h3 id="data-clearance-levels">Data Clearance Levels</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>clearance_mapping <span class="op">=</span> {</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;public&quot;</span>: ConfidentialityLevel.PUBLIC,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;internal&quot;</span>: ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;restricted&quot;</span>: ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;confidential&quot;</span>: ConfidentialityLevel.CONFIDENTIAL,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;secret&quot;</span>: ConfidentialityLevel.SECRET,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;top_secret&quot;</span>: ConfidentialityLevel.TOP_SECRET,</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> name, expected_level <span class="kw">in</span> clearance_mapping.items():</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    s <span class="op">=</span> GovernedSupervisor(model<span class="op">=</span>model, data_clearance<span class="op">=</span>name)</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> s.clearance_level <span class="op">==</span> expected_level, <span class="ss">f&quot;</span><span class="sc">{</span>name<span class="sc">}</span><span class="ss"> -&gt; </span><span class="sc">{</span>expected_level<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Invalid clearance raises ValueError</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    GovernedSupervisor(model<span class="op">=</span>model, data_clearance<span class="op">=</span><span class="st">&quot;invalid&quot;</span>)</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Invalid clearance should raise ValueError&quot;</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span></code></pre></div>
+<p>The supervisor maps user-friendly string names to PACT
+<code>ConfidentialityLevel</code> enum values. Invalid clearance names
+are rejected. Note that <code>"internal"</code> and
+<code>"restricted"</code> both map to <code>RESTRICTED</code>.</p>
+<h3 id="constraint-envelope">Constraint Envelope</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>envelope <span class="op">=</span> supervisor.envelope</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> envelope <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> envelope.financial <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> envelope.financial.max_spend_usd <span class="op">==</span> <span class="fl">10.0</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Deep copy: mutations do not affect the supervisor</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>envelope_copy <span class="op">=</span> supervisor.envelope</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> envelope_copy <span class="kw">is</span> <span class="kw">not</span> envelope, <span class="st">&quot;Deep copy each time&quot;</span></span></code></pre></div>
+<p>The envelope is a comprehensive snapshot of all constraints. Each
+access returns a fresh deep copy – you can safely modify or serialize it
+without affecting the supervisor’s internal state.</p>
+<h3 id="layer-3-governance-subsystems">Layer 3: Governance
+Subsystems</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Audit trail</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>audit <span class="op">=</span> supervisor.audit</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> audit <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Budget tracker</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>budget <span class="op">=</span> supervisor.budget</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>snapshot <span class="op">=</span> budget.get_snapshot(<span class="st">&quot;root&quot;</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> snapshot <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>, <span class="st">&quot;Root budget is always allocated&quot;</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Accountability tracker</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>accountability <span class="op">=</span> supervisor.accountability</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> accountability <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Cascade manager</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>cascade <span class="op">=</span> supervisor.cascade</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> cascade <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Clearance enforcer</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>clearance <span class="op">=</span> supervisor.clearance</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> clearance <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a><span class="co"># Dereliction detector</span></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>dereliction <span class="op">=</span> supervisor.dereliction</span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dereliction <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a><span class="co"># Bypass manager</span></span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>bypass <span class="op">=</span> supervisor.bypass_manager</span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bypass <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true" tabindex="-1"></a><span class="co"># Vacancy manager</span></span>
+<span id="cb8-31"><a href="#cb8-31" aria-hidden="true" tabindex="-1"></a>vacancy <span class="op">=</span> supervisor.vacancy</span>
+<span id="cb8-32"><a href="#cb8-32" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vacancy <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>Seven governance subsystems, each exposed as a read-only proxy. Query
+methods work; mutation methods are blocked. This enables deep inspection
+without risk.</p>
+<h3 id="supervisorresult">SupervisorResult</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> SupervisorResult(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    success<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    results<span class="op">=</span>{<span class="st">&quot;task-0&quot;</span>: <span class="st">&quot;Analysis complete&quot;</span>},</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    budget_consumed<span class="op">=</span><span class="fl">2.50</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    budget_allocated<span class="op">=</span><span class="fl">10.0</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.success <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.results[<span class="st">&quot;task-0&quot;</span>] <span class="op">==</span> <span class="st">&quot;Analysis complete&quot;</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.budget_consumed <span class="op">==</span> <span class="fl">2.50</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.budget_allocated <span class="op">==</span> <span class="fl">10.0</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.audit_trail <span class="op">==</span> [], <span class="st">&quot;Empty by default&quot;</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.events <span class="op">==</span> [], <span class="st">&quot;Empty by default&quot;</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.modifications <span class="op">==</span> [], <span class="st">&quot;Empty by default&quot;</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a><span class="co"># SupervisorResult is frozen (immutable after construction)</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>    result.success <span class="op">=</span> <span class="va">False</span>  <span class="co"># type: ignore[misc]</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Frozen dataclass should not allow mutation&quot;</span></span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">AttributeError</span>:</span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span></code></pre></div>
+<p><code>SupervisorResult</code> is a frozen dataclass – after
+construction, no field can be modified. This guarantees audit integrity.
+The result includes per-task outputs, budget tracking, audit trail,
+events, and modifications.</p>
+<h3 id="dry-run-with-default-executor">Dry Run with Default
+Executor</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> _dry_run():</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    s <span class="op">=</span> GovernedSupervisor(model<span class="op">=</span>model, budget_usd<span class="op">=</span><span class="fl">5.0</span>)</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    result <span class="op">=</span> <span class="cf">await</span> s.run(<span class="st">&quot;Analyze the codebase for security issues&quot;</span>)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(result, SupervisorResult)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> result.success <span class="kw">is</span> <span class="va">True</span>, <span class="st">&quot;Dry run always succeeds&quot;</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> result.budget_consumed <span class="op">==</span> <span class="fl">0.0</span>, <span class="st">&quot;No-op executor has zero cost&quot;</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(result.audit_trail) <span class="op">&gt;</span> <span class="dv">0</span>, <span class="st">&quot;Audit trail recorded&quot;</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> result.plan <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>, <span class="st">&quot;Plan was built&quot;</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> result</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>dry_result <span class="op">=</span> asyncio.run(_dry_run())</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dry_result.success <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>When no <code>execute_node</code> callback is provided, the
+supervisor uses a default no-op executor. This is useful for plan
+validation – you can see what the supervisor would do without actually
+executing anything. The audit trail is still recorded.</p>
+<h3 id="tool-use-and-cost-recording">Tool Use and Cost Recording</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>supervisor.record_tool_use(<span class="st">&quot;read_file&quot;</span>, {<span class="st">&quot;path&quot;</span>: <span class="st">&quot;/src/main.py&quot;</span>})</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>supervisor.record_tool_use(</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;grep&quot;</span>, {<span class="st">&quot;pattern&quot;</span>: <span class="st">&quot;TODO&quot;</span>}, blocked<span class="op">=</span><span class="va">True</span>, reason<span class="op">=</span><span class="st">&quot;not in allowed tools&quot;</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>audit_entries <span class="op">=</span> supervisor.audit.to_list()</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(audit_entries) <span class="op">&gt;</span> <span class="dv">0</span>, <span class="st">&quot;Tool use recorded in audit trail&quot;</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>supervisor.record_cost(<span class="fl">1.50</span>, source<span class="op">=</span><span class="st">&quot;llm_tokens&quot;</span>)</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>budget_snap <span class="op">=</span> supervisor.budget.get_snapshot(<span class="st">&quot;root&quot;</span>)</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> budget_snap.consumed <span class="op">&gt;=</span> <span class="fl">1.50</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Invalid costs are silently ignored (safety guard)</span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>supervisor.record_cost(<span class="op">-</span><span class="fl">1.0</span>, source<span class="op">=</span><span class="st">&quot;invalid&quot;</span>)</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>supervisor.record_cost(<span class="bu">float</span>(<span class="st">&quot;inf&quot;</span>), source<span class="op">=</span><span class="st">&quot;invalid&quot;</span>)</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>supervisor.record_cost(<span class="bu">float</span>(<span class="st">&quot;nan&quot;</span>), source<span class="op">=</span><span class="st">&quot;invalid&quot;</span>)</span></code></pre></div>
+<p>External code (CLI, entrypoints) can record tool invocations and
+costs in the supervisor’s audit trail and budget tracker. Blocked tool
+uses are recorded with a reason. Invalid cost amounts (negative,
+infinite, NaN) are silently ignored as a safety guard.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 27%" />
+<col style="width: 47%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Not setting <code>budget_usd</code> (or setting it too high)</td>
+<td>Start with a conservative budget and increase as needed</td>
+<td>Unconstrained budgets defeat the purpose of governance</td>
+</tr>
+<tr>
+<td>Forgetting that <code>tools=[]</code> is default-deny</td>
+<td>Explicitly list all tools the supervisor needs</td>
+<td>No tools are available by default – the supervisor cannot call
+anything not in the list</td>
+</tr>
+<tr>
+<td>Mutating the envelope object</td>
+<td>Treat <code>supervisor.envelope</code> as read-only</td>
+<td>Each access returns a deep copy, so mutations are lost and give a
+false sense of state change</td>
+</tr>
+<tr>
+<td>Using <code>run()</code> synchronously</td>
+<td><code>asyncio.run(supervisor.run(task))</code></td>
+<td><code>run()</code> is async – call it with <code>await</code> or
+<code>asyncio.run()</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a <code>GovernedSupervisor</code> at Layer 1 (model + budget
+only). Verify that <code>tools</code> is empty and
+<code>clearance_level</code> is <code>PUBLIC</code>. Then create a Layer
+2 supervisor with three tools and <code>"confidential"</code> clearance
+– verify the tools list and clearance level.</li>
+<li>Write a test that attempts to create supervisors with invalid
+budgets (-1, infinity, NaN) and invalid timeouts (0, -10). Verify that
+all six raise <code>ValueError</code>.</li>
+<li>Run a dry run with <code>asyncio.run()</code> and inspect the
+returned <code>SupervisorResult</code>. What fields are present? Is the
+audit trail empty or populated?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>GovernedSupervisor</code> orchestrates multi-agent execution
+under PACT governance</li>
+<li>Three progressive layers: minimal (model + budget), configured
+(tools + clearance), advanced (subsystems)</li>
+<li>PACT default-deny: empty tools, PUBLIC clearance, minimal budget –
+everything must be explicitly granted</li>
+<li>Budget, timeout, and clearance are strictly validated – no negative,
+infinite, or invalid values</li>
+<li><code>SupervisorResult</code> is frozen (immutable) for audit
+integrity</li>
+<li>Seven governance subsystems are exposed as read-only proxies for
+deep inspection</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="08_pipeline.md">Chapter 8: Pipeline Composition</a> –
+Compose agents into multi-agent pipelines using sequential, router,
+parallel, and ensemble patterns.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 8:
+GovernanceEngine &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-8-governanceengine">Chapter 8: GovernanceEngine</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>GovernanceEngine</strong> is the single entry point for
+all governance decisions. It compiles an organization definition,
+manages clearances and envelopes, and provides two primary decision
+APIs: <code>verify_action()</code> for action authorization and
+<code>check_access()</code> for knowledge access control. All public
+methods are thread-safe via an internal lock. This chapter teaches you
+how to initialize the engine, configure roles and envelopes, and make
+governance decisions programmatically.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="02_compile_org.md">Chapter 2: Compiling
+Organizations</a></li>
+<li><a href="03_clearance.md">Chapter 3: Clearance Levels</a></li>
+<li><a href="04_envelopes.md">Chapter 4: Constraint Envelopes</a></li>
+<li><a href="05_access.md">Chapter 5: Access Decisions</a></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-engine-as-facade">Concept 1: The Engine as
+Facade</h3>
+<p>GovernanceEngine wraps compilation, clearance management, envelope
+management, action verification, and knowledge access into a single
+thread-safe interface. Instead of calling <code>compile_org()</code>,
+<code>can_access()</code>, and envelope checks separately, you use one
+object.</p>
+<ul>
+<li><strong>What</strong>: A facade that unifies all governance
+operations behind a single, thread-safe API</li>
+<li><strong>Why</strong>: Separate governance functions are hard to
+coordinate – the engine ensures clearance grants, envelope changes, and
+access decisions are sequenced correctly</li>
+<li><strong>How</strong>:
+<code>engine = GovernanceEngine(org_def)</code> compiles the org and
+provides all decision methods</li>
+<li><strong>When</strong>: Always use GovernanceEngine in production;
+use the lower-level functions only for testing</li>
+</ul>
+<h3 id="concept-2-verify_action-the-primary-decision-api">Concept 2:
+verify_action() – The Primary Decision API</h3>
+<p><code>verify_action()</code> combines vacancy checks, envelope
+evaluation, and gradient classification into a single call. It returns a
+<code>GovernanceVerdict</code> with a level (<code>auto_approved</code>,
+<code>flagged</code>, <code>held</code>, <code>blocked</code>) and an
+<code>allowed</code> boolean.</p>
+<ul>
+<li><strong>What</strong>: A method that evaluates whether a role can
+perform a specific action</li>
+<li><strong>Why</strong>: Action authorization requires checking
+multiple governance dimensions (vacancy, envelope, clearance) – the
+engine does this atomically</li>
+<li><strong>How</strong>:
+<code>verdict = engine.verify_action("D1-R1-T1-R1", "deploy")</code></li>
+<li><strong>When</strong>: Before every agent action in production</li>
+</ul>
+<h3 id="concept-3-fail-closed-design">Concept 3: Fail-Closed Design</h3>
+<p>Both <code>verify_action()</code> and <code>check_access()</code> are
+fail-closed: any exception during evaluation results in a BLOCKED/DENY
+verdict. This ensures that governance failures are safe failures – a bug
+in the governance logic denies access rather than granting it.</p>
+<ul>
+<li><strong>What</strong>: Error handling that defaults to denial rather
+than approval</li>
+<li><strong>Why</strong>: Fail-open governance would allow unauthorized
+actions whenever the evaluation code has a bug</li>
+<li><strong>How</strong>: The engine wraps all evaluation in try/except
+and returns BLOCKED on any exception</li>
+<li><strong>When</strong>: Automatically applied to every governance
+decision</li>
+</ul>
+<h3 id="concept-4-thread-safety">Concept 4: Thread Safety</h3>
+<p>All public methods on GovernanceEngine acquire an internal
+<code>threading.Lock</code>. This means multiple threads can safely call
+<code>verify_action()</code>, <code>grant_clearance()</code>, and
+<code>check_access()</code> concurrently without data races.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 36%" />
+<col style="width: 16%" />
+<col style="width: 29%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GovernanceEngine()</code></td>
+<td><code>org_def</code> or <code>compiled_org</code></td>
+<td><code>GovernanceEngine</code></td>
+<td>Create and compile</td>
+</tr>
+<tr>
+<td><code>grant_clearance()</code></td>
+<td><code>address</code>, <code>RoleClearance</code></td>
+<td><code>None</code></td>
+<td>Set clearance for a role</td>
+</tr>
+<tr>
+<td><code>set_role_envelope()</code></td>
+<td><code>RoleEnvelope</code></td>
+<td><code>None</code></td>
+<td>Set constraint envelope for a role</td>
+</tr>
+<tr>
+<td><code>verify_action()</code></td>
+<td><code>role_address</code>, <code>action</code>,
+<code>context=None</code></td>
+<td><code>GovernanceVerdict</code></td>
+<td>Authorize an action</td>
+</tr>
+<tr>
+<td><code>check_access()</code></td>
+<td><code>role_address</code>, <code>knowledge_item</code>,
+<code>posture</code></td>
+<td><code>AccessDecision</code></td>
+<td>Check knowledge access</td>
+</tr>
+<tr>
+<td><code>get_context()</code></td>
+<td><code>role_address</code>, <code>posture</code></td>
+<td><code>GovernanceContext</code></td>
+<td>Create frozen context for agents</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust <span class="im">import</span> ConfidentialityLevel, TrustPosture</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> (</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    GovernanceEngine,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    GovernanceVerdict,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    KnowledgeItem,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    RoleClearance,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    RoleDefinition,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    RoleEnvelope,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    VettingStatus,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact.config <span class="im">import</span> (</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    ConstraintEnvelopeConfig,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    DepartmentConfig,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    FinancialConstraintConfig,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    OperationalConstraintConfig,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    OrgDefinition,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    TeamConfig,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<h3 id="creating-an-orgdefinition">Creating an OrgDefinition</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>org_def <span class="op">=</span> OrgDefinition(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    org_id<span class="op">=</span><span class="st">&quot;engine-demo&quot;</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;Engine Demo Corp&quot;</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    departments<span class="op">=</span>[</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        DepartmentConfig(department_id<span class="op">=</span><span class="st">&quot;ops&quot;</span>, name<span class="op">=</span><span class="st">&quot;Operations&quot;</span>),</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    teams<span class="op">=</span>[</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        TeamConfig(<span class="bu">id</span><span class="op">=</span><span class="st">&quot;infra&quot;</span>, name<span class="op">=</span><span class="st">&quot;Infrastructure Team&quot;</span>, workspace<span class="op">=</span><span class="st">&quot;ws&quot;</span>),</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    roles<span class="op">=</span>[</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>            role_id<span class="op">=</span><span class="st">&quot;vp-ops&quot;</span>,</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>            name<span class="op">=</span><span class="st">&quot;VP Operations&quot;</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>            is_primary_for_unit<span class="op">=</span><span class="st">&quot;ops&quot;</span>,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>            role_id<span class="op">=</span><span class="st">&quot;infra-lead&quot;</span>,</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>            name<span class="op">=</span><span class="st">&quot;Infrastructure Lead&quot;</span>,</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>            reports_to_role_id<span class="op">=</span><span class="st">&quot;vp-ops&quot;</span>,</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>            is_primary_for_unit<span class="op">=</span><span class="st">&quot;infra&quot;</span>,</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>            role_id<span class="op">=</span><span class="st">&quot;sre-1&quot;</span>,</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>            name<span class="op">=</span><span class="st">&quot;SRE Engineer&quot;</span>,</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>            reports_to_role_id<span class="op">=</span><span class="st">&quot;infra-lead&quot;</span>,</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>This defines a three-role hierarchy: VP Operations -&gt;
+Infrastructure Lead -&gt; SRE Engineer. The
+<code>is_primary_for_unit</code> field assigns roles as the primary for
+their department or team.</p>
+<h3 id="initializing-governanceengine">Initializing
+GovernanceEngine</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>engine <span class="op">=</span> GovernanceEngine(org_def)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"># The engine compiled the org internally</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> engine._compiled_org.org_id <span class="op">==</span> <span class="st">&quot;engine-demo&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;D1-R1&quot;</span> <span class="kw">in</span> engine._compiled_org.nodes</span></code></pre></div>
+<p>Pass an <code>OrgDefinition</code> and the engine compiles it
+internally. You can also pass a pre-compiled <code>CompiledOrg</code> to
+skip recompilation.</p>
+<h3 id="granting-clearance">Granting Clearance</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>engine.grant_clearance(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;D1-R1&quot;</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    RoleClearance(</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        role_address<span class="op">=</span><span class="st">&quot;D1-R1&quot;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        max_clearance<span class="op">=</span>ConfidentialityLevel.SECRET,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>        vetting_status<span class="op">=</span>VettingStatus.ACTIVE,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>engine.grant_clearance(</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;D1-R1-T1-R1&quot;</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    RoleClearance(</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>        role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1&quot;</span>,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        max_clearance<span class="op">=</span>ConfidentialityLevel.CONFIDENTIAL,</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>        vetting_status<span class="op">=</span>VettingStatus.ACTIVE,</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>engine.grant_clearance(</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>,</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>    RoleClearance(</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>        role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>,</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>        max_clearance<span class="op">=</span>ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>        vetting_status<span class="op">=</span>VettingStatus.ACTIVE,</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>Clearances descend the hierarchy: VP gets SECRET, Lead gets
+CONFIDENTIAL, SRE gets RESTRICTED. Each role can only access knowledge
+at or below its clearance level.</p>
+<h3 id="setting-role-envelopes">Setting Role Envelopes</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>vp_envelope <span class="op">=</span> ConstraintEnvelopeConfig(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">&quot;env-vp-ops&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    financial<span class="op">=</span>FinancialConstraintConfig(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>        max_spend_usd<span class="op">=</span><span class="fl">100000.0</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        requires_approval_above_usd<span class="op">=</span><span class="fl">50000.0</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    operational<span class="op">=</span>OperationalConstraintConfig(</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>        allowed_actions<span class="op">=</span>[<span class="st">&quot;read&quot;</span>, <span class="st">&quot;write&quot;</span>, <span class="st">&quot;deploy&quot;</span>, <span class="st">&quot;approve&quot;</span>, <span class="st">&quot;provision&quot;</span>],</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        blocked_actions<span class="op">=</span>[<span class="st">&quot;delete_production&quot;</span>],</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>lead_envelope <span class="op">=</span> ConstraintEnvelopeConfig(</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">&quot;env-infra-lead&quot;</span>,</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    financial<span class="op">=</span>FinancialConstraintConfig(</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>        max_spend_usd<span class="op">=</span><span class="fl">10000.0</span>,</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>        requires_approval_above_usd<span class="op">=</span><span class="fl">5000.0</span>,</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    operational<span class="op">=</span>OperationalConstraintConfig(</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>        allowed_actions<span class="op">=</span>[<span class="st">&quot;read&quot;</span>, <span class="st">&quot;write&quot;</span>, <span class="st">&quot;deploy&quot;</span>, <span class="st">&quot;provision&quot;</span>],</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>        blocked_actions<span class="op">=</span>[<span class="st">&quot;delete_production&quot;</span>, <span class="st">&quot;approve&quot;</span>],</span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a>engine.set_role_envelope(</span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a>    RoleEnvelope(</span>
+<span id="cb5-27"><a href="#cb5-27" aria-hidden="true" tabindex="-1"></a>        <span class="bu">id</span><span class="op">=</span><span class="st">&quot;re-vp-ops&quot;</span>,</span>
+<span id="cb5-28"><a href="#cb5-28" aria-hidden="true" tabindex="-1"></a>        defining_role_address<span class="op">=</span><span class="st">&quot;R1&quot;</span>,  <span class="co"># Board defines VP envelope</span></span>
+<span id="cb5-29"><a href="#cb5-29" aria-hidden="true" tabindex="-1"></a>        target_role_address<span class="op">=</span><span class="st">&quot;D1-R1&quot;</span>,</span>
+<span id="cb5-30"><a href="#cb5-30" aria-hidden="true" tabindex="-1"></a>        envelope<span class="op">=</span>vp_envelope,</span>
+<span id="cb5-31"><a href="#cb5-31" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb5-32"><a href="#cb5-32" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-33"><a href="#cb5-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-34"><a href="#cb5-34" aria-hidden="true" tabindex="-1"></a>engine.set_role_envelope(</span>
+<span id="cb5-35"><a href="#cb5-35" aria-hidden="true" tabindex="-1"></a>    RoleEnvelope(</span>
+<span id="cb5-36"><a href="#cb5-36" aria-hidden="true" tabindex="-1"></a>        <span class="bu">id</span><span class="op">=</span><span class="st">&quot;re-infra-lead&quot;</span>,</span>
+<span id="cb5-37"><a href="#cb5-37" aria-hidden="true" tabindex="-1"></a>        defining_role_address<span class="op">=</span><span class="st">&quot;D1-R1&quot;</span>,  <span class="co"># VP defines lead envelope</span></span>
+<span id="cb5-38"><a href="#cb5-38" aria-hidden="true" tabindex="-1"></a>        target_role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1&quot;</span>,</span>
+<span id="cb5-39"><a href="#cb5-39" aria-hidden="true" tabindex="-1"></a>        envelope<span class="op">=</span>lead_envelope,</span>
+<span id="cb5-40"><a href="#cb5-40" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb5-41"><a href="#cb5-41" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>Notice the monotonic tightening: the VP can approve, but the Lead
+cannot. The VP can spend $100K, the Lead only $10K. The
+<code>defining_role_address</code> records who set the envelope – the
+Board defines the VP’s, the VP defines the Lead’s.</p>
+<h3 id="verify_action-allowed-action">verify_action() – Allowed
+Action</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>verdict <span class="op">=</span> engine.verify_action(<span class="st">&quot;D1-R1-T1-R1&quot;</span>, <span class="st">&quot;deploy&quot;</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(verdict, GovernanceVerdict)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict.role_address <span class="op">==</span> <span class="st">&quot;D1-R1-T1-R1&quot;</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict.action <span class="op">==</span> <span class="st">&quot;deploy&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict.level <span class="op">==</span> <span class="st">&quot;auto_approved&quot;</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict.allowed <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict.is_blocked <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>“deploy” is in the Lead’s <code>allowed_actions</code>, so the
+verdict is <code>auto_approved</code>.</p>
+<h3 id="verify_action-blocked-action">verify_action() – Blocked
+Action</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>blocked_verdict <span class="op">=</span> engine.verify_action(<span class="st">&quot;D1-R1-T1-R1&quot;</span>, <span class="st">&quot;delete_production&quot;</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> blocked_verdict.level <span class="op">==</span> <span class="st">&quot;blocked&quot;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> blocked_verdict.allowed <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> blocked_verdict.is_blocked <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>“delete_production” is in <code>blocked_actions</code>, so it is
+denied outright.</p>
+<h3 id="verify_action-with-financial-context">verify_action() with
+Financial Context</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>low_cost_verdict <span class="op">=</span> engine.verify_action(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;D1-R1-T1-R1&quot;</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;provision&quot;</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;cost&quot;</span>: <span class="fl">100.0</span>},</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> low_cost_verdict.allowed <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>Passing a <code>cost</code> in the context dict triggers financial
+envelope checks. $100 is within the Lead’s $10K budget, so it is
+approved.</p>
+<h3 id="check_access-knowledge-access">check_access() – Knowledge
+Access</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ops_doc <span class="op">=</span> KnowledgeItem(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    item_id<span class="op">=</span><span class="st">&quot;doc-ops-runbook&quot;</span>,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    classification<span class="op">=</span>ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    owning_unit_address<span class="op">=</span><span class="st">&quot;D1-R1-T1&quot;</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> engine.check_access(</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>,</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    knowledge_item<span class="op">=</span>ops_doc,</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED,</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.allowed <span class="kw">is</span> <span class="va">True</span>  <span class="co"># SRE is in the same team</span></span></code></pre></div>
+<p>The SRE (RESTRICTED clearance) can access a RESTRICTED document owned
+by their team.</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>secret_doc <span class="op">=</span> KnowledgeItem(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    item_id<span class="op">=</span><span class="st">&quot;doc-classified&quot;</span>,</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    classification<span class="op">=</span>ConfidentialityLevel.SECRET,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    owning_unit_address<span class="op">=</span><span class="st">&quot;D1&quot;</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>secret_decision <span class="op">=</span> engine.check_access(</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>,</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    knowledge_item<span class="op">=</span>secret_doc,</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED,</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> secret_decision.allowed <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> secret_decision.step_failed <span class="op">==</span> <span class="dv">2</span></span></code></pre></div>
+<p>The SRE (RESTRICTED) cannot access a SECRET document – the clearance
+check fails at step 2.</p>
+<h3 id="governanceverdict-properties">GovernanceVerdict Properties</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>verdict_dict <span class="op">=</span> verdict.to_dict()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(verdict_dict, <span class="bu">dict</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict_dict[<span class="st">&quot;level&quot;</span>] <span class="op">==</span> <span class="st">&quot;auto_approved&quot;</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict_dict[<span class="st">&quot;action&quot;</span>] <span class="op">==</span> <span class="st">&quot;deploy&quot;</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> verdict_dict[<span class="st">&quot;allowed&quot;</span>] <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>Verdicts serialize to dictionaries for logging and audit trails.</p>
+<h3 id="thread-safety">Thread Safety</h3>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> threading</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(engine._lock, threading.Lock)</span></code></pre></div>
+<p>The engine uses a <code>threading.Lock</code> to ensure all public
+methods are thread-safe.</p>
+<h3 id="fail-closed-behavior">Fail-Closed Behavior</h3>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>unknown_verdict <span class="op">=</span> engine.verify_action(<span class="st">&quot;D99-R99&quot;</span>, <span class="st">&quot;some_action&quot;</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(unknown_verdict, GovernanceVerdict)</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> unknown_verdict.level <span class="kw">in</span> (<span class="st">&quot;auto_approved&quot;</span>, <span class="st">&quot;blocked&quot;</span>, <span class="st">&quot;flagged&quot;</span>, <span class="st">&quot;held&quot;</span>)</span></code></pre></div>
+<p>Even for unknown roles, <code>verify_action()</code> returns a valid
+verdict rather than raising an exception.</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create an OrgDefinition with two departments (Engineering and
+Finance), each with one team and two roles. Set different clearance
+levels and envelopes for each role. Verify that actions allowed in
+Engineering are blocked in Finance.</li>
+<li>Test the fail-closed behavior: call <code>verify_action()</code>
+with an address that does not exist in the org. What verdict level do
+you get? Why is this the safe default?</li>
+<li>Use <code>check_access()</code> to test whether a
+CONFIDENTIAL-cleared role can access a RESTRICTED document (should
+succeed) and a SECRET document (should fail). Verify the
+<code>step_failed</code> value.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>GovernanceEngine is the single thread-safe facade for all governance
+decisions</li>
+<li><code>verify_action()</code> combines vacancy, envelope, and
+gradient checks into one call</li>
+<li><code>check_access()</code> evaluates knowledge access with
+clearance, ownership, and posture</li>
+<li>Both decision APIs are fail-closed: exceptions produce BLOCKED/DENY
+verdicts</li>
+<li>All public methods acquire a lock for thread safety</li>
+<li>Verdicts serialize to dictionaries for audit trails</li>
+<li>The engine accepts either OrgDefinition (compiles internally) or
+pre-compiled CompiledOrg</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="09_governed_agent.md">Chapter 9: Governed Agent &amp;
+GovernanceContext</a> – Wrap agents with frozen governance contexts that
+prevent self-modification.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

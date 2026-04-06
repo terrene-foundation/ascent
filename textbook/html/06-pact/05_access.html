@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 5: 5-Step Access
+Enforcement &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-5-5-step-access-enforcement">Chapter 5: 5-Step Access
+Enforcement</h1>
+<h2 id="overview">Overview</h2>
+<p>All the pieces – addresses, clearances, postures, compartments,
+envelopes – come together in the <strong>5-step access
+algorithm</strong>. This is the single function that decides whether a
+role can access a knowledge item. It is fail-closed: if any step fails
+or any error occurs, access is denied. This chapter walks through every
+step with concrete examples.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="03_clearance.md">Chapter 3: Knowledge Clearance</a></li>
+<li><a href="04_envelopes.md">Chapter 4: Operating Envelopes</a></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="the-five-steps">The Five Steps</h3>
+<table>
+<colgroup>
+<col style="width: 4%" />
+<col style="width: 45%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Step</th>
+<th>Check</th>
+<th>Failure Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Clearance exists and vetting is ACTIVE</td>
+<td>No valid clearance for this role</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Effective clearance &gt;= item classification</td>
+<td>Role cannot see data at this level</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Role holds all required compartments</td>
+<td>Missing need-to-know compartment</td>
+</tr>
+<tr>
+<td>4a-e</td>
+<td>Structural or policy path exists</td>
+<td>Check same-unit, downward, upward, KSP, bridge</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Fail-closed default</td>
+<td>No access path found</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fail-closed-design">Fail-Closed Design</h3>
+<p>If no step explicitly grants access, the answer is DENY. There is no
+“default allow.” This is a security-critical design choice: bugs in
+access logic result in denied access (safe) rather than granted access
+(dangerous).</p>
+<h3 id="access-paths-step-4">Access Paths (Step 4)</h3>
+<p>Step 4 checks multiple access paths in order:</p>
+<ul>
+<li><strong>4a</strong>: Same unit – role is in the same department/team
+as the item</li>
+<li><strong>4b</strong>: Downward visibility – role is above the item’s
+unit in the hierarchy</li>
+<li><strong>4c</strong>: Upward visibility – role is below but has
+explicit upward access</li>
+<li><strong>4d</strong>: Knowledge Share Policy (KSP) – cross-unit
+sharing agreement</li>
+<li><strong>4e</strong>: Bridge – role-to-role cross-boundary
+access</li>
+</ul>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 76%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Function</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>can_access(...)</code></td>
+<td>The 5-step access decision function</td>
+</tr>
+<tr>
+<td><code>AccessDecision</code></td>
+<td>Result with <code>allowed</code>, <code>step_failed</code>,
+<code>reason</code>, <code>audit_details</code></td>
+</tr>
+<tr>
+<td><code>explain_access(...)</code></td>
+<td>Human-readable trace of all 5 steps</td>
+</tr>
+<tr>
+<td><code>KnowledgeItem</code></td>
+<td>The target object (item_id, classification, owning_unit,
+compartments)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-set-up-a-realistic-organization">Step 1: Set Up a
+Realistic Organization</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> compile_org, RoleDefinition, RoleClearance, VettingStatus</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact.config <span class="im">import</span> OrgDefinition, DepartmentConfig, TeamConfig</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust <span class="im">import</span> ConfidentialityLevel, TrustPosture</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>org_def <span class="op">=</span> OrgDefinition(</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    org_id<span class="op">=</span><span class="st">&quot;access-demo&quot;</span>, name<span class="op">=</span><span class="st">&quot;Access Demo Corp&quot;</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    departments<span class="op">=</span>[</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        DepartmentConfig(department_id<span class="op">=</span><span class="st">&quot;engineering&quot;</span>, name<span class="op">=</span><span class="st">&quot;Engineering&quot;</span>),</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>        DepartmentConfig(department_id<span class="op">=</span><span class="st">&quot;finance&quot;</span>, name<span class="op">=</span><span class="st">&quot;Finance&quot;</span>),</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    teams<span class="op">=</span>[TeamConfig(<span class="bu">id</span><span class="op">=</span><span class="st">&quot;backend&quot;</span>, name<span class="op">=</span><span class="st">&quot;Backend Team&quot;</span>, workspace<span class="op">=</span><span class="st">&quot;ws&quot;</span>)],</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    roles<span class="op">=</span>[</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;cto&quot;</span>, name<span class="op">=</span><span class="st">&quot;CTO&quot;</span>, is_primary_for_unit<span class="op">=</span><span class="st">&quot;engineering&quot;</span>),</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;backend-lead&quot;</span>, name<span class="op">=</span><span class="st">&quot;Backend Lead&quot;</span>,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>                       reports_to_role_id<span class="op">=</span><span class="st">&quot;cto&quot;</span>, is_primary_for_unit<span class="op">=</span><span class="st">&quot;backend&quot;</span>),</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;dev-1&quot;</span>, name<span class="op">=</span><span class="st">&quot;Developer 1&quot;</span>,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>                       reports_to_role_id<span class="op">=</span><span class="st">&quot;backend-lead&quot;</span>),</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;cfo&quot;</span>, name<span class="op">=</span><span class="st">&quot;CFO&quot;</span>, is_primary_for_unit<span class="op">=</span><span class="st">&quot;finance&quot;</span>),</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;accountant&quot;</span>, name<span class="op">=</span><span class="st">&quot;Accountant&quot;</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>                       reports_to_role_id<span class="op">=</span><span class="st">&quot;cfo&quot;</span>),</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>compiled <span class="op">=</span> compile_org(org_def)</span></code></pre></div>
+<h3 id="step-2-define-clearances-and-knowledge-items">Step 2: Define
+Clearances and Knowledge Items</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> KnowledgeItem, can_access</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>clearances <span class="op">=</span> {</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;D1-R1&quot;</span>: RoleClearance(role_address<span class="op">=</span><span class="st">&quot;D1-R1&quot;</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        max_clearance<span class="op">=</span>ConfidentialityLevel.SECRET,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        compartments<span class="op">=</span><span class="bu">frozenset</span>({<span class="st">&quot;engineering-internal&quot;</span>}),</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        vetting_status<span class="op">=</span>VettingStatus.ACTIVE),</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>: RoleClearance(role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        max_clearance<span class="op">=</span>ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        vetting_status<span class="op">=</span>VettingStatus.ACTIVE),</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;D2-R1&quot;</span>: RoleClearance(role_address<span class="op">=</span><span class="st">&quot;D2-R1&quot;</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        max_clearance<span class="op">=</span>ConfidentialityLevel.SECRET,</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        compartments<span class="op">=</span><span class="bu">frozenset</span>({<span class="st">&quot;financial-records&quot;</span>}),</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>        vetting_status<span class="op">=</span>VettingStatus.ACTIVE),</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>eng_doc <span class="op">=</span> KnowledgeItem(</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    item_id<span class="op">=</span><span class="st">&quot;doc-arch-review&quot;</span>,</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    classification<span class="op">=</span>ConfidentialityLevel.RESTRICTED,</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    owning_unit_address<span class="op">=</span><span class="st">&quot;D1-R1-T1&quot;</span>,</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Architecture review document&quot;</span>,</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<h3 id="step-3-step-1-failure-no-clearance">Step 3: Step 1 Failure – No
+Clearance</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> can_access(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>, knowledge_item<span class="op">=</span>eng_doc,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED, compiled_org<span class="op">=</span>compiled,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    clearances<span class="op">=</span>{}, ksps<span class="op">=</span>[], bridges<span class="op">=</span>[],  <span class="co"># Empty clearances</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.allowed <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.step_failed <span class="op">==</span> <span class="dv">1</span></span></code></pre></div>
+<h3 id="step-4-step-2-failure-classification-exceeds-clearance">Step 4:
+Step 2 Failure – Classification Exceeds Clearance</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>finance_report <span class="op">=</span> KnowledgeItem(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    item_id<span class="op">=</span><span class="st">&quot;quarterly&quot;</span>, classification<span class="op">=</span>ConfidentialityLevel.CONFIDENTIAL,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    owning_unit_address<span class="op">=</span><span class="st">&quot;D2&quot;</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Developer has RESTRICTED clearance, report is CONFIDENTIAL</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> can_access(</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>, knowledge_item<span class="op">=</span>finance_report,</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED, compiled_org<span class="op">=</span>compiled,</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    clearances<span class="op">=</span>clearances, ksps<span class="op">=</span>[], bridges<span class="op">=</span>[],</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.allowed <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.step_failed <span class="op">==</span> <span class="dv">2</span></span></code></pre></div>
+<h3 id="step-5-step-3-failure-missing-compartments">Step 5: Step 3
+Failure – Missing Compartments</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>secret_doc <span class="op">=</span> KnowledgeItem(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    item_id<span class="op">=</span><span class="st">&quot;secret-plan&quot;</span>, classification<span class="op">=</span>ConfidentialityLevel.SECRET,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    owning_unit_address<span class="op">=</span><span class="st">&quot;D1&quot;</span>,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    compartments<span class="op">=</span><span class="bu">frozenset</span>({<span class="st">&quot;engineering-internal&quot;</span>}),</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co"># CFO has SECRET but compartment &quot;financial-records&quot;, not &quot;engineering-internal&quot;</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> can_access(</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D2-R1&quot;</span>, knowledge_item<span class="op">=</span>secret_doc,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED, compiled_org<span class="op">=</span>compiled,</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    clearances<span class="op">=</span>clearances, ksps<span class="op">=</span>[], bridges<span class="op">=</span>[],</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.allowed <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.step_failed <span class="op">==</span> <span class="dv">3</span></span></code></pre></div>
+<h3 id="step-6-step-4a-same-unit-access">Step 6: Step 4a – Same Unit
+Access</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Developer accessing a document owned by their own team</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> can_access(</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>, knowledge_item<span class="op">=</span>eng_doc,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED, compiled_org<span class="op">=</span>compiled,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    clearances<span class="op">=</span>clearances, ksps<span class="op">=</span>[], bridges<span class="op">=</span>[],</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.allowed <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<h3 id="step-7-step-4b-downward-visibility">Step 7: Step 4b – Downward
+Visibility</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># CTO at D1-R1 can see everything under D1-R1-*</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> can_access(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1&quot;</span>, knowledge_item<span class="op">=</span>eng_doc,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED, compiled_org<span class="op">=</span>compiled,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    clearances<span class="op">=</span>clearances, ksps<span class="op">=</span>[], bridges<span class="op">=</span>[],</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.allowed <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<h3 id="step-8-step-5-fail-closed-default">Step 8: Step 5 – Fail-Closed
+Default</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># CFO trying to access engineering doc -- different department, no policy</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> can_access(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D2-R1&quot;</span>, knowledge_item<span class="op">=</span>eng_doc,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED, compiled_org<span class="op">=</span>compiled,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    clearances<span class="op">=</span>clearances, ksps<span class="op">=</span>[], bridges<span class="op">=</span>[],</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.allowed <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> decision.step_failed <span class="op">==</span> <span class="dv">5</span>  <span class="co"># No access path found</span></span></code></pre></div>
+<h3 id="step-9-explain-access">Step 9: Explain Access</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> explain_access</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>trace <span class="op">=</span> explain_access(</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>, knowledge_item<span class="op">=</span>eng_doc,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    posture<span class="op">=</span>TrustPosture.DELEGATED, compiled_org<span class="op">=</span>compiled,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    clearances<span class="op">=</span>clearances, ksps<span class="op">=</span>[], bridges<span class="op">=</span>[],</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(trace)</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Shows Step 1: PASS, Step 2: PASS, ... Step 4a: ALLOWED</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<ol type="1">
+<li><p><strong>Passing empty clearances</strong> – The most common
+integration bug. If the clearances dict is empty, every access check
+fails at Step 1.</p></li>
+<li><p><strong>Confusing posture with clearance</strong> – Posture is
+system-wide and dynamic. Clearance is per-role and static. Both must
+pass for access.</p></li>
+<li><p><strong>Not checking <code>step_failed</code></strong> – The
+<code>AccessDecision</code> tells you exactly which step failed. Use
+this for debugging, not just checking <code>allowed</code>.</p></li>
+</ol>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>All Five Steps</strong>: Create scenarios that trigger
+failure at each of the five steps. Verify with
+<code>assert decision.step_failed == N</code>.</p></li>
+<li><p><strong>Posture Sweep</strong>: Take a single access request and
+run it at all five posture levels. Document which postures allow access
+and which deny it.</p></li>
+<li><p><strong>Audit Trail</strong>: Use <code>explain_access()</code>
+to generate a human-readable trace. Parse the output and verify it
+mentions each step.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>The 5-step algorithm is the single access control decision point in
+PACT</li>
+<li>Steps are evaluated in order; the first failure short-circuits</li>
+<li>Step 4 checks multiple structural and policy paths (same unit,
+downward, KSP, bridge)</li>
+<li>Step 5 is the fail-closed default: no path means no access</li>
+<li><code>explain_access()</code> provides a debuggable trace of every
+step</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="06_knowledge.md">Chapter 6: Knowledge Items &amp; Share
+Policies</a> – Create classified knowledge items and cross-unit sharing
+agreements.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

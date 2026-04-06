@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: ML to Registry
+Pipeline &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-1-ml-to-registry-pipeline">Chapter 1: ML to Registry
+Pipeline</h1>
+<h2 id="overview">Overview</h2>
+<p>The most common Kailash integration pattern connects
+<strong>kailash-ml</strong> training to the
+<strong>ModelRegistry</strong> for versioned model management. You train
+a model with <code>TrainingPipeline</code>, serialize it, register it in
+the registry with metrics, and promote it through governance stages to
+production. This chapter teaches the end-to-end pattern: train,
+serialize, register, and promote.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Kailash ML installed (<code>pip install kailash-ml</code>)</li>
+<li>Kailash Core SDK installed (<code>pip install kailash</code>)</li>
+<li>Familiarity with TrainingPipeline from the ML section</li>
+<li>Understanding of model serialization (pickle)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-ml-lifecycle-in-kailash">Concept 1: The ML
+Lifecycle in Kailash</h3>
+<p>Kailash’s ML lifecycle follows four stages:</p>
+<table>
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 25%" />
+<col style="width: 61%" />
+</colgroup>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Framework</th>
+<th>What Happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Train</td>
+<td>TrainingPipeline</td>
+<td>Fit a model on data, produce metrics</td>
+</tr>
+<tr>
+<td>Register</td>
+<td>ModelRegistry</td>
+<td>Store versioned artifact with metrics</td>
+</tr>
+<tr>
+<td>Promote</td>
+<td>ModelRegistry</td>
+<td>Governance gate: staging -&gt; production</td>
+</tr>
+<tr>
+<td>Serve</td>
+<td>InferenceServer</td>
+<td>Load model, serve predictions via Nexus</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>What</strong>: A four-stage pipeline connecting training to
+serving through versioned governance</li>
+<li><strong>Why</strong>: Without registration and promotion, models go
+directly from training to production without review, creating untracked
+production deployments</li>
+<li><strong>How</strong>: <code>TrainingPipeline.train()</code> -&gt;
+<code>pickle.dumps()</code> -&gt;
+<code>ModelRegistry.register_model()</code> -&gt;
+<code>ModelRegistry.promote_model()</code></li>
+<li><strong>When</strong>: Every time a model is trained and intended
+for production use</li>
+</ul>
+<h3 id="concept-2-artifact-serialization">Concept 2: Artifact
+Serialization</h3>
+<p>ModelRegistry stores model artifacts as <strong>bytes</strong>, not
+model objects. You must serialize the trained model (typically with
+<code>pickle.dumps()</code>) before registration. This decouples the
+registry from any specific ML framework.</p>
+<ul>
+<li><strong>What</strong>: Converting a trained model object to a byte
+array for storage</li>
+<li><strong>Why</strong>: The registry is framework-agnostic – it stores
+bytes, not sklearn/xgboost/torch objects</li>
+<li><strong>How</strong>:
+<code>model_bytes = pickle.dumps(trained_model)</code></li>
+<li><strong>When</strong>: Between training and registration</li>
+</ul>
+<h3 id="concept-3-metricspec">Concept 3: MetricSpec</h3>
+<p>Metrics are registered alongside the model artifact using
+<code>MetricSpec</code> objects. Each spec has a <code>name</code> and a
+<code>value</code>. These metrics are used for promotion decisions – you
+compare versions by their registered metrics.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 41%" />
+<col style="width: 11%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Class</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TrainingPipeline()</code></td>
+<td>–</td>
+<td><code>Pipeline</code></td>
+<td>Create a training pipeline</td>
+</tr>
+<tr>
+<td><code>ModelRegistry(conn)</code></td>
+<td><code>conn: ConnectionManager</code></td>
+<td><code>ModelRegistry</code></td>
+<td>Create a registry backed by DB</td>
+</tr>
+<tr>
+<td><code>registry.register_model()</code></td>
+<td><code>name</code>, <code>artifact: bytes</code>,
+<code>metrics: list[MetricSpec]</code></td>
+<td><code>ModelVersion</code></td>
+<td>Register a versioned model</td>
+</tr>
+<tr>
+<td><code>registry.promote_model()</code></td>
+<td><code>name</code>, <code>version</code>, <code>target_stage</code>,
+<code>reason</code></td>
+<td><code>None</code></td>
+<td>Promote through governance stages</td>
+</tr>
+<tr>
+<td><code>MetricSpec()</code></td>
+<td><code>name: str</code>, <code>value: float</code></td>
+<td><code>MetricSpec</code></td>
+<td>A single metric name-value pair</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pickle</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> polars <span class="im">as</span> pl</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    TrainingPipeline,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    ModelRegistry,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml.types <span class="im">import</span> MetricSpec, ModelSignature</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.db.connection <span class="im">import</span> ConnectionManager</span></code></pre></div>
+<h3 id="create-training-data">Create Training Data</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pl.DataFrame(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;feature_1&quot;</span>: [<span class="fl">1.0</span>, <span class="fl">2.0</span>, <span class="fl">3.0</span>, <span class="fl">4.0</span>, <span class="fl">5.0</span>, <span class="fl">6.0</span>, <span class="fl">7.0</span>, <span class="fl">8.0</span>, <span class="fl">9.0</span>, <span class="fl">10.0</span>],</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;feature_2&quot;</span>: [<span class="fl">0.1</span>, <span class="fl">0.4</span>, <span class="fl">0.9</span>, <span class="fl">1.6</span>, <span class="fl">2.5</span>, <span class="fl">3.6</span>, <span class="fl">4.9</span>, <span class="fl">6.4</span>, <span class="fl">8.1</span>, <span class="fl">10.0</span>],</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;target&quot;</span>: [<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">1</span>],</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> df.shape <span class="op">==</span> (<span class="dv">10</span>, <span class="dv">3</span>)</span></code></pre></div>
+<p>A minimal binary classification dataset. In production, you would
+load real data via <code>ASCENTDataLoader</code> or a DataFlow
+query.</p>
+<h3 id="train-and-serialize">Train and Serialize</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pattern: train -&gt; get model bytes -&gt; register</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co"># pipeline = TrainingPipeline()</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"># model, metrics = pipeline.train(data=df, target=&quot;target&quot;, spec=ModelSpec(...))</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># model_bytes = pickle.dumps(model)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co"># For demonstration, create a minimal model artifact</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>trained_model <span class="op">=</span> {<span class="st">&quot;type&quot;</span>: <span class="st">&quot;logistic_regression&quot;</span>, <span class="st">&quot;weights&quot;</span>: [<span class="fl">0.5</span>, <span class="fl">0.3</span>]}</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>model_bytes <span class="op">=</span> pickle.dumps(trained_model)</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(model_bytes, <span class="bu">bytes</span>), <span class="st">&quot;Model must be serialized to bytes&quot;</span></span></code></pre></div>
+<p>The critical step is <code>pickle.dumps()</code> – ModelRegistry
+expects bytes, not a model object. In production, the full
+<code>TrainingPipeline.train()</code> call produces a real
+sklearn/xgboost model.</p>
+<h3 id="register-in-modelregistry">Register in ModelRegistry</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> main():</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    db_path <span class="op">=</span> os.path.join(tempfile.gettempdir(), <span class="st">&quot;textbook_integration_01.db&quot;</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    conn <span class="op">=</span> ConnectionManager(<span class="ss">f&quot;sqlite:///</span><span class="sc">{</span>db_path<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> conn.initialize()</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    registry <span class="op">=</span> ModelRegistry(conn)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> registry.initialize()</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Register with metrics</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    version <span class="op">=</span> <span class="cf">await</span> registry.register_model(</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">&quot;credit_scorer&quot;</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>        artifact<span class="op">=</span>model_bytes,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>        metrics<span class="op">=</span>[</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>            MetricSpec(name<span class="op">=</span><span class="st">&quot;accuracy&quot;</span>, value<span class="op">=</span><span class="fl">0.85</span>),</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>            MetricSpec(name<span class="op">=</span><span class="st">&quot;auc&quot;</span>, value<span class="op">=</span><span class="fl">0.92</span>),</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>        ],</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> version <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>, <span class="st">&quot;Registration returns a version&quot;</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;Registered version: </span><span class="sc">{</span>version<span class="sc">}</span><span class="ss">&quot;</span>)</span></code></pre></div>
+<p>ModelRegistry is backed by a database via
+<code>ConnectionManager</code>. The <code>register_model()</code> call
+stores the artifact bytes and associated metrics, returning a version
+object.</p>
+<h3 id="promote-to-production">Promote to Production</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> registry.promote_model(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">&quot;credit_scorer&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>        version<span class="op">=</span>version.version,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>        target_stage<span class="op">=</span><span class="st">&quot;production&quot;</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        reason<span class="op">=</span><span class="st">&quot;Passed all validation checks&quot;</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Model promoted to production&quot;</span>)</span></code></pre></div>
+<p>Promotion is the governance gate. The <code>reason</code> field
+documents why this model was approved for production – essential for
+audit trails.</p>
+<h3 id="the-complete-integration-pattern">The Complete Integration
+Pattern</h3>
+<p>The full pipeline from training to serving:</p>
+<pre><code>TrainingPipeline.train()
+    -&gt; pickle.dumps()
+        -&gt; ModelRegistry.register_model()
+            -&gt; ModelRegistry.promote_model()
+                -&gt; InferenceServer.predict()</code></pre>
+<ol type="1">
+<li><strong>Train</strong> with kailash-ml TrainingPipeline</li>
+<li><strong>Register</strong> the serialized model with metrics in
+ModelRegistry</li>
+<li><strong>Promote</strong> through the governance gate (staging -&gt;
+production)</li>
+<li><strong>Serve</strong> via InferenceServer deployed through
+Nexus</li>
+</ol>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a ModelRegistry backed by an in-memory SQLite database.
+Register two versions of the same model with different accuracy metrics.
+Promote the one with higher accuracy to production.</li>
+<li>Why does ModelRegistry require <code>bytes</code> instead of a model
+object? What advantages does this give for multi-framework support?</li>
+<li>Extend the pattern to include evaluation: after registering, load
+the model bytes back with <code>pickle.loads()</code>, run predictions
+on a test set, and only promote if accuracy exceeds a threshold.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>The ML lifecycle in Kailash is: Train -&gt; Register -&gt; Promote
+-&gt; Serve</li>
+<li>ModelRegistry stores model artifacts as bytes – always use
+<code>pickle.dumps()</code> before registration</li>
+<li>MetricSpec attaches named metrics to registered versions for
+comparison</li>
+<li>Promotion is a governance gate that requires explicit approval with
+a documented reason</li>
+<li>ModelRegistry is database-backed via ConnectionManager for
+production persistence</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_ml_to_nexus.md">Chapter 2: ML to Nexus Deployment</a> –
+Deploy trained models via ONNX export and Nexus multi-channel
+serving.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

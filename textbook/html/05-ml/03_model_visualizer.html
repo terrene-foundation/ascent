@@ -1,164 +1,344 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chapter 3: ModelVisualizer — Kailash ML Textbook</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
-<style>
-body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
-h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
-h2 { color: #1E293B; margin-top: 2em; }
-h3 { color: #4F46E5; }
-pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
-code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
-p code, li code, td code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
-th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
-td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
-tr:hover { background: #F8FAFC; }
-.callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
-.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
-.nav { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 32px; font-size: 0.9em; }
-.nav a { color: #0D9488; text-decoration: none; }
-.nav a:hover { text-decoration: underline; }
-footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
-.exercise { background: #EEF2FF; border-left: 4px solid #4F46E5; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: ModelVisualizer &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-<nav class="nav">
-<span><a href="02_preprocessing.html">&larr; Prev: PreprocessingPipeline</a></span>
-<span><a href="04_feature_engineer.html">Next: FeatureEngineer &rarr;</a></span>
-</nav>
-
-<h1>Chapter 3: ModelVisualizer</h1>
-
-<h2>Overview</h2>
-<p>ModelVisualizer generates interactive Plotly figures for common ML evaluation charts. It is stateless &mdash; you pass in data and get back a Plotly Figure object that can be displayed inline, saved as HTML, or embedded in dashboards.</p>
-
-<h2>Prerequisites</h2>
-<table>
-<tr><th>Requirement</th><th>Details</th></tr>
-<tr><td>Python</td><td>3.10+</td></tr>
-<tr><td>kailash-ml</td><td><code>pip install kailash-ml</code></td></tr>
-<tr><td>plotly</td><td>Installed with kailash-ml</td></tr>
-<tr><td>Level</td><td>Basic</td></tr>
-</table>
-
-<h2>Concepts</h2>
-
-<h3>Why Visualize?</h3>
-<p>Numbers alone can be misleading. A model with 95% accuracy might be terrible on the minority class &mdash; the confusion matrix reveals this. An ROC curve shows how the model trades off true positives against false positives at every threshold. Feature importance tells you which inputs the model actually relies on.</p>
-
-<h3>Feature Importance Methods</h3>
-<p>ModelVisualizer supports three sources of feature importance:</p>
-<ol>
-<li><strong>Tree-based</strong> &mdash; Uses <code>model.feature_importances_</code> (RandomForest, GradientBoosting)</li>
-<li><strong>Coefficient-based</strong> &mdash; Uses <code>abs(model.coef_)</code> (LogisticRegression, Ridge)</li>
-<li><strong>Permutation-based</strong> &mdash; Fallback when neither attribute exists but <code>X</code> and <code>y</code> are provided</li>
-</ol>
-
-<h2>Key API Reference</h2>
-<table>
-<tr><th>Method</th><th>Returns</th></tr>
-<tr><td><code>viz.confusion_matrix(y_true, y_pred, labels=None)</code></td><td>Heatmap Figure</td></tr>
-<tr><td><code>viz.roc_curve(y_true, y_scores)</code></td><td>Figure with AUC in title</td></tr>
-<tr><td><code>viz.precision_recall_curve(y_true, y_scores)</code></td><td>Figure with AP in title</td></tr>
-<tr><td><code>viz.feature_importance(model, names, top_n=20)</code></td><td>Horizontal bar Figure</td></tr>
-<tr><td><code>viz.learning_curve(model, X, y, cv=5)</code></td><td>Line chart Figure</td></tr>
-<tr><td><code>viz.residuals(y_true, y_pred)</code></td><td>Scatter + histogram Figure</td></tr>
-<tr><td><code>viz.calibration_curve(y_true, y_proba, n_bins=10)</code></td><td>Calibration Figure</td></tr>
-<tr><td><code>viz.metric_comparison(results)</code></td><td>Grouped bar Figure</td></tr>
-<tr><td><code>viz.training_history(metrics, x_label="Epoch")</code></td><td>Multi-line Figure</td></tr>
-</table>
-
-<h2>Code Walkthrough</h2>
-
-<h3>Step 1: Create a ModelVisualizer</h3>
-<pre><code class="language-python">from kailash_ml.engines.model_visualizer import ModelVisualizer
-viz = ModelVisualizer()</code></pre>
-
-<h3>Step 2: Train a Classifier</h3>
-<pre><code class="language-python">from sklearn.datasets import make_classification
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-
-X_cls, y_cls = make_classification(n_samples=200, n_features=5, random_state=42)
-feature_names = [f"feat_{i}" for i in range(5)]
-X_train, X_test, y_train, y_test = train_test_split(X_cls, y_cls, test_size=0.3)
-
-clf = RandomForestClassifier(n_estimators=20, random_state=42)
-clf.fit(X_train, y_train)
-y_pred = clf.predict(X_test)
-y_proba = clf.predict_proba(X_test)[:, 1]</code></pre>
-
-<h3>Step 3: Confusion Matrix</h3>
-<pre><code class="language-python">fig_cm = viz.confusion_matrix(y_test, y_pred)
-# With custom labels
-fig_cm_labeled = viz.confusion_matrix(y_test, y_pred, labels=["No", "Yes"])</code></pre>
-
-<h3>Step 4: ROC Curve</h3>
-<pre><code class="language-python">fig_roc = viz.roc_curve(y_test, y_proba)
-# Title includes the AUC value</code></pre>
-
-<h3>Step 5: Feature Importance</h3>
-<pre><code class="language-python">fig_fi = viz.feature_importance(clf, feature_names)
-fig_fi_top3 = viz.feature_importance(clf, feature_names, top_n=3)</code></pre>
-
-<h3>Step 6: Metric Comparison</h3>
-<pre><code class="language-python">comparison_results = {
-    "RandomForest": {"accuracy": 0.95, "f1": 0.93, "precision": 0.94},
-    "LogisticRegression": {"accuracy": 0.88, "f1": 0.85, "precision": 0.87},
-    "GradientBoosting": {"accuracy": 0.97, "f1": 0.96, "precision": 0.95},
-}
-fig_mc = viz.metric_comparison(comparison_results)</code></pre>
-
-<h3>Step 7: Training History</h3>
-<pre><code class="language-python">history = {
-    "train_loss": [0.9, 0.7, 0.5, 0.35, 0.25, 0.18, 0.12, 0.08],
-    "val_loss": [1.0, 0.8, 0.65, 0.55, 0.5, 0.48, 0.47, 0.46],
-}
-fig_th = viz.training_history(history)</code></pre>
-
-<h2>Common Mistakes</h2>
-<table>
-<tr><th>Mistake</th><th>What Happens</th><th>Fix</th></tr>
-<tr><td>Mismatched feature_names length</td><td><code>ValueError</code></td><td>Match <code>model.n_features_in_</code></td></tr>
-<tr><td>Empty <code>metric_comparison({})</code></td><td><code>ValueError</code></td><td>Provide at least one model</td></tr>
-<tr><td>Model without importance attributes or X/y</td><td><code>ValueError</code></td><td>Pass X and y for permutation fallback</td></tr>
-</table>
-
-<h2>Exercises</h2>
-<div class="exercise">
-<p><strong>Exercise 1:</strong> Train a classifier on imbalanced data (90/10 split). Generate the confusion matrix. What does it reveal that accuracy alone does not?</p>
-</div>
-<div class="exercise">
-<p><strong>Exercise 2:</strong> Generate both ROC and PR curves for the same model. Which is more informative when the positive class is rare?</p>
-</div>
-<div class="exercise">
-<p><strong>Exercise 3:</strong> Generate a learning curve. If training score is much higher than validation score, what does this indicate?</p>
-</div>
-
-<h2>Key Takeaways</h2>
+<h1 id="chapter-3-modelvisualizer">Chapter 3: ModelVisualizer</h1>
+<h2 id="overview">Overview</h2>
+<p>ModelVisualizer generates interactive Plotly figures for common ML
+evaluation charts. It is stateless – you pass in data (predictions,
+labels, metrics) and get back a Plotly Figure object that can be
+displayed inline in Jupyter, saved as HTML, or embedded in
+dashboards.</p>
+<p>This chapter covers:</p>
 <ul>
-<li>ModelVisualizer is stateless &mdash; pass in data, get back a Plotly Figure.</li>
-<li>Eight methods cover confusion matrices, ROC/PR curves, feature importance, residuals, calibration, metric comparison, and training history.</li>
-<li>Feature importance supports tree-based, coefficient-based, and permutation-based sources.</li>
-<li>All methods validate inputs and raise clear errors for edge cases.</li>
+<li>Confusion matrix visualization</li>
+<li>ROC curve with AUC display</li>
+<li>Precision-recall curve with Average Precision</li>
+<li>Feature importance (tree-based, coefficient-based, and
+permutation-based)</li>
+<li>Learning curves (training vs validation score)</li>
+<li>Residual analysis for regression models</li>
+<li>Calibration curves for probability calibration</li>
+<li>Metric comparison across multiple models</li>
+<li>Training history (loss curves)</li>
 </ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td>3.10+</td>
+</tr>
+<tr>
+<td>kailash-ml</td>
+<td><code>pip install kailash-ml</code></td>
+</tr>
+<tr>
+<td>plotly</td>
+<td>Installed with kailash-ml</td>
+</tr>
+<tr>
+<td>sklearn</td>
+<td>For generating demo models</td>
+</tr>
+<tr>
+<td>Level</td>
+<td>Basic</td>
+</tr>
+</tbody>
+</table>
+<h2 id="concepts">Concepts</h2>
+<h3 id="why-visualize">Why Visualize?</h3>
+<p>Numbers alone can be misleading. A model with 95% accuracy might be
+terrible on the minority class – the confusion matrix reveals this. An
+ROC curve shows how the model trades off true positives against false
+positives at every threshold. Feature importance tells you which inputs
+the model actually relies on, which matters for interpretability and
+debugging.</p>
+<h3 id="plotly-figures">Plotly Figures</h3>
+<p>Every method returns a <code>plotly.graph_objects.Figure</code>. You
+can:</p>
+<ul>
+<li>Display inline in Jupyter: just return the figure</li>
+<li>Save to HTML: <code>fig.write_html("chart.html")</code></li>
+<li>Save as image: <code>fig.write_image("chart.png")</code></li>
+<li>Customize: <code>fig.update_layout(title="Custom Title")</code></li>
+</ul>
+<h3 id="feature-importance-methods">Feature Importance Methods</h3>
+<p>ModelVisualizer supports three sources of feature importance:</p>
+<ol type="1">
+<li><strong>Tree-based</strong> – Uses
+<code>model.feature_importances_</code> (RandomForest, GradientBoosting,
+XGBoost)</li>
+<li><strong>Coefficient-based</strong> – Uses
+<code>abs(model.coef_)</code> (LogisticRegression, Ridge, Lasso)</li>
+<li><strong>Permutation-based</strong> – When neither attribute exists
+but <code>X</code> and <code>y</code> are provided, permutation
+importance is computed as a fallback</li>
+</ol>
+<h2 id="key-api-reference">Key API Reference</h2>
+<table>
+<colgroup>
+<col style="width: 41%" />
+<col style="width: 37%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>viz.confusion_matrix(y_true, y_pred, labels=None)</code></td>
+<td>True labels, predicted labels, optional class names</td>
+<td>Plotly Figure (heatmap)</td>
+</tr>
+<tr>
+<td><code>viz.roc_curve(y_true, y_scores, pos_label=1)</code></td>
+<td>True labels, probability scores</td>
+<td>Plotly Figure with AUC in title</td>
+</tr>
+<tr>
+<td><code>viz.precision_recall_curve(y_true, y_scores, pos_label=1)</code></td>
+<td>True labels, probability scores</td>
+<td>Plotly Figure with AP in title</td>
+</tr>
+<tr>
+<td><code>viz.feature_importance(model, feature_names, top_n=20, X=None, y=None)</code></td>
+<td>Fitted model, feature name list, optional limit and fallback
+data</td>
+<td>Plotly Figure (horizontal bar)</td>
+</tr>
+<tr>
+<td><code>viz.learning_curve(model, X, y, cv=5, train_sizes=None)</code></td>
+<td>Unfitted model, data, CV folds, training sizes</td>
+<td>Plotly Figure (line chart)</td>
+</tr>
+<tr>
+<td><code>viz.residuals(y_true, y_pred)</code></td>
+<td>True values, predicted values</td>
+<td>Plotly Figure (scatter + histogram)</td>
+</tr>
+<tr>
+<td><code>viz.calibration_curve(y_true, y_proba, n_bins=10)</code></td>
+<td>True labels, predicted probabilities, bin count</td>
+<td>Plotly Figure</td>
+</tr>
+<tr>
+<td><code>viz.metric_comparison(results)</code></td>
+<td>Dict of model_name -&gt; metric_dict</td>
+<td>Plotly Figure (grouped bars)</td>
+</tr>
+<tr>
+<td><code>viz.training_history(metrics, x_label="Epoch")</code></td>
+<td>Dict of series_name -&gt; values list</td>
+<td>Plotly Figure (multi-line)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-create-a-modelvisualizer">Step 1: Create a
+ModelVisualizer</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml.engines.model_visualizer <span class="im">import</span> ModelVisualizer</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>viz <span class="op">=</span> ModelVisualizer()</span></code></pre></div>
+<h3 id="step-2-train-a-classifier">Step 2: Train a Classifier</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.datasets <span class="im">import</span> make_classification</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.ensemble <span class="im">import</span> RandomForestClassifier</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.model_selection <span class="im">import</span> train_test_split</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>X_cls, y_cls <span class="op">=</span> make_classification(n_samples<span class="op">=</span><span class="dv">200</span>, n_features<span class="op">=</span><span class="dv">5</span>, random_state<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>feature_names <span class="op">=</span> [<span class="ss">f&quot;feat_</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">&quot;</span> <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">5</span>)]</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>X_train, X_test, y_train, y_test <span class="op">=</span> train_test_split(X_cls, y_cls, test_size<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>clf <span class="op">=</span> RandomForestClassifier(n_estimators<span class="op">=</span><span class="dv">20</span>, random_state<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>clf.fit(X_train, y_train)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>y_pred <span class="op">=</span> clf.predict(X_test)</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>y_proba <span class="op">=</span> clf.predict_proba(X_test)[:, <span class="dv">1</span>]</span></code></pre></div>
+<h3 id="step-3-confusion-matrix">Step 3: Confusion Matrix</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>fig_cm <span class="op">=</span> viz.confusion_matrix(y_test, y_pred)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> fig_cm.layout.title.text <span class="op">==</span> <span class="st">&quot;Confusion Matrix&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># With custom labels</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>fig_cm_labeled <span class="op">=</span> viz.confusion_matrix(y_test, y_pred, labels<span class="op">=</span>[<span class="st">&quot;No&quot;</span>, <span class="st">&quot;Yes&quot;</span>])</span></code></pre></div>
+<h3 id="step-4-roc-curve">Step 4: ROC Curve</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>fig_roc <span class="op">=</span> viz.roc_curve(y_test, y_proba)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;AUC&quot;</span> <span class="kw">in</span> fig_roc.layout.title.text</span></code></pre></div>
+<h3 id="step-5-precision-recall-curve">Step 5: Precision-Recall
+Curve</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>fig_pr <span class="op">=</span> viz.precision_recall_curve(y_test, y_proba)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;AP&quot;</span> <span class="kw">in</span> fig_pr.layout.title.text</span></code></pre></div>
+<h3 id="step-6-feature-importance">Step 6: Feature Importance</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>fig_fi <span class="op">=</span> viz.feature_importance(clf, feature_names)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Limit to top 3</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>fig_fi_top3 <span class="op">=</span> viz.feature_importance(clf, feature_names, top_n<span class="op">=</span><span class="dv">3</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Works with coefficient-based models too</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.linear_model <span class="im">import</span> LogisticRegression</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>lr <span class="op">=</span> LogisticRegression(random_state<span class="op">=</span><span class="dv">42</span>, max_iter<span class="op">=</span><span class="dv">200</span>)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>lr.fit(X_train, y_train)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>fig_fi_lr <span class="op">=</span> viz.feature_importance(lr, feature_names)</span></code></pre></div>
+<h3 id="step-7-learning-curve">Step 7: Learning Curve</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>fig_lc <span class="op">=</span> viz.learning_curve(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    RandomForestClassifier(n_estimators<span class="op">=</span><span class="dv">10</span>, random_state<span class="op">=</span><span class="dv">42</span>),</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    X_train, y_train,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    cv<span class="op">=</span><span class="dv">3</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    train_sizes<span class="op">=</span>[<span class="fl">0.3</span>, <span class="fl">0.6</span>, <span class="fl">1.0</span>],</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<h3 id="step-8-residual-analysis-regression">Step 8: Residual Analysis
+(Regression)</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.datasets <span class="im">import</span> make_regression</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.ensemble <span class="im">import</span> RandomForestRegressor</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>X_reg, y_reg <span class="op">=</span> make_regression(n_samples<span class="op">=</span><span class="dv">100</span>, n_features<span class="op">=</span><span class="dv">3</span>, noise<span class="op">=</span><span class="fl">10.0</span>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>reg <span class="op">=</span> RandomForestRegressor(n_estimators<span class="op">=</span><span class="dv">20</span>, random_state<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>reg.fit(X_reg[:<span class="dv">80</span>], y_reg[:<span class="dv">80</span>])</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>y_reg_pred <span class="op">=</span> reg.predict(X_reg[<span class="dv">80</span>:])</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>fig_res <span class="op">=</span> viz.residuals(y_reg[<span class="dv">80</span>:], y_reg_pred)</span></code></pre></div>
+<h3 id="step-9-metric-comparison">Step 9: Metric Comparison</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>comparison_results <span class="op">=</span> {</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;RandomForest&quot;</span>: {<span class="st">&quot;accuracy&quot;</span>: <span class="fl">0.95</span>, <span class="st">&quot;f1&quot;</span>: <span class="fl">0.93</span>, <span class="st">&quot;precision&quot;</span>: <span class="fl">0.94</span>},</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;LogisticRegression&quot;</span>: {<span class="st">&quot;accuracy&quot;</span>: <span class="fl">0.88</span>, <span class="st">&quot;f1&quot;</span>: <span class="fl">0.85</span>, <span class="st">&quot;precision&quot;</span>: <span class="fl">0.87</span>},</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;GradientBoosting&quot;</span>: {<span class="st">&quot;accuracy&quot;</span>: <span class="fl">0.97</span>, <span class="st">&quot;f1&quot;</span>: <span class="fl">0.96</span>, <span class="st">&quot;precision&quot;</span>: <span class="fl">0.95</span>},</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>fig_mc <span class="op">=</span> viz.metric_comparison(comparison_results)</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> fig_mc.layout.barmode <span class="op">==</span> <span class="st">&quot;group&quot;</span></span></code></pre></div>
+<h3 id="step-10-training-history">Step 10: Training History</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>history <span class="op">=</span> {</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;train_loss&quot;</span>: [<span class="fl">0.9</span>, <span class="fl">0.7</span>, <span class="fl">0.5</span>, <span class="fl">0.35</span>, <span class="fl">0.25</span>, <span class="fl">0.18</span>, <span class="fl">0.12</span>, <span class="fl">0.08</span>],</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;val_loss&quot;</span>: [<span class="fl">1.0</span>, <span class="fl">0.8</span>, <span class="fl">0.65</span>, <span class="fl">0.55</span>, <span class="fl">0.5</span>, <span class="fl">0.48</span>, <span class="fl">0.47</span>, <span class="fl">0.46</span>],</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>fig_th <span class="op">=</span> viz.training_history(history)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> fig_th.layout.xaxis.title.text <span class="op">==</span> <span class="st">&quot;Epoch&quot;</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 25%" />
+<col style="width: 41%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>What Happens</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mismatched feature_names length</td>
+<td><code>ValueError</code></td>
+<td>Ensure <code>len(feature_names) == model.n_features_in_</code></td>
+</tr>
+<tr>
+<td>Empty <code>metric_comparison({})</code></td>
+<td><code>ValueError</code></td>
+<td>Provide at least one model</td>
+</tr>
+<tr>
+<td>Empty <code>training_history({})</code></td>
+<td><code>ValueError</code></td>
+<td>Provide at least one metric series</td>
+</tr>
+<tr>
+<td>Model without importance attributes or X/y</td>
+<td><code>ValueError</code></td>
+<td>Pass <code>X</code> and <code>y</code> for permutation importance
+fallback</td>
+</tr>
+<tr>
+<td>Forgetting to train the model first</td>
+<td><code>AttributeError</code> on <code>.predict()</code></td>
+<td>Call <code>model.fit()</code> before visualization</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Confusion matrix analysis</strong>: Train a classifier on
+imbalanced data (90/10 split). Generate the confusion matrix. What does
+it reveal that accuracy alone does not?</p></li>
+<li><p><strong>ROC vs PR curves</strong>: Generate both curves for the
+same model. Which curve is more informative when the positive class is
+rare (&lt; 5% of samples)?</p></li>
+<li><p><strong>Learning curve diagnosis</strong>: Generate a learning
+curve. If the training score is much higher than the validation score,
+what does this indicate? What would you try next?</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>ModelVisualizer is stateless – pass in data, get back a Plotly
+Figure.</li>
+<li>Eight visualization methods cover the most common ML evaluation
+needs.</li>
+<li>Feature importance supports three backends: tree-based,
+coefficient-based, and permutation-based.</li>
+<li><code>metric_comparison()</code> provides a side-by-side view of
+multiple models for quick selection.</li>
+<li><code>training_history()</code> visualizes training curves to
+diagnose overfitting.</li>
+<li>All methods validate inputs and raise clear errors for edge
+cases.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p>Chapter 4 covers <strong>FeatureEngineer</strong> – the engine that
+generates candidate features (interactions, polynomials, binning) and
+selects the best subset using importance, correlation, or mutual
+information.</p>
 
-<div class="callout">
-<strong>Next chapter:</strong> <a href="04_feature_engineer.html">FeatureEngineer</a> &mdash; generate candidate features and select the best subset.
-</div>
-
-<footer>
-Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation
-</footer>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>
 </html>

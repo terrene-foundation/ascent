@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 6: Presets — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 6: Presets &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,142 +24,366 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 6: Presets</h1>
+<h1 id="chapter-6-presets">Chapter 6: Presets</h1>
+<h2 id="overview">Overview</h2>
+<p>Presets provide one-line middleware configuration for common
+deployment scenarios. Instead of manually adding each middleware, choose
+a preset that encodes best practices: <code>none</code>,
+<code>lightweight</code>, <code>standard</code>, <code>saas</code>, or
+<code>enterprise</code>. This chapter also covers
+<code>NexusConfig</code> for centralized settings, the
+<code>NexusEngine</code> builder pattern for production deployments, and
+the <code>Preset</code> enum for cross-SDK parity with the Rust
+implementation.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapter 5: Middleware</li>
+<li>Understanding of middleware stacks and their purpose</li>
+<li>Familiarity with the builder pattern</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-are-presets">What Are Presets?</h3>
+<p>A preset is a named collection of middleware and plugin factories.
+Each factory receives a <code>NexusConfig</code> and returns a
+middleware or plugin tuple. Presets are progressive – each level
+includes everything from the previous level plus more:</p>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 21%" />
+<col style="width: 15%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Preset</th>
+<th>Middleware Count</th>
+<th>Plugin Count</th>
+<th>Includes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>none</code></td>
+<td>0</td>
+<td>0</td>
+<td>Nothing</td>
+</tr>
+<tr>
+<td><code>lightweight</code></td>
+<td>2</td>
+<td>0</td>
+<td>CORS + Security Headers</td>
+</tr>
+<tr>
+<td><code>standard</code></td>
+<td>5</td>
+<td>0</td>
+<td>+ CSRF + Rate Limit + Error Handler</td>
+</tr>
+<tr>
+<td><code>saas</code></td>
+<td>5</td>
+<td>4</td>
+<td>+ JWT + RBAC + Tenant + Audit</td>
+</tr>
+<tr>
+<td><code>enterprise</code></td>
+<td>5</td>
+<td>6</td>
+<td>+ SSO + Feature Flags</td>
+</tr>
+</tbody>
+</table>
+<h3 id="nexusconfig">NexusConfig</h3>
+<p><code>NexusConfig</code> centralizes all settings that preset
+factories need: CORS origins, JWT secrets, rate limits, audit settings,
+and more. Secrets are redacted in <code>__repr__()</code> for
+safety.</p>
+<h3 id="nexusengine">NexusEngine</h3>
+<p><code>NexusEngine</code> wraps <code>Nexus</code> with enterprise
+middleware and a fluent builder API. It matches
+<code>kailash-rs NexusEngine</code> for cross-SDK parity and is the
+recommended entry point for production deployments.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 38%" />
+<col style="width: 13%" />
+<col style="width: 29%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PRESETS</code></td>
+<td>–</td>
+<td><code>dict[str, PresetConfig]</code></td>
+<td>All named presets</td>
+</tr>
+<tr>
+<td><code>get_preset(name)</code></td>
+<td><code>name: str</code></td>
+<td><code>PresetConfig</code></td>
+<td>Get preset by name (raises <code>ValueError</code> for
+unknowns)</td>
+</tr>
+<tr>
+<td><code>PresetConfig</code></td>
+<td><code>.name</code>, <code>.description</code>,
+<code>.middleware_factories</code>, <code>.plugin_factories</code></td>
+<td>dataclass</td>
+<td>Preset definition</td>
+</tr>
+<tr>
+<td><code>NexusConfig()</code></td>
+<td><code>cors_origins</code>, <code>jwt_secret</code>,
+<code>rate_limit</code>, <code>environment</code>, etc.</td>
+<td>config object</td>
+<td>Centralized settings</td>
+</tr>
+<tr>
+<td><code>apply_preset(app, name, config)</code></td>
+<td><code>app: Nexus</code>, <code>name: str</code>,
+<code>config: NexusConfig</code></td>
+<td><code>None</code></td>
+<td>Apply preset manually</td>
+</tr>
+<tr>
+<td><code>NexusEngine.builder()</code></td>
+<td>–</td>
+<td><code>NexusEngineBuilder</code></td>
+<td>Start building a NexusEngine</td>
+</tr>
+<tr>
+<td><code>.preset(p)</code></td>
+<td><code>p: Preset</code></td>
+<td>builder</td>
+<td>Set preset on builder</td>
+</tr>
+<tr>
+<td><code>.bind(addr)</code></td>
+<td><code>addr: str</code></td>
+<td>builder</td>
+<td>Set bind address</td>
+</tr>
+<tr>
+<td><code>.config(**kwargs)</code></td>
+<td>keyword args</td>
+<td>builder</td>
+<td>Set Nexus config</td>
+</tr>
+<tr>
+<td><code>.build()</code></td>
+<td>–</td>
+<td><code>NexusEngine</code></td>
+<td>Build the engine</td>
+</tr>
+<tr>
+<td><code>.enterprise(config)</code></td>
+<td><code>EnterpriseMiddlewareConfig</code></td>
+<td>builder</td>
+<td>Set enterprise config</td>
+</tr>
+<tr>
+<td><code>Preset</code> enum</td>
+<td><code>NONE</code>, <code>SAAS</code>, <code>ENTERPRISE</code></td>
+<td>enum</td>
+<td>Cross-SDK preset enum</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-explore-the-preset-registry">Step 1: Explore the Preset
+Registry</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.presets <span class="im">import</span> PRESETS, get_preset</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;none&quot;</span> <span class="kw">in</span> PRESETS</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;lightweight&quot;</span> <span class="kw">in</span> PRESETS</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;standard&quot;</span> <span class="kw">in</span> PRESETS</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;saas&quot;</span> <span class="kw">in</span> PRESETS</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;enterprise&quot;</span> <span class="kw">in</span> PRESETS</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>lightweight <span class="op">=</span> get_preset(<span class="st">&quot;lightweight&quot;</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> lightweight.name <span class="op">==</span> <span class="st">&quot;lightweight&quot;</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(lightweight.middleware_factories) <span class="op">==</span> <span class="dv">2</span></span></code></pre></div>
+<h3 id="step-2-nexusconfig">Step 2: NexusConfig</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.presets <span class="im">import</span> NexusConfig</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> NexusConfig(</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;https://app.example.com&quot;</span>],</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    jwt_secret<span class="op">=</span><span class="st">&quot;super-secret-key&quot;</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    rate_limit<span class="op">=</span><span class="dv">200</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    environment<span class="op">=</span><span class="st">&quot;production&quot;</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Secrets are redacted in repr</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>repr_str <span class="op">=</span> <span class="bu">repr</span>(config)</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;[REDACTED]&quot;</span> <span class="kw">in</span> repr_str</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;super-secret-key&quot;</span> <span class="kw">not</span> <span class="kw">in</span> repr_str</span></code></pre></div>
+<h3 id="step-3-using-presets-with-nexus-constructor">Step 3: Using
+Presets with Nexus Constructor</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    preset<span class="op">=</span><span class="st">&quot;lightweight&quot;</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;https://app.example.com&quot;</span>],</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    enable_durability<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> app._active_preset <span class="op">==</span> <span class="st">&quot;lightweight&quot;</span></span></code></pre></div>
+<p>This is the simplest way to apply a preset – pass
+<code>preset=</code> to the constructor.</p>
+<h3 id="step-4-nexusengine-builder">Step 4: NexusEngine Builder</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> NexusEngine, Preset</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>engine <span class="op">=</span> (</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    NexusEngine.builder()</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    .preset(Preset.SAAS)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    .bind(<span class="st">&quot;0.0.0.0:8080&quot;</span>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    .config(enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    .build()</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(engine.nexus, Nexus)</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> engine.bind_addr <span class="op">==</span> <span class="st">&quot;0.0.0.0:8080&quot;</span></span></code></pre></div>
+<p>The builder pattern provides fluent configuration for production
+deployments.</p>
+<h3 id="step-5-enterprisemiddlewareconfig">Step 5:
+EnterpriseMiddlewareConfig</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.engine <span class="im">import</span> EnterpriseMiddlewareConfig</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>enterprise_config <span class="op">=</span> EnterpriseMiddlewareConfig(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    enable_csrf<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    enable_audit<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    enable_metrics<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    enable_rate_limiting<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    rate_limit_rpm<span class="op">=</span><span class="dv">500</span>,</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    enable_cors<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;https://api.example.com&quot;</span>],</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>engine2 <span class="op">=</span> (</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    NexusEngine.builder()</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    .enterprise(enterprise_config)</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    .bind(<span class="st">&quot;0.0.0.0:9090&quot;</span>)</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>    .config(enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    .build()</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> engine2.enterprise_config.rate_limit_rpm <span class="op">==</span> <span class="dv">500</span></span></code></pre></div>
+<h3 id="step-6-register-workflows-on-nexusengine">Step 6: Register
+Workflows on NexusEngine</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> WorkflowBuilder</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>wb <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>wb.add_node(<span class="st">&quot;PythonCodeNode&quot;</span>, <span class="st">&quot;double&quot;</span>, {</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = n * 2&quot;</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;n&quot;</span>: <span class="st">&quot;int&quot;</span>},</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;int&quot;</span>,</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>engine.register(<span class="st">&quot;double&quot;</span>, wb.build(name<span class="op">=</span><span class="st">&quot;double&quot;</span>))</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;double&quot;</span> <span class="kw">in</span> engine.nexus._workflows</span></code></pre></div>
+<p><code>NexusEngine.register()</code> delegates to the underlying Nexus
+instance.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 44%" />
+<col style="width: 24%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Using <code>saas</code> preset without JWT secret</td>
+<td>JWT middleware fails at runtime</td>
+<td>Set <code>jwt_secret</code> in NexusConfig</td>
+</tr>
+<tr>
+<td>Misspelling preset name</td>
+<td><code>ValueError: Unknown preset</code></td>
+<td>Check <code>PRESETS.keys()</code> for valid names</td>
+</tr>
+<tr>
+<td>Overriding preset with <code>add_middleware()</code> after
+applying</td>
+<td>Duplicate middleware</td>
+<td>Choose one approach: preset OR manual</td>
+</tr>
+<tr>
+<td>Logging NexusConfig with secrets</td>
+<td>Security leak</td>
+<td>Use <code>repr()</code> which redacts secrets</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Preset Inventory</strong>: Iterate over all presets and
+print their name, middleware count, and plugin count. Create a table
+showing the progressive growth from <code>none</code> to
+<code>enterprise</code>.</p></li>
+<li><p><strong>NexusConfig Defaults</strong>: Create a
+<code>NexusConfig()</code> with no arguments. Print all default values.
+Which settings are development-friendly? Which are
+security-conscious?</p></li>
+<li><p><strong>Engine Builder</strong>: Build a <code>NexusEngine</code>
+with the <code>ENTERPRISE</code> preset, a bind address of
+<code>"0.0.0.0:443"</code>, and an
+<code>EnterpriseMiddlewareConfig</code> with rate limiting at 1000 RPM.
+Register a workflow and verify it appears in the engine’s Nexus
+instance.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Five named presets provide progressive middleware stacks: none,
+lightweight, standard, saas, enterprise.</li>
+<li><code>get_preset(name)</code> retrieves a preset;
+<code>ValueError</code> for unknown names.</li>
+<li><code>NexusConfig</code> centralizes all settings with secret
+redaction in <code>repr()</code>.</li>
+<li><code>Nexus(preset="lightweight")</code> is the simplest one-line
+middleware setup.</li>
+<li><code>NexusEngine.builder()</code> provides a fluent builder for
+production deployments.</li>
+<li>The <code>Preset</code> enum (<code>NONE</code>, <code>SAAS</code>,
+<code>ENTERPRISE</code>) maintains cross-SDK parity.</li>
+<li><code>EnterpriseMiddlewareConfig</code> provides fine-grained
+control over the middleware stack.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="07_event_bus.md">Chapter 7: Event Bus</a> – Deep dive into
+the EventBus for event-driven patterns, including publishing,
+subscribing, filtering, and history management.</p>
 
-  <h2>Overview</h2>
-  <p>Presets provide one-line middleware configuration for common deployment scenarios. Choose from five presets (<code>none</code>, <code>lightweight</code>, <code>standard</code>, <code>saas</code>, <code>enterprise</code>) or use the <code>NexusEngine</code> builder for production deployments.</p>
-
-  <h2>Concepts</h2>
-
-  <h3>Progressive Presets</h3>
-  <table>
-    <tr><th>Preset</th><th>Middleware</th><th>Plugins</th><th>Includes</th></tr>
-    <tr><td><code>none</code></td><td>0</td><td>0</td><td>Nothing</td></tr>
-    <tr><td><code>lightweight</code></td><td>2</td><td>0</td><td>CORS + Security Headers</td></tr>
-    <tr><td><code>standard</code></td><td>5</td><td>0</td><td>+ CSRF + Rate Limit + Error Handler</td></tr>
-    <tr><td><code>saas</code></td><td>5</td><td>4</td><td>+ JWT + RBAC + Tenant + Audit</td></tr>
-    <tr><td><code>enterprise</code></td><td>5</td><td>6</td><td>+ SSO + Feature Flags</td></tr>
-  </table>
-
-  <h3>NexusConfig</h3>
-  <p><code>NexusConfig</code> centralizes all settings that preset factories need. Secrets are redacted in <code>__repr__()</code> for safety.</p>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Explore Presets</h3>
-  <pre><code class="language-python">from nexus.presets import PRESETS, get_preset
-
-lightweight = get_preset("lightweight")
-assert lightweight.name == "lightweight"
-assert len(lightweight.middleware_factories) == 2
-
-# Unknown preset raises ValueError
-try:
-    get_preset("nonexistent")
-except ValueError as e:
-    assert "Unknown preset" in str(e)</code></pre>
-
-  <h3>Step 2: NexusConfig</h3>
-  <pre><code class="language-python">from nexus.presets import NexusConfig
-
-config = NexusConfig(
-    cors_origins=["https://app.example.com"],
-    jwt_secret="super-secret-key",
-    rate_limit=200,
-    environment="production",
-)
-
-# Secrets are redacted in repr
-repr_str = repr(config)
-assert "[REDACTED]" in repr_str
-assert "super-secret-key" not in repr_str</code></pre>
-
-  <div class="callout">
-    <strong>Security:</strong> <code>NexusConfig.__repr__()</code> automatically redacts sensitive fields like <code>jwt_secret</code>, preventing accidental exposure in logs.
-  </div>
-
-  <h3>Step 3: Preset via Constructor</h3>
-  <pre><code class="language-python">from nexus import Nexus
-
-app = Nexus(
-    preset="lightweight",
-    cors_origins=["https://app.example.com"],
-    enable_durability=False,
-)
-assert app._active_preset == "lightweight"</code></pre>
-
-  <h3>Step 4: NexusEngine Builder</h3>
-  <pre><code class="language-python">from nexus import NexusEngine, Preset
-
-engine = (
-    NexusEngine.builder()
-    .preset(Preset.SAAS)
-    .bind("0.0.0.0:8080")
-    .config(enable_durability=False)
-    .build()
-)
-
-assert isinstance(engine.nexus, Nexus)
-assert engine.bind_addr == "0.0.0.0:8080"</code></pre>
-
-  <h3>Step 5: EnterpriseMiddlewareConfig</h3>
-  <pre><code class="language-python">from nexus.engine import EnterpriseMiddlewareConfig
-
-enterprise_config = EnterpriseMiddlewareConfig(
-    enable_csrf=True,
-    enable_audit=True,
-    enable_metrics=True,
-    enable_rate_limiting=True,
-    rate_limit_rpm=500,
-    enable_cors=True,
-    cors_origins=["https://api.example.com"],
-)
-
-engine2 = (
-    NexusEngine.builder()
-    .enterprise(enterprise_config)
-    .bind("0.0.0.0:9090")
-    .config(enable_durability=False)
-    .build()
-)</code></pre>
-
-  <h3>Step 6: Register on Engine</h3>
-  <pre><code class="language-python">from kailash import WorkflowBuilder
-
-wb = WorkflowBuilder()
-wb.add_node("PythonCodeNode", "double", {
-    "code": "output = n * 2",
-    "inputs": {"n": "int"},
-    "output_type": "int",
-})
-engine.register("double", wb.build(name="double"))
-assert "double" in engine.nexus._workflows</code></pre>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Using <code>saas</code> without JWT secret</td><td>JWT middleware fails at runtime</td><td>Set <code>jwt_secret</code> in NexusConfig</td></tr>
-    <tr><td>Misspelling preset name</td><td><code>ValueError</code></td><td>Check <code>PRESETS.keys()</code></td></tr>
-    <tr><td>Logging NexusConfig with secrets</td><td>Security leak</td><td>Use <code>repr()</code> which redacts</td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li>Five presets provide progressive middleware stacks.</li>
-    <li><code>NexusConfig</code> centralizes settings with secret redaction.</li>
-    <li><code>Nexus(preset="lightweight")</code> is the simplest setup.</li>
-    <li><code>NexusEngine.builder()</code> provides a fluent builder for production.</li>
-    <li>The <code>Preset</code> enum maintains cross-SDK parity with Rust.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="05_middleware.html">&larr; Previous: Middleware</a>
-    <a href="07_event_bus.html">Next: Event Bus &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

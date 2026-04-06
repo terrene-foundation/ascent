@@ -1,196 +1,476 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chapter 2: PreprocessingPipeline — Kailash ML Textbook</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
-<style>
-body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
-h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
-h2 { color: #1E293B; margin-top: 2em; }
-h3 { color: #4F46E5; }
-pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
-code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
-p code, li code, td code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
-th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
-td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
-tr:hover { background: #F8FAFC; }
-.callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
-.warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
-.nav { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 32px; font-size: 0.9em; }
-.nav a { color: #0D9488; text-decoration: none; }
-.nav a:hover { text-decoration: underline; }
-footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
-.exercise { background: #EEF2FF; border-left: 4px solid #4F46E5; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2:
+PreprocessingPipeline &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-<nav class="nav">
-<span><a href="01_data_explorer.html">&larr; Prev: DataExplorer</a></span>
-<span><a href="03_model_visualizer.html">Next: ModelVisualizer &rarr;</a></span>
-</nav>
-
-<h1>Chapter 2: PreprocessingPipeline</h1>
-
-<h2>Overview</h2>
-<p>PreprocessingPipeline transforms raw data into ML-ready features with a single <code>setup()</code> call. It auto-detects whether your task is classification or regression, identifies column types, imputes missing values, encodes categoricals, scales numerics, removes outliers, and splits into train/test sets. At inference time, <code>transform()</code> applies the exact same transformations learned during training.</p>
-
-<h2>Prerequisites</h2>
-<table>
-<tr><th>Requirement</th><th>Details</th></tr>
-<tr><td>Python</td><td>3.10+</td></tr>
-<tr><td>kailash-ml</td><td><code>pip install kailash-ml</code></td></tr>
-<tr><td>Prior chapter</td><td>Chapter 1 (DataExplorer)</td></tr>
-<tr><td>Level</td><td>Basic</td></tr>
-</table>
-
-<h2>Concepts</h2>
-
-<h3>Task Type Detection</h3>
-<p>PreprocessingPipeline examines the target column to determine task type. If the target has few unique values relative to the dataset size, it is classified as <strong>classification</strong>. If the target has many unique continuous values, it is <strong>regression</strong>.</p>
-
-<h3>Imputation Strategies</h3>
-<table>
-<tr><th>Strategy</th><th>Behavior</th></tr>
-<tr><td><code>mean</code></td><td>Replace nulls with the column mean (numeric) or mode (categorical)</td></tr>
-<tr><td><code>median</code></td><td>Replace nulls with the column median (numeric) or mode (categorical)</td></tr>
-<tr><td><code>drop</code></td><td>Remove rows containing any null value</td></tr>
-</table>
-
-<h3>Categorical Encoding</h3>
-<table>
-<tr><th>Encoding</th><th>Behavior</th><th>Output</th></tr>
-<tr><td><code>onehot</code></td><td>Creates binary columns for each category</td><td>Expands column count; original removed</td></tr>
-<tr><td><code>ordinal</code></td><td>Maps categories to integers</td><td>Same column, Float64 dtype</td></tr>
-<tr><td><code>target</code></td><td>Replaces categories with mean target value</td><td>Same column, Float64 dtype</td></tr>
-</table>
-
-<h3>Normalization &amp; Outlier Removal</h3>
-<p>When <code>normalize=True</code>, StandardScaler is applied to numeric columns. When <code>remove_outliers=True</code>, extreme rows are dropped based on the <code>outlier_threshold</code> percentile.</p>
-
-<h2>Key API Reference</h2>
-<table>
-<tr><th>Class / Method</th><th>Purpose</th></tr>
-<tr><td><code>PreprocessingPipeline()</code></td><td>Instantiate the pipeline</td></tr>
-<tr><td><code>pipeline.setup(df, target, ...)</code></td><td>Fit and transform: detect types, impute, encode, scale, split</td></tr>
-<tr><td><code>pipeline.transform(new_data)</code></td><td>Apply fitted transformations to new data</td></tr>
-<tr><td><code>pipeline.inverse_transform(data)</code></td><td>Reverse scaling for interpretability</td></tr>
-<tr><td><code>pipeline.get_config()</code></td><td>Inspect fitted configuration as a dict</td></tr>
-<tr><td><code>SetupResult</code></td><td>Fields: <code>task_type</code>, <code>target_column</code>, <code>numeric_columns</code>, <code>categorical_columns</code>, <code>train_data</code>, <code>test_data</code>, <code>transformers</code>, <code>summary</code></td></tr>
-</table>
-
-<h2>Code Walkthrough</h2>
-
-<h3>Step 1: Create Data with Missing Values</h3>
-<pre><code class="language-python">import polars as pl
-
-df = pl.DataFrame({
-    "age": [25.0, 30.0, None, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0],
-    "income": [30000.0, 45000.0, 55000.0, None, 70000.0, 80000.0,
-               90000.0, 100000.0, 110000.0, 120000.0],
-    "department": ["eng", "eng", "sales", "sales", "hr", None,
-                   "eng", "sales", "hr", "eng"],
-    "churned": [0, 0, 1, 0, 1, 0, 1, 1, 0, 0],
-})</code></pre>
-
-<h3>Step 2: Setup with One-Hot Encoding</h3>
-<pre><code class="language-python">from kailash_ml.engines.preprocessing import PreprocessingPipeline, SetupResult
-
-pipeline = PreprocessingPipeline()
-result = pipeline.setup(
-    df,
-    target="churned",
-    train_size=0.8,
-    seed=42,
-    normalize=True,
-    categorical_encoding="onehot",
-    imputation_strategy="mean",
-)
-
-assert result.task_type == "classification"
-assert result.train_data.height == 8
-assert result.test_data.height == 2</code></pre>
-
-<div class="callout">
-<strong>Sync by design:</strong> Unlike DataExplorer, <code>setup()</code> is synchronous &mdash; no <code>await</code> needed. All computation happens in-memory with polars.
-</div>
-
-<h3>Step 3: Verify One-Hot Encoding</h3>
-<pre><code class="language-python">train_cols = result.train_data.columns
-assert "department" not in train_cols  # Original column removed
-onehot_cols = [c for c in train_cols if c.startswith("department_")]
-assert len(onehot_cols) >= 2</code></pre>
-
-<h3>Step 4: Transform New Data at Inference Time</h3>
-<pre><code class="language-python">new_data = pl.DataFrame({
-    "age": [33.0, None],
-    "income": [52000.0, 68000.0],
-    "department": ["eng", "hr"],
-    "churned": [0, 1],
-})
-
-transformed = pipeline.transform(new_data)
-assert "department" not in transformed.columns</code></pre>
-
-<div class="warning">
-<strong>Order matters:</strong> You must call <code>setup()</code> before <code>transform()</code> or <code>get_config()</code>. Calling them on an unfitted pipeline raises <code>RuntimeError</code>.
-</div>
-
-<h3>Step 5: Regression Task Detection</h3>
-<pre><code class="language-python">regression_df = pl.DataFrame({
-    "sqft": [800.0, 1200.0, 1500.0, 1800.0, 2200.0, 2600.0, 3000.0, 3500.0],
-    "bedrooms": [1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0],
-    "price": [200000.0, 350000.0, 420000.0, 510000.0,
-              620000.0, 730000.0, 850000.0, 980000.0],
-})
-
-pipeline_reg = PreprocessingPipeline()
-result_reg = pipeline_reg.setup(regression_df, target="price", normalize=True)
-assert result_reg.task_type == "regression"</code></pre>
-
-<h2>Common Mistakes</h2>
-<table>
-<tr><th>Mistake</th><th>What Happens</th><th>Fix</th></tr>
-<tr><td>Calling <code>transform()</code> before <code>setup()</code></td><td><code>RuntimeError</code></td><td>Always call <code>setup()</code> first</td></tr>
-<tr><td>Setting <code>train_size</code> outside (0, 1)</td><td><code>ValueError</code></td><td>Keep between 0 and 1</td></tr>
-<tr><td>Using an invalid encoding name</td><td><code>ValueError</code></td><td>Use <code>onehot</code>, <code>ordinal</code>, or <code>target</code></td></tr>
-<tr><td>Specifying a non-existent target</td><td><code>ValueError</code></td><td>Verify column exists in the DataFrame</td></tr>
-<tr><td>Passing an empty DataFrame</td><td><code>ValueError</code></td><td>Ensure data has at least one row</td></tr>
-</table>
-
-<h2>Exercises</h2>
-<div class="exercise">
-<p><strong>Exercise 1:</strong> Run <code>setup()</code> three times with <code>mean</code>, <code>median</code>, and <code>drop</code> imputation. Compare resulting <code>train_data.height</code> and the values filled in for formerly-null cells.</p>
-</div>
-<div class="exercise">
-<p><strong>Exercise 2:</strong> Start with a categorical column that has 8 unique values. Run <code>setup()</code> with <code>onehot</code> vs <code>ordinal</code>. How does <code>transformed_shape[1]</code> differ?</p>
-</div>
-<div class="exercise">
-<p><strong>Exercise 3:</strong> Apply <code>setup()</code> with <code>normalize=True</code>, then call <code>inverse_transform()</code> on the training data. Verify values are close to the originals.</p>
-</div>
-
-<h2>Key Takeaways</h2>
+<h1 id="chapter-2-preprocessingpipeline">Chapter 2:
+PreprocessingPipeline</h1>
+<h2 id="overview">Overview</h2>
+<p>PreprocessingPipeline transforms raw data into ML-ready features with
+a single <code>setup()</code> call. It auto-detects whether your task is
+classification or regression, identifies column types, imputes missing
+values, encodes categoricals, scales numerics, removes outliers, and
+splits into train/test sets. At inference time, <code>transform()</code>
+applies the exact same transformations learned during training.</p>
+<p>This chapter covers:</p>
 <ul>
-<li>PreprocessingPipeline automates imputation, encoding, scaling, and splitting.</li>
-<li>Task type is auto-detected from the target column.</li>
-<li>Three imputation strategies and three encoding modes cover common needs.</li>
-<li>Fitted transformers ensure identical processing at inference time via <code>transform()</code>.</li>
-<li><code>inverse_transform()</code> reverses scaling for human-readable interpretation.</li>
+<li>Auto-detection of task type (classification vs regression)</li>
+<li>Column type identification (numeric, categorical)</li>
+<li>Imputation strategies: mean, median, drop</li>
+<li>Categorical encoding: one-hot, ordinal, target encoding</li>
+<li>Normalization (StandardScaler)</li>
+<li>Outlier removal</li>
+<li>Train/test splitting</li>
+<li>Inference-time <code>transform()</code> and
+<code>inverse_transform()</code></li>
+<li>Pipeline configuration inspection with
+<code>get_config()</code></li>
 </ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td>3.10+</td>
+</tr>
+<tr>
+<td>kailash-ml</td>
+<td><code>pip install kailash-ml</code></td>
+</tr>
+<tr>
+<td>polars</td>
+<td>Installed with kailash-ml</td>
+</tr>
+<tr>
+<td>Prior chapter</td>
+<td>Chapter 1 (DataExplorer)</td>
+</tr>
+<tr>
+<td>Level</td>
+<td>Basic</td>
+</tr>
+</tbody>
+</table>
+<h2 id="concepts">Concepts</h2>
+<h3 id="task-type-detection">Task Type Detection</h3>
+<p>PreprocessingPipeline examines the target column to determine task
+type. If the target has few unique values relative to the dataset size,
+it is classified as <strong>classification</strong>. If the target has
+many unique continuous values, it is <strong>regression</strong>. This
+detection drives downstream decisions like which encoding strategies and
+evaluation metrics are appropriate.</p>
+<h3 id="imputation-strategies">Imputation Strategies</h3>
+<p>Missing values must be handled before training. Three strategies are
+available:</p>
+<table>
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 89%" />
+</colgroup>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mean</code></td>
+<td>Replace nulls with the column mean (numeric) or mode
+(categorical)</td>
+</tr>
+<tr>
+<td><code>median</code></td>
+<td>Replace nulls with the column median (numeric) or mode
+(categorical)</td>
+</tr>
+<tr>
+<td><code>drop</code></td>
+<td>Remove rows containing any null value</td>
+</tr>
+</tbody>
+</table>
+<p>The fitted imputation statistics (mean/median values) are stored in
+the pipeline so <code>transform()</code> uses the same values at
+inference time.</p>
+<h3 id="categorical-encoding">Categorical Encoding</h3>
+<p>Three encoding strategies convert string columns into numeric
+values:</p>
+<table>
+<colgroup>
+<col style="width: 9%" />
+<col style="width: 43%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Encoding</th>
+<th>Behavior</th>
+<th>Output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onehot</code></td>
+<td>Creates binary columns for each category</td>
+<td>Expands column count; original column removed</td>
+</tr>
+<tr>
+<td><code>ordinal</code></td>
+<td>Maps categories to integers</td>
+<td>Same column, Float64 dtype</td>
+</tr>
+<tr>
+<td><code>target</code></td>
+<td>Replaces categories with mean target value</td>
+<td>Same column, Float64 dtype</td>
+</tr>
+</tbody>
+</table>
+<h3 id="normalization">Normalization</h3>
+<p>When <code>normalize=True</code>, StandardScaler is applied to
+numeric columns, centering them to mean=0 and scaling to std=1. The
+scaler parameters are saved for <code>inverse_transform()</code>.</p>
+<h3 id="outlier-removal">Outlier Removal</h3>
+<p>When <code>remove_outliers=True</code>, rows with extreme values
+(beyond the <code>outlier_threshold</code> percentile) are removed. This
+can reduce the dataset size.</p>
+<h2 id="key-api-reference">Key API Reference</h2>
+<table>
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 85%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PreprocessingPipeline()</code></td>
+<td>Instantiate the pipeline</td>
+</tr>
+<tr>
+<td><code>pipeline.setup(df, target, ...)</code></td>
+<td>Fit and transform: detect types, impute, encode, scale, split</td>
+</tr>
+<tr>
+<td><code>pipeline.transform(new_data)</code></td>
+<td>Apply fitted transformations to new data</td>
+</tr>
+<tr>
+<td><code>pipeline.inverse_transform(data)</code></td>
+<td>Reverse scaling for interpretability</td>
+</tr>
+<tr>
+<td><code>pipeline.get_config()</code></td>
+<td>Inspect fitted configuration</td>
+</tr>
+<tr>
+<td><code>SetupResult</code></td>
+<td>Result of <code>setup()</code> with fields: <code>task_type</code>,
+<code>target_column</code>, <code>numeric_columns</code>,
+<code>categorical_columns</code>, <code>original_shape</code>,
+<code>transformed_shape</code>, <code>train_data</code>,
+<code>test_data</code>, <code>transformers</code>,
+<code>summary</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="setup-parameters">setup() Parameters</h3>
+<table>
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 16%" />
+<col style="width: 12%" />
+<col style="width: 44%" />
+</colgroup>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>df</code></td>
+<td><code>pl.DataFrame</code></td>
+<td>required</td>
+<td>Input data</td>
+</tr>
+<tr>
+<td><code>target</code></td>
+<td><code>str</code></td>
+<td>required</td>
+<td>Target column name</td>
+</tr>
+<tr>
+<td><code>train_size</code></td>
+<td><code>float</code></td>
+<td><code>0.8</code></td>
+<td>Fraction for training (0 to 1)</td>
+</tr>
+<tr>
+<td><code>seed</code></td>
+<td><code>int</code></td>
+<td><code>None</code></td>
+<td>Random seed for reproducibility</td>
+</tr>
+<tr>
+<td><code>normalize</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Apply StandardScaler</td>
+</tr>
+<tr>
+<td><code>categorical_encoding</code></td>
+<td><code>str</code></td>
+<td><code>"onehot"</code></td>
+<td>One of: <code>onehot</code>, <code>ordinal</code>,
+<code>target</code></td>
+</tr>
+<tr>
+<td><code>imputation_strategy</code></td>
+<td><code>str</code></td>
+<td><code>"mean"</code></td>
+<td>One of: <code>mean</code>, <code>median</code>,
+<code>drop</code></td>
+</tr>
+<tr>
+<td><code>remove_outliers</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Remove outlier rows</td>
+</tr>
+<tr>
+<td><code>outlier_threshold</code></td>
+<td><code>float</code></td>
+<td><code>0.05</code></td>
+<td>Percentile threshold for outliers</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-create-data-with-missing-values">Step 1: Create Data with
+Missing Values</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> polars <span class="im">as</span> pl</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pl.DataFrame({</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;age&quot;</span>: [<span class="fl">25.0</span>, <span class="fl">30.0</span>, <span class="va">None</span>, <span class="fl">40.0</span>, <span class="fl">45.0</span>, <span class="fl">50.0</span>, <span class="fl">55.0</span>, <span class="fl">60.0</span>, <span class="fl">65.0</span>, <span class="fl">70.0</span>],</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;income&quot;</span>: [<span class="fl">30000.0</span>, <span class="fl">45000.0</span>, <span class="fl">55000.0</span>, <span class="va">None</span>, <span class="fl">70000.0</span>, <span class="fl">80000.0</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>               <span class="fl">90000.0</span>, <span class="fl">100000.0</span>, <span class="fl">110000.0</span>, <span class="fl">120000.0</span>],</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;department&quot;</span>: [<span class="st">&quot;eng&quot;</span>, <span class="st">&quot;eng&quot;</span>, <span class="st">&quot;sales&quot;</span>, <span class="st">&quot;sales&quot;</span>, <span class="st">&quot;hr&quot;</span>, <span class="va">None</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>                   <span class="st">&quot;eng&quot;</span>, <span class="st">&quot;sales&quot;</span>, <span class="st">&quot;hr&quot;</span>, <span class="st">&quot;eng&quot;</span>],</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;churned&quot;</span>: [<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">0</span>],</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>})</span></code></pre></div>
+<h3 id="step-2-setup-with-one-hot-encoding">Step 2: Setup with One-Hot
+Encoding</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml.engines.preprocessing <span class="im">import</span> PreprocessingPipeline, SetupResult</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>pipeline <span class="op">=</span> PreprocessingPipeline()</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> pipeline.setup(</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    df,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    target<span class="op">=</span><span class="st">&quot;churned&quot;</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    train_size<span class="op">=</span><span class="fl">0.8</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="dv">42</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    normalize<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    categorical_encoding<span class="op">=</span><span class="st">&quot;onehot&quot;</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    imputation_strategy<span class="op">=</span><span class="st">&quot;mean&quot;</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.task_type <span class="op">==</span> <span class="st">&quot;classification&quot;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.train_data.height <span class="op">==</span> <span class="dv">8</span>   <span class="co"># 80% of 10</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result.test_data.height <span class="op">==</span> <span class="dv">2</span>    <span class="co"># 20% of 10</span></span></code></pre></div>
+<h3 id="step-3-verify-one-hot-encoding">Step 3: Verify One-Hot
+Encoding</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>train_cols <span class="op">=</span> result.train_data.columns</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;department&quot;</span> <span class="kw">not</span> <span class="kw">in</span> train_cols  <span class="co"># Original column removed</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>onehot_cols <span class="op">=</span> [c <span class="cf">for</span> c <span class="kw">in</span> train_cols <span class="cf">if</span> c.startswith(<span class="st">&quot;department_&quot;</span>)]</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(onehot_cols) <span class="op">&gt;=</span> <span class="dv">2</span>  <span class="co"># department_eng, department_hr, etc.</span></span></code></pre></div>
+<h3 id="step-4-verify-missing-value-imputation">Step 4: Verify Missing
+Value Imputation</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> col <span class="kw">in</span> result.numeric_columns:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> col <span class="kw">in</span> result.train_data.columns:</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> result.train_data[col].null_count() <span class="op">==</span> <span class="dv">0</span></span></code></pre></div>
+<h3 id="step-5-inspect-pipeline-configuration">Step 5: Inspect Pipeline
+Configuration</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> pipeline.get_config()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config[<span class="st">&quot;target&quot;</span>] <span class="op">==</span> <span class="st">&quot;churned&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config[<span class="st">&quot;task_type&quot;</span>] <span class="op">==</span> <span class="st">&quot;classification&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config[<span class="st">&quot;normalize&quot;</span>] <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config[<span class="st">&quot;categorical_encoding&quot;</span>] <span class="op">==</span> <span class="st">&quot;onehot&quot;</span></span></code></pre></div>
+<h3 id="step-6-transform-new-data-at-inference-time">Step 6: Transform
+New Data at Inference Time</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>new_data <span class="op">=</span> pl.DataFrame({</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;age&quot;</span>: [<span class="fl">33.0</span>, <span class="va">None</span>],</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;income&quot;</span>: [<span class="fl">52000.0</span>, <span class="fl">68000.0</span>],</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;department&quot;</span>: [<span class="st">&quot;eng&quot;</span>, <span class="st">&quot;hr&quot;</span>],</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;churned&quot;</span>: [<span class="dv">0</span>, <span class="dv">1</span>],</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>transformed <span class="op">=</span> pipeline.transform(new_data)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;department&quot;</span> <span class="kw">not</span> <span class="kw">in</span> transformed.columns  <span class="co"># Same encoding applied</span></span></code></pre></div>
+<h3 id="step-7-inverse-transform-for-interpretability">Step 7: Inverse
+Transform for Interpretability</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>inversed <span class="op">=</span> pipeline.inverse_transform(transformed)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Reverses StandardScaler so values are in original units</span></span></code></pre></div>
+<h3 id="step-8-try-different-encoding-modes">Step 8: Try Different
+Encoding Modes</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ordinal encoding</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>pipeline_ord <span class="op">=</span> PreprocessingPipeline()</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>result_ord <span class="op">=</span> pipeline_ord.setup(df, target<span class="op">=</span><span class="st">&quot;churned&quot;</span>, categorical_encoding<span class="op">=</span><span class="st">&quot;ordinal&quot;</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result_ord.train_data[<span class="st">&quot;department&quot;</span>].dtype <span class="op">==</span> pl.Float64</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Target encoding</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>pipeline_te <span class="op">=</span> PreprocessingPipeline()</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>result_te <span class="op">=</span> pipeline_te.setup(df, target<span class="op">=</span><span class="st">&quot;churned&quot;</span>, categorical_encoding<span class="op">=</span><span class="st">&quot;target&quot;</span>)</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result_te.train_data[<span class="st">&quot;department&quot;</span>].dtype <span class="op">==</span> pl.Float64</span></code></pre></div>
+<h3 id="step-9-regression-task-detection">Step 9: Regression Task
+Detection</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>regression_df <span class="op">=</span> pl.DataFrame({</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;sqft&quot;</span>: [<span class="fl">800.0</span>, <span class="fl">1200.0</span>, <span class="fl">1500.0</span>, <span class="fl">1800.0</span>, <span class="fl">2200.0</span>, <span class="fl">2600.0</span>, <span class="fl">3000.0</span>, <span class="fl">3500.0</span>],</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;bedrooms&quot;</span>: [<span class="fl">1.0</span>, <span class="fl">2.0</span>, <span class="fl">2.0</span>, <span class="fl">3.0</span>, <span class="fl">3.0</span>, <span class="fl">4.0</span>, <span class="fl">4.0</span>, <span class="fl">5.0</span>],</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;price&quot;</span>: [<span class="fl">200000.0</span>, <span class="fl">350000.0</span>, <span class="fl">420000.0</span>, <span class="fl">510000.0</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>              <span class="fl">620000.0</span>, <span class="fl">730000.0</span>, <span class="fl">850000.0</span>, <span class="fl">980000.0</span>],</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>pipeline_reg <span class="op">=</span> PreprocessingPipeline()</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>result_reg <span class="op">=</span> pipeline_reg.setup(regression_df, target<span class="op">=</span><span class="st">&quot;price&quot;</span>, normalize<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result_reg.task_type <span class="op">==</span> <span class="st">&quot;regression&quot;</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 41%" />
+<col style="width: 14%" />
+<col style="width: 44%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>What Happens</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Calling <code>transform()</code> before <code>setup()</code></td>
+<td><code>RuntimeError</code></td>
+<td>Always call <code>setup()</code> first</td>
+</tr>
+<tr>
+<td>Calling <code>get_config()</code> before <code>setup()</code></td>
+<td><code>RuntimeError</code></td>
+<td>Fit the pipeline before inspecting config</td>
+</tr>
+<tr>
+<td>Setting <code>train_size</code> outside (0, 1)</td>
+<td><code>ValueError</code></td>
+<td>Keep between 0 and 1 exclusive</td>
+</tr>
+<tr>
+<td>Using an invalid encoding name</td>
+<td><code>ValueError</code></td>
+<td>Use <code>onehot</code>, <code>ordinal</code>, or
+<code>target</code></td>
+</tr>
+<tr>
+<td>Specifying a non-existent target column</td>
+<td><code>ValueError</code></td>
+<td>Verify column name exists in the DataFrame</td>
+</tr>
+<tr>
+<td>Passing an empty DataFrame</td>
+<td><code>ValueError</code></td>
+<td>Ensure data has at least one row</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Compare imputation strategies</strong>: Run
+<code>setup()</code> three times on the same dataset with
+<code>mean</code>, <code>median</code>, and <code>drop</code>
+imputation. Compare the resulting <code>train_data.height</code> and the
+values filled in for formerly-null cells.</p></li>
+<li><p><strong>Encoding impact on column count</strong>: Start with a
+categorical column that has 8 unique values. Run <code>setup()</code>
+with <code>onehot</code> vs <code>ordinal</code> encoding. How does
+<code>transformed_shape[1]</code> differ? When would you prefer
+ordinal?</p></li>
+<li><p><strong>Round-trip verification</strong>: Apply
+<code>setup()</code> with <code>normalize=True</code>, then call
+<code>inverse_transform()</code> on the training data. Verify that the
+values are close to the originals.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>PreprocessingPipeline automates the entire data preparation
+workflow: imputation, encoding, scaling, splitting.</li>
+<li>Task type (classification vs regression) is auto-detected from the
+target column.</li>
+<li>Three imputation strategies and three encoding modes cover common
+data preparation needs.</li>
+<li>The pipeline stores fitted transformers so <code>transform()</code>
+applies identical processing at inference time.</li>
+<li><code>inverse_transform()</code> reverses scaling for human-readable
+model interpretation.</li>
+<li>Edge cases (missing target, empty data, invalid parameters) are
+caught with clear error messages.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p>Chapter 3 covers <strong>ModelVisualizer</strong> – the engine that
+creates interactive Plotly visualizations for confusion matrices, ROC
+curves, feature importance, residuals, and more.</p>
 
-<div class="callout">
-<strong>Next chapter:</strong> <a href="03_model_visualizer.html">ModelVisualizer</a> &mdash; interactive Plotly visualizations for confusion matrices, ROC curves, feature importance, and more.
-</div>
-
-<footer>
-Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation
-</footer>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>
 </html>

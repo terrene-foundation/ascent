@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 9: Tree-of-Thoughts
+Agent &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-9-tree-of-thoughts-agent">Chapter 9: Tree-of-Thoughts
+Agent</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>ToTAgent</strong> (Tree-of-Thoughts) explores multiple
+reasoning paths in parallel, evaluates each independently, and selects
+the best one. Unlike Chain-of-Thought (one linear path) or ReAct (one
+iterative path), ToT generates N diverse approaches simultaneously,
+scores them, and picks the winner. This chapter teaches you the
+four-phase ToT pattern, path evaluation criteria, best-path selection,
+and configuration for controlling exploration breadth.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapters 3-4 (ReAct and Chain-of-Thought)</li>
+<li>Understanding of the difference between single-path and multi-path
+reasoning</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-multi-path-exploration">Concept 1: Multi-Path
+Exploration</h3>
+<p>Tree-of-Thoughts explores N reasoning paths in parallel rather than
+committing to a single approach. Each path represents a different
+strategy for solving the same problem. After generation, paths are
+evaluated and the best one is selected. This is analogous to
+brainstorming multiple solutions before choosing.</p>
+<ul>
+<li><strong>What</strong>: Parallel generation of N diverse reasoning
+paths for the same problem</li>
+<li><strong>Why</strong>: Complex problems often have multiple valid
+approaches – exploring several increases the chance of finding the best
+one</li>
+<li><strong>How</strong>: The agent generates <code>num_paths</code>
+independent paths, each with its own reasoning and steps</li>
+<li><strong>When</strong>: Use for complex decisions, creative
+problem-solving, or tasks where the optimal approach is not obvious</li>
+</ul>
+<h3 id="concept-2-four-phase-execution">Concept 2: Four-Phase
+Execution</h3>
+<p>ToT operates in four phases: Generate (create N paths), Evaluate
+(score each path), Select (pick the highest score), Execute (extract the
+final result). Unlike ReAct’s iterative loop, ToT’s phases are
+sequential and deterministic.</p>
+<ul>
+<li><strong>What</strong>: A fixed four-phase pipeline: generate,
+evaluate, select, execute</li>
+<li><strong>Why</strong>: Separating generation from evaluation prevents
+the model from anchoring on its first idea</li>
+<li><strong>How</strong>: Phase 1 calls the LLM N times for diverse
+paths; Phase 2 scores each; Phase 3 picks the max; Phase 4 extracts the
+result</li>
+<li><strong>When</strong>: Always – this is the internal execution model
+of every ToT run</li>
+</ul>
+<h3 id="concept-3-path-evaluation-criteria">Concept 3: Path Evaluation
+Criteria</h3>
+<p>Each path is evaluated on four weighted criteria: Completeness
+(reasoning length &gt; 20 chars, weight 0.3), No errors (no “error” key,
+weight 0.3), Structured steps (non-empty steps list, weight 0.2), and
+Reasoning quality (reasoning &gt; 100 chars, weight 0.2). A perfect path
+scores 1.0.</p>
+<ul>
+<li><strong>What</strong>: A weighted scoring function that assesses
+path quality on four dimensions</li>
+<li><strong>Why</strong>: Automated scoring removes subjective bias and
+enables consistent best-path selection</li>
+<li><strong>How</strong>: Each criterion contributes its weight if met;
+scores sum to a maximum of 1.0</li>
+<li><strong>When</strong>: Called automatically during the Evaluate
+phase for every generated path</li>
+</ul>
+<h3 id="concept-4-configuration-guards">Concept 4: Configuration
+Guards</h3>
+<p><code>ToTAgentConfig</code> includes safety guards:
+<code>num_paths</code> cannot exceed <code>max_paths</code> (default
+20). High temperature (0.9) encourages diverse path generation. The
+<code>evaluation_criteria</code> parameter selects the scoring strategy
+(default: “quality”).</p>
+<ul>
+<li><strong>What</strong>: Validation rules that prevent
+misconfiguration and ensure sensible exploration bounds</li>
+<li><strong>Why</strong>: Unbounded path generation wastes tokens and
+time – <code>max_paths</code> caps the cost</li>
+<li><strong>How</strong>: The agent validates
+<code>num_paths &lt;= max_paths</code> at construction time; violation
+raises <code>ValueError</code></li>
+<li><strong>When</strong>: Always validated at instantiation – invalid
+configs are caught before any LLM call</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 43%" />
+<col style="width: 11%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ToTAgent()</code></td>
+<td><code>llm_provider</code>, <code>model</code>,
+<code>num_paths</code>, <code>evaluation_criteria</code></td>
+<td><code>ToTAgent</code></td>
+<td>Create a Tree-of-Thoughts agent</td>
+</tr>
+<tr>
+<td><code>agent.run()</code></td>
+<td><code>task: str</code></td>
+<td><code>dict</code></td>
+<td>Execute the four-phase ToT pipeline</td>
+</tr>
+<tr>
+<td><code>agent._evaluate_path()</code></td>
+<td><code>path: dict</code>, <code>task: str</code></td>
+<td><code>ToTEvaluation</code></td>
+<td>Score a single path</td>
+</tr>
+<tr>
+<td><code>agent._select_best_path()</code></td>
+<td><code>evaluations: list</code></td>
+<td><code>ToTEvaluation</code></td>
+<td>Pick the highest-scoring evaluation</td>
+</tr>
+<tr>
+<td><code>ToTAgentConfig()</code></td>
+<td><code>num_paths</code>, <code>max_paths</code>,
+<code>evaluation_criteria</code>, <code>temperature</code></td>
+<td><code>ToTAgentConfig</code></td>
+<td>Configuration for exploration behavior</td>
+</tr>
+<tr>
+<td><code>ToTSignature</code></td>
+<td>–</td>
+<td><code>Signature</code></td>
+<td>Multi-path I/O definition</td>
+</tr>
+<tr>
+<td><code>ToTPath</code></td>
+<td>–</td>
+<td><code>TypedDict</code></td>
+<td>Structure for a single reasoning path</td>
+</tr>
+<tr>
+<td><code>ToTEvaluation</code></td>
+<td>–</td>
+<td><code>TypedDict</code></td>
+<td>Structure for a path evaluation</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.agents.specialized.tree_of_thoughts <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    ToTAgent,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    ToTAgentConfig,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ToTSignature,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    ToTPath,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    ToTEvaluation,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.core.base_agent <span class="im">import</span> BaseAgent</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<p>The module exports the agent, config, signature, and two TypedDicts
+(<code>ToTPath</code> and <code>ToTEvaluation</code>) that provide type
+safety for paths and their evaluations.</p>
+<h3 id="totpath-and-totevaluation-typed-structures">ToTPath and
+ToTEvaluation – Typed Structures</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ToTPath has required and optional fields</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>sample_path: ToTPath <span class="op">=</span> {</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;path_id&quot;</span>: <span class="dv">1</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;Approach via cost-benefit analysis&quot;</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sample_path[<span class="st">&quot;path_id&quot;</span>] <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sample_path[<span class="st">&quot;reasoning&quot;</span>] <span class="op">==</span> <span class="st">&quot;Approach via cost-benefit analysis&quot;</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co"># ToTEvaluation scores a path</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>sample_eval: ToTEvaluation <span class="op">=</span> {</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;path&quot;</span>: {<span class="st">&quot;path_id&quot;</span>: <span class="dv">1</span>, <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;Cost-benefit analysis&quot;</span>},</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;score&quot;</span>: <span class="fl">0.85</span>,</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;Well-structured approach with clear trade-offs&quot;</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sample_eval[<span class="st">&quot;score&quot;</span>] <span class="op">==</span> <span class="fl">0.85</span></span></code></pre></div>
+<p><code>ToTPath</code> holds a path’s ID, reasoning, and optional
+steps. <code>ToTEvaluation</code> wraps a path with a score (0.0-1.0)
+and evaluation reasoning. These TypedDicts provide structure without the
+overhead of full dataclasses.</p>
+<h3 id="totsignature-multi-path-io">ToTSignature – Multi-Path I/O</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;task&quot;</span> <span class="kw">in</span> ToTSignature._signature_inputs</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;paths&quot;</span> <span class="kw">in</span> ToTSignature._signature_outputs</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;evaluations&quot;</span> <span class="kw">in</span> ToTSignature._signature_outputs</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;best_path&quot;</span> <span class="kw">in</span> ToTSignature._signature_outputs</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;final_result&quot;</span> <span class="kw">in</span> ToTSignature._signature_outputs</span></code></pre></div>
+<p>The signature takes a <code>task</code> input and produces four
+outputs: all generated <code>paths</code>, their
+<code>evaluations</code>, the <code>best_path</code> selection, and the
+extracted <code>final_result</code>.</p>
+<h3 id="totagentconfig">ToTAgentConfig</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> ToTAgentConfig()</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.num_paths <span class="op">==</span> <span class="dv">5</span>, <span class="st">&quot;Generate 5 reasoning paths by default&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.max_paths <span class="op">==</span> <span class="dv">20</span>, <span class="st">&quot;Safety limit: max 20 paths&quot;</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.evaluation_criteria <span class="op">==</span> <span class="st">&quot;quality&quot;</span>, <span class="st">&quot;Default: quality-based evaluation&quot;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.parallel_execution <span class="kw">is</span> <span class="va">True</span>, <span class="st">&quot;Parallel generation by default&quot;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.temperature <span class="op">==</span> <span class="fl">0.9</span>, <span class="st">&quot;High temperature for diverse paths&quot;</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom configuration</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>custom_config <span class="op">=</span> ToTAgentConfig(</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    num_paths<span class="op">=</span><span class="dv">10</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    max_paths<span class="op">=</span><span class="dv">20</span>,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    evaluation_criteria<span class="op">=</span><span class="st">&quot;creativity&quot;</span>,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    parallel_execution<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_config.num_paths <span class="op">==</span> <span class="dv">10</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_config.evaluation_criteria <span class="op">==</span> <span class="st">&quot;creativity&quot;</span></span></code></pre></div>
+<p>Notable defaults: <code>temperature=0.9</code> is much higher than
+other agents (0.1-0.7) because diverse paths require creative variation.
+<code>parallel_execution=True</code> generates all paths concurrently
+for speed. <code>num_paths=5</code> balances exploration breadth against
+token cost.</p>
+<h3 id="agent-instantiation-and-validation">Agent Instantiation and
+Validation</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> ToTAgent(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    num_paths<span class="op">=</span><span class="dv">5</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    evaluation_criteria<span class="op">=</span><span class="st">&quot;quality&quot;</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, ToTAgent)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, BaseAgent)</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent.tot_config.num_paths <span class="op">==</span> <span class="dv">5</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="co"># num_paths &gt; max_paths raises ValueError</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    ToTAgent(</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>        llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>        model<span class="op">=</span>model,</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>        num_paths<span class="op">=</span><span class="dv">25</span>,</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>        max_paths<span class="op">=</span><span class="dv">20</span>,</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;num_paths &gt; max_paths should raise ValueError&quot;</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;exceeds&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e).lower()</span></code></pre></div>
+<p>ToT uses <code>AsyncSingleShotStrategy</code> (the default) because
+the multi-path generation is handled internally – each path is a
+separate <code>BaseAgent.run()</code> call. The
+<code>num_paths &gt; max_paths</code> guard catches misconfiguration at
+construction time.</p>
+<h3 id="path-evaluation-logic">Path Evaluation Logic</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Good path: meets all criteria</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>good_path <span class="op">=</span> {</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;path_id&quot;</span>: <span class="dv">1</span>,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;A&quot;</span> <span class="op">*</span> <span class="dv">150</span>,  <span class="co"># Long reasoning</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;steps&quot;</span>: [<span class="st">&quot;step1&quot;</span>, <span class="st">&quot;step2&quot;</span>, <span class="st">&quot;step3&quot;</span>],</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>good_eval <span class="op">=</span> agent._evaluate_path(good_path, <span class="st">&quot;test task&quot;</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> good_eval[<span class="st">&quot;score&quot;</span>] <span class="op">==</span> <span class="fl">1.0</span>, <span class="st">&quot;Perfect path gets 1.0&quot;</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Path with error: loses 0.3</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>error_path <span class="op">=</span> {</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;path_id&quot;</span>: <span class="dv">2</span>,</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;A&quot;</span> <span class="op">*</span> <span class="dv">150</span>,</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;steps&quot;</span>: [<span class="st">&quot;step1&quot;</span>],</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;error&quot;</span>: <span class="st">&quot;generation failed&quot;</span>,</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>error_eval <span class="op">=</span> agent._evaluate_path(error_path, <span class="st">&quot;test task&quot;</span>)</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> error_eval[<span class="st">&quot;score&quot;</span>] <span class="op">==</span> <span class="fl">0.7</span>, <span class="st">&quot;Error costs 0.3&quot;</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Empty path: scores 0.0</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>empty_path <span class="op">=</span> {<span class="st">&quot;path_id&quot;</span>: <span class="dv">3</span>, <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;&quot;</span>}</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>empty_eval <span class="op">=</span> agent._evaluate_path(empty_path, <span class="st">&quot;test task&quot;</span>)</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_eval[<span class="st">&quot;score&quot;</span>] <span class="op">==</span> <span class="fl">0.0</span>, <span class="st">&quot;Empty path scores 0.0&quot;</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a><span class="co"># Short path: partial score</span></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>short_path <span class="op">=</span> {<span class="st">&quot;path_id&quot;</span>: <span class="dv">4</span>, <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;Brief reasoning about the problem&quot;</span>}</span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>short_eval <span class="op">=</span> agent._evaluate_path(short_path, <span class="st">&quot;test task&quot;</span>)</span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="fl">0.0</span> <span class="op">&lt;</span> short_eval[<span class="st">&quot;score&quot;</span>] <span class="op">&lt;</span> <span class="fl">1.0</span>, <span class="st">&quot;Short path gets partial score&quot;</span></span></code></pre></div>
+<p>The four evaluation criteria and their weights:</p>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Weight</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Completeness</td>
+<td>0.3</td>
+<td>Reasoning length &gt; 20 chars</td>
+</tr>
+<tr>
+<td>No errors</td>
+<td>0.3</td>
+<td>No <code>"error"</code> key in path dict</td>
+</tr>
+<tr>
+<td>Structured steps</td>
+<td>0.2</td>
+<td>Non-empty <code>steps</code> list present</td>
+</tr>
+<tr>
+<td>Reasoning quality</td>
+<td>0.2</td>
+<td>Reasoning length &gt; 100 chars</td>
+</tr>
+</tbody>
+</table>
+<p>A path with long reasoning, steps, and no errors scores 1.0. An empty
+reasoning string scores 0.0 (fails all criteria). An error costs 0.3
+even if everything else is perfect.</p>
+<h3 id="best-path-selection">Best Path Selection</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>evaluations <span class="op">=</span> [</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;path&quot;</span>: {<span class="st">&quot;path_id&quot;</span>: <span class="dv">1</span>}, <span class="st">&quot;score&quot;</span>: <span class="fl">0.6</span>, <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;OK&quot;</span>},</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;path&quot;</span>: {<span class="st">&quot;path_id&quot;</span>: <span class="dv">2</span>}, <span class="st">&quot;score&quot;</span>: <span class="fl">0.9</span>, <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;Excellent&quot;</span>},</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;path&quot;</span>: {<span class="st">&quot;path_id&quot;</span>: <span class="dv">3</span>}, <span class="st">&quot;score&quot;</span>: <span class="fl">0.3</span>, <span class="st">&quot;reasoning&quot;</span>: <span class="st">&quot;Weak&quot;</span>},</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>best <span class="op">=</span> agent._select_best_path(evaluations)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> best[<span class="st">&quot;score&quot;</span>] <span class="op">==</span> <span class="fl">0.9</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> best[<span class="st">&quot;path&quot;</span>][<span class="st">&quot;path_id&quot;</span>] <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Empty evaluations: graceful fallback</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>empty_best <span class="op">=</span> agent._select_best_path([])</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_best[<span class="st">&quot;score&quot;</span>] <span class="op">==</span> <span class="fl">0.0</span></span></code></pre></div>
+<p>Selection simply picks the evaluation with the highest score. Empty
+evaluations return a fallback with score 0.0 rather than raising an
+error.</p>
+<h3 id="input-validation">Input Validation</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>empty_result <span class="op">=</span> agent.run(task<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;error&quot;</span>] <span class="op">==</span> <span class="st">&quot;INVALID_INPUT&quot;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;paths&quot;</span>] <span class="op">==</span> []</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;evaluations&quot;</span>] <span class="op">==</span> []</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;final_result&quot;</span>] <span class="op">==</span> <span class="st">&quot;&quot;</span></span></code></pre></div>
+<p>Empty tasks return immediately with all output fields populated as
+empty defaults.</p>
+<h3 id="return-structure">Return Structure</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ToTAgent.run() returns:</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># {</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;paths&quot;: [</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co">#         {&quot;path_id&quot;: 0, &quot;reasoning&quot;: &quot;...&quot;, &quot;steps&quot;: [...]},</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">#         {&quot;path_id&quot;: 1, &quot;reasoning&quot;: &quot;...&quot;, &quot;steps&quot;: [...]},</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="co">#         ...</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co">#     ],</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;evaluations&quot;: [</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co">#         {&quot;path&quot;: {...}, &quot;score&quot;: 0.85, &quot;reasoning&quot;: &quot;...&quot;},</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co">#         ...</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="co">#     ],</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;best_path&quot;: {&quot;path&quot;: {...}, &quot;score&quot;: 0.92, &quot;reasoning&quot;: &quot;...&quot;},</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;final_result&quot;: &quot;The recommended approach is...&quot;</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Error codes: INVALID_INPUT, PATH_GENERATION_FAILED,</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a><span class="co">#              EVALUATION_FAILED, SELECTION_FAILED, EXECUTION_FAILED</span></span></code></pre></div>
+<p>The full result includes all paths (for transparency), all
+evaluations (for audit), the winning path, and the extracted final
+result. Five error codes cover different failure modes across the four
+phases.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 26%" />
+<col style="width: 55%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Setting <code>num_paths</code> too high</td>
+<td>Start with 3-5 paths</td>
+<td>Each path requires an LLM call – 20 paths means 20x the token cost
+of a single call</td>
+</tr>
+<tr>
+<td>Using low temperature for ToT</td>
+<td>Keep <code>temperature=0.9</code> (default)</td>
+<td>Low temperature produces near-identical paths, defeating the purpose
+of multi-path exploration</td>
+</tr>
+<tr>
+<td>Using ToT for simple questions</td>
+<td>Use SimpleQA or CoT instead</td>
+<td>ToT’s overhead (N path generations + evaluations) is wasted on
+straightforward tasks</td>
+</tr>
+<tr>
+<td>Ignoring the <code>evaluations</code> list</td>
+<td>Inspect all evaluations, not just <code>best_path</code></td>
+<td>The evaluation spread reveals how close alternatives were – useful
+for decision confidence</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a <code>ToTAgent</code> with <code>num_paths=3</code>.
+Construct three path dicts with different reasoning lengths (empty,
+short, long with steps) and call <code>_evaluate_path()</code> on each.
+Verify the scores match the criteria weights.</li>
+<li>Create a list of five <code>ToTEvaluation</code> dicts with scores
+ranging from 0.1 to 0.9. Pass them to <code>_select_best_path()</code>
+and verify it returns the 0.9-scored path. Then pass an empty list and
+verify the fallback.</li>
+<li>Try creating a <code>ToTAgent</code> with <code>num_paths=25</code>
+and <code>max_paths=20</code>. Catch the <code>ValueError</code> and
+verify the error message mentions “exceeds”.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>ToT explores N diverse reasoning paths in parallel, then evaluates
+and selects the best</li>
+<li>Four phases: Generate, Evaluate, Select, Execute – each phase has
+distinct responsibilities</li>
+<li>Path evaluation uses four weighted criteria: completeness, no
+errors, structured steps, reasoning quality</li>
+<li>High temperature (0.9) is essential for generating diverse
+paths</li>
+<li><code>num_paths</code> is guarded by <code>max_paths</code> to
+prevent runaway token costs</li>
+<li>The full result includes all paths and evaluations for transparency
+and audit</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="10_orchestration_patterns.md">Chapter 10: Multi-Agent
+Orchestration Patterns</a> – Explore the formal multi-agent coordination
+patterns: supervisor-worker, consensus, debate, handoff, and sequential
+pipeline.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

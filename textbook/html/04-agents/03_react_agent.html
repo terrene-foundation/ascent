@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: ReAct Agent &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-3-react-agent">Chapter 3: ReAct Agent</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>ReActAgent</strong> implements the Reason-Act-Observe
+pattern for autonomous multi-cycle execution. Unlike the single-shot
+SimpleQA, ReAct agents iteratively reason about a task, take actions
+(tool calls), observe results, and decide whether to continue or stop.
+This chapter teaches you the ReAct loop, convergence detection, and the
+<code>MultiCycleStrategy</code> that powers autonomous agents.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapters 1-2 (Delegate, SimpleQA)</li>
+<li>Understanding of <code>BaseAgent</code> and
+<code>AsyncSingleShotStrategy</code> (Chapter 2)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-react-pattern">Concept 1: The ReAct Pattern</h3>
+<p>ReAct agents operate in iterative cycles: Reason (think about the
+current state), Act (execute a tool call, ask for clarification, or
+finish), Observe (examine the result), and Repeat until converged. This
+is fundamentally different from single-shot agents – ReAct is autonomous
+and decides its own execution path.</p>
+<ul>
+<li><strong>What</strong>: An iterative reasoning loop where the agent
+alternates between thinking and acting</li>
+<li><strong>Why</strong>: Many tasks require multiple steps with
+intermediate observations – searching, reading files, refining
+analysis</li>
+<li><strong>How</strong>: The <code>MultiCycleStrategy</code> drives the
+loop, calling the LLM repeatedly until convergence criteria are met</li>
+<li><strong>When</strong>: Use ReAct when tasks require real-time data,
+multi-step workflows, or open-ended exploration</li>
+</ul>
+<h3 id="concept-2-actiontype-vocabulary">Concept 2: ActionType
+Vocabulary</h3>
+<p>The ReAct agent uses a fixed vocabulary of action types:
+<code>TOOL_USE</code> (invoke a tool), <code>FINISH</code> (task
+complete), and <code>CLARIFY</code> (ask the user for more information).
+This structured vocabulary replaces free-form action strings with
+type-safe enum values.</p>
+<ul>
+<li><strong>What</strong>: An enum of permitted actions the agent can
+take at each cycle</li>
+<li><strong>Why</strong>: A fixed vocabulary prevents the model from
+inventing arbitrary actions and makes convergence detection
+reliable</li>
+<li><strong>How</strong>: The LLM’s <code>action</code> output field
+must be one of the <code>ActionType</code> values</li>
+<li><strong>When</strong>: Every ReAct cycle produces an action – it is
+part of the signature contract</li>
+</ul>
+<h3 id="concept-3-multicyclestrategy">Concept 3: MultiCycleStrategy</h3>
+<p><code>MultiCycleStrategy</code> is the execution strategy for
+autonomous agents. It calls the LLM in a loop, checking convergence
+after each cycle. This is the critical difference from interactive
+agents: instead of one call, the strategy manages many calls with a
+configurable cycle limit.</p>
+<ul>
+<li><strong>What</strong>: An execution strategy that loops LLM calls
+until convergence or cycle exhaustion</li>
+<li><strong>Why</strong>: Autonomous reasoning requires iteration – the
+agent cannot know in advance how many steps it will need</li>
+<li><strong>How</strong>: The strategy calls
+<code>_check_convergence()</code> after each cycle; if not converged and
+cycles remain, it continues</li>
+<li><strong>When</strong>: Used automatically by ReAct, RAG, and other
+autonomous agent types</li>
+</ul>
+<h3 id="concept-4-convergence-detection">Concept 4: Convergence
+Detection</h3>
+<p>Convergence determines when the agent should stop iterating. Kaizen
+uses a two-tier system: <strong>objective convergence</strong> (ADR-013)
+checks the <code>tool_calls</code> field – if empty, the agent has no
+more actions to take. <strong>Subjective fallback</strong> checks
+<code>action</code> and <code>confidence</code> when
+<code>tool_calls</code> is absent.</p>
+<ul>
+<li><strong>What</strong>: A decision function that returns True when
+the agent should stop and False when it should continue</li>
+<li><strong>Why</strong>: Without convergence detection, autonomous
+agents loop forever (or until budget exhaustion)</li>
+<li><strong>How</strong>: Non-empty <code>tool_calls</code> means
+continue; empty <code>tool_calls</code> means stop; fallback checks
+action/confidence</li>
+<li><strong>When</strong>: Called automatically by
+<code>MultiCycleStrategy</code> after every cycle</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 40%" />
+<col style="width: 8%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ReActAgent()</code></td>
+<td><code>llm_provider</code>, <code>model</code>,
+<code>max_cycles</code>, <code>confidence_threshold</code></td>
+<td><code>ReActAgent</code></td>
+<td>Create a ReAct agent</td>
+</tr>
+<tr>
+<td><code>agent.run()</code></td>
+<td><code>task: str</code>, <code>context: str = ""</code></td>
+<td><code>dict</code></td>
+<td>Execute the ReAct loop</td>
+</tr>
+<tr>
+<td><code>agent._check_convergence()</code></td>
+<td><code>result: dict</code></td>
+<td><code>bool</code></td>
+<td>Test if the agent should stop</td>
+</tr>
+<tr>
+<td><code>ReActConfig()</code></td>
+<td><code>max_cycles</code>, <code>confidence_threshold</code>,
+<code>enable_parallel_tools</code></td>
+<td><code>ReActConfig</code></td>
+<td>Configuration for ReAct behavior</td>
+</tr>
+<tr>
+<td><code>ReActSignature</code></td>
+<td>–</td>
+<td><code>Signature</code></td>
+<td>Multi-field I/O for the ReAct cycle</td>
+</tr>
+<tr>
+<td><code>ActionType</code></td>
+<td>–</td>
+<td><code>Enum</code></td>
+<td><code>TOOL_USE</code>, <code>FINISH</code>,
+<code>CLARIFY</code></td>
+</tr>
+<tr>
+<td><code>MultiCycleStrategy</code></td>
+<td>–</td>
+<td><code>Strategy</code></td>
+<td>Iterative execution strategy for autonomous agents</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.agents.specialized.react <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    ReActAgent,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    ReActConfig,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ReActSignature,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    ActionType,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.core.base_agent <span class="im">import</span> BaseAgent</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.strategies.multi_cycle <span class="im">import</span> MultiCycleStrategy</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<p>The ReAct module provides four key exports: the agent class, its
+config, the signature, and the action type enum.
+<code>MultiCycleStrategy</code> is imported from the core strategies
+module to verify the agent uses it.</p>
+<h3 id="actiontype-structured-action-vocabulary">ActionType – Structured
+Action Vocabulary</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ActionType.TOOL_USE.value <span class="op">==</span> <span class="st">&quot;tool_use&quot;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ActionType.FINISH.value <span class="op">==</span> <span class="st">&quot;finish&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ActionType.CLARIFY.value <span class="op">==</span> <span class="st">&quot;clarify&quot;</span></span></code></pre></div>
+<p>Three actions cover all agent decisions: use a tool, finish the task,
+or ask for clarification. The model selects one of these at each
+cycle.</p>
+<h3 id="reactsignature-multi-field-io">ReActSignature – Multi-Field
+I/O</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;task&quot;</span> <span class="kw">in</span> ReActSignature._signature_inputs</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;context&quot;</span> <span class="kw">in</span> ReActSignature._signature_inputs</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;available_tools&quot;</span> <span class="kw">in</span> ReActSignature._signature_inputs</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;previous_actions&quot;</span> <span class="kw">in</span> ReActSignature._signature_inputs</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;thought&quot;</span> <span class="kw">in</span> ReActSignature._signature_outputs</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;action&quot;</span> <span class="kw">in</span> ReActSignature._signature_outputs</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;action_input&quot;</span> <span class="kw">in</span> ReActSignature._signature_outputs</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;confidence&quot;</span> <span class="kw">in</span> ReActSignature._signature_outputs</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;need_tool&quot;</span> <span class="kw">in</span> ReActSignature._signature_outputs</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> (</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;tool_calls&quot;</span> <span class="kw">in</span> ReActSignature._signature_outputs</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>), <span class="st">&quot;ADR-013: tool_calls enables objective convergence detection&quot;</span></span></code></pre></div>
+<p>The ReAct signature is richer than QASignature. Inputs include the
+task, context, available tools, and the history of previous actions.
+Outputs include the agent’s thought process, chosen action, confidence
+level, and a <code>tool_calls</code> field that enables objective
+convergence detection (ADR-013).</p>
+<h3 id="reactconfig">ReActConfig</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> ReActConfig()</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.max_cycles <span class="op">==</span> <span class="dv">10</span>, <span class="st">&quot;Default: up to 10 reasoning cycles&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.confidence_threshold <span class="op">==</span> <span class="fl">0.7</span>, <span class="st">&quot;Converge at 0.7 confidence&quot;</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.mcp_discovery_enabled <span class="kw">is</span> <span class="va">True</span>, <span class="st">&quot;Autonomous agents discover tools&quot;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.enable_parallel_tools <span class="kw">is</span> <span class="va">False</span>, <span class="st">&quot;Sequential tool execution by default&quot;</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom configuration</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>custom_config <span class="op">=</span> ReActConfig(</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    max_cycles<span class="op">=</span><span class="dv">15</span>,</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    confidence_threshold<span class="op">=</span><span class="fl">0.8</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    enable_parallel_tools<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_config.max_cycles <span class="op">==</span> <span class="dv">15</span></span></code></pre></div>
+<p>ReActConfig adds autonomous-agent-specific settings:
+<code>max_cycles</code> caps how many iterations the agent can run,
+<code>confidence_threshold</code> controls when subjective convergence
+triggers, and <code>mcp_discovery_enabled</code> allows the agent to
+discover tools via MCP. Parallel tool execution is opt-in.</p>
+<h3 id="reactagent-instantiation">ReActAgent Instantiation</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> ReActAgent(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    max_cycles<span class="op">=</span><span class="dv">10</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    confidence_threshold<span class="op">=</span><span class="fl">0.7</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, ReActAgent)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, BaseAgent)</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent.react_config.max_cycles <span class="op">==</span> <span class="dv">10</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify MultiCycleStrategy is used</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    agent.strategy, MultiCycleStrategy</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>), <span class="st">&quot;ReAct MUST use MultiCycleStrategy for iterative execution&quot;</span></span></code></pre></div>
+<p>The critical difference from SimpleQA: ReActAgent uses
+<code>MultiCycleStrategy</code>, not
+<code>AsyncSingleShotStrategy</code>. This strategy drives the iterative
+Reason-Act-Observe loop. The assertion confirms the correct strategy is
+in place.</p>
+<h3 id="objective-convergence-detection-adr-013">Objective Convergence
+Detection (ADR-013)</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Simulate: tool calls present -&gt; continue</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>result_with_tools <span class="op">=</span> {</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;tool_calls&quot;</span>: [{<span class="st">&quot;name&quot;</span>: <span class="st">&quot;search&quot;</span>, <span class="st">&quot;params&quot;</span>: {<span class="st">&quot;query&quot;</span>: <span class="st">&quot;flights&quot;</span>}}],</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;action&quot;</span>: <span class="st">&quot;tool_use&quot;</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;confidence&quot;</span>: <span class="fl">0.5</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> (</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    agent._check_convergence(result_with_tools) <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>), <span class="st">&quot;Non-empty tool_calls means NOT converged&quot;</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Simulate: empty tool calls -&gt; converged</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>result_empty_tools <span class="op">=</span> {</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;tool_calls&quot;</span>: [],</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;action&quot;</span>: <span class="st">&quot;finish&quot;</span>,</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;confidence&quot;</span>: <span class="fl">0.9</span>,</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> (</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    agent._check_convergence(result_empty_tools) <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>), <span class="st">&quot;Empty tool_calls means CONVERGED&quot;</span></span></code></pre></div>
+<p>Objective convergence follows the
+<code>while(tool_call_exists)</code> pattern: if <code>tool_calls</code>
+is present and non-empty, the agent has more work to do. If
+<code>tool_calls</code> is present but empty, the agent is done. This is
+the primary convergence signal.</p>
+<h3 id="subjective-convergence-fallback">Subjective Convergence
+Fallback</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># action == &quot;finish&quot; -&gt; converged</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>result_finish <span class="op">=</span> {<span class="st">&quot;action&quot;</span>: <span class="st">&quot;finish&quot;</span>, <span class="st">&quot;confidence&quot;</span>: <span class="fl">0.6</span>}</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent._check_convergence(result_finish) <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co"># confidence &gt;= threshold -&gt; converged</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>result_high_conf <span class="op">=</span> {<span class="st">&quot;action&quot;</span>: <span class="st">&quot;tool_use&quot;</span>, <span class="st">&quot;confidence&quot;</span>: <span class="fl">0.9</span>}</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent._check_convergence(result_high_conf) <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="co"># action == &quot;tool_use&quot; with low confidence -&gt; NOT converged</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>result_continue <span class="op">=</span> {<span class="st">&quot;action&quot;</span>: <span class="st">&quot;tool_use&quot;</span>, <span class="st">&quot;confidence&quot;</span>: <span class="fl">0.3</span>}</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent._check_convergence(result_continue) <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="co"># No signals -&gt; default safe fallback (converged)</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent._check_convergence({}) <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>When <code>tool_calls</code> is absent (e.g., an older model that
+does not populate it), the agent falls back to subjective checks:
+<code>action == "finish"</code> means done,
+<code>confidence &gt;= threshold</code> means done, and an empty result
+defaults to converged (safe fallback to prevent infinite loops).</p>
+<h3 id="input-validation">Input Validation</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>empty_result <span class="op">=</span> agent.run(task<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;error&quot;</span>] <span class="op">==</span> <span class="st">&quot;INVALID_INPUT&quot;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;action&quot;</span>] <span class="op">==</span> ActionType.FINISH.value</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;confidence&quot;</span>] <span class="op">==</span> <span class="fl">0.0</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;cycles_used&quot;</span>] <span class="op">==</span> <span class="dv">0</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>whitespace_result <span class="op">=</span> agent.run(task<span class="op">=</span><span class="st">&quot;   &quot;</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> whitespace_result[<span class="st">&quot;error&quot;</span>] <span class="op">==</span> <span class="st">&quot;INVALID_INPUT&quot;</span></span></code></pre></div>
+<p>Like SimpleQA, empty or whitespace tasks are caught before any LLM
+call. The error response includes <code>cycles_used: 0</code> to confirm
+no execution occurred.</p>
+<h3 id="return-structure">Return Structure</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ReActAgent.run() returns:</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># {</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;thought&quot;: &quot;I need to search for flights...&quot;,</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;action&quot;: &quot;tool_use&quot;,</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;action_input&quot;: {&quot;tool&quot;: &quot;search&quot;, &quot;query&quot;: &quot;flights to Paris&quot;},</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;confidence&quot;: 0.85,</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;need_tool&quot;: True,</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;cycles_used&quot;: 3,</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;total_cycles&quot;: 10,</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span></code></pre></div>
+<p>The return dict includes the final thought, action, confidence, and
+cycle usage statistics (<code>cycles_used</code> vs
+<code>total_cycles</code>).</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 21%" />
+<col style="width: 54%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Setting <code>max_cycles</code> too low</td>
+<td>Start with <code>max_cycles=10</code> (default)</td>
+<td>Complex tasks may need many cycles – too few causes premature
+termination</td>
+</tr>
+<tr>
+<td>Setting <code>confidence_threshold</code> too high</td>
+<td>Start with <code>0.7</code> (default)</td>
+<td>Very high thresholds cause the agent to loop excessively seeking
+certainty</td>
+</tr>
+<tr>
+<td>Using ReAct for simple QA</td>
+<td>Use <code>SimpleQAAgent</code> instead</td>
+<td>ReAct’s multi-cycle overhead is wasted on single-answer
+questions</td>
+</tr>
+<tr>
+<td>Ignoring <code>cycles_used</code> in the result</td>
+<td>Log and monitor cycle counts</td>
+<td>High cycle counts relative to <code>total_cycles</code> indicate the
+agent is struggling to converge</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a <code>ReActAgent</code> with <code>max_cycles=5</code> and
+<code>confidence_threshold=0.9</code>. Construct three result
+dictionaries and call <code>_check_convergence()</code> on each: one
+that should continue, one that converges by empty
+<code>tool_calls</code>, and one that converges by high confidence.</li>
+<li>Compare <code>ReActSignature._signature_outputs</code> with
+<code>QASignature._signature_outputs</code> from Chapter 2. List the
+fields that are unique to ReAct and explain why each is needed for
+iterative reasoning.</li>
+<li>Create a <code>ReActConfig</code> with
+<code>enable_parallel_tools=True</code> and <code>max_cycles=20</code>.
+What is the total maximum number of tool calls this agent could make in
+a single run, assuming each cycle makes one tool call?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>ReAct agents iterate through Reason-Act-Observe cycles, unlike
+single-shot agents</li>
+<li><code>MultiCycleStrategy</code> drives the iterative loop with
+configurable cycle limits</li>
+<li><code>ActionType</code> provides a fixed vocabulary:
+<code>TOOL_USE</code>, <code>FINISH</code>, <code>CLARIFY</code></li>
+<li>Objective convergence (ADR-013) uses <code>tool_calls</code> – empty
+means done, non-empty means continue</li>
+<li>Subjective fallback uses <code>action</code> and
+<code>confidence</code> when <code>tool_calls</code> is unavailable</li>
+<li>Input validation catches empty tasks before any LLM call, preserving
+budget</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="04_chain_of_thought.md">Chapter 4: Chain-of-Thought
+Agent</a> – Use structured step-by-step reasoning for auditable
+problem-solving without iterative tool use.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

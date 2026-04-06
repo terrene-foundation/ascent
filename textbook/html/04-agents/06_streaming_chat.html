@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 6: Streaming Chat
+Agent &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-6-streaming-chat-agent">Chapter 6: Streaming Chat
+Agent</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>StreamingChatAgent</strong> provides real-time
+token-by-token output for conversational interfaces. Instead of waiting
+for the complete response, the consumer receives tokens as they are
+generated – creating a “typing” effect. This chapter teaches you the
+streaming pattern, the dual-mode interface (<code>.stream()</code> vs
+<code>.run()</code>), and how to configure chunk sizes for the
+latency-throughput trade-off.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapters 1-4 (Delegate, SimpleQA, ReAct, CoT)</li>
+<li>Familiarity with Python async iterators
+(<code>async for</code>)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-streaming-vs-buffered">Concept 1: Streaming vs
+Buffered</h3>
+<p>Traditional agents buffer the entire response and return it as a
+dict. Streaming agents yield tokens incrementally as the LLM generates
+them. This reduces perceived latency – the user sees the first token
+immediately rather than waiting for the complete response.</p>
+<ul>
+<li><strong>What</strong>: An async iterator that yields text tokens as
+they are generated</li>
+<li><strong>Why</strong>: For chat interfaces, perceived responsiveness
+is critical – streaming makes the first token appear in milliseconds
+instead of seconds</li>
+<li><strong>How</strong>:
+<code>async for token in agent.stream("message"): print(token, end="", flush=True)</code></li>
+<li><strong>When</strong>: Use for chat interfaces, real-time
+dashboards, and any UI where incremental display improves the
+experience</li>
+</ul>
+<h3 id="concept-2-streamingstrategy">Concept 2: StreamingStrategy</h3>
+<p><code>StreamingStrategy</code> is the execution strategy that enables
+token-level streaming. When <code>streaming=True</code>, the agent uses
+this strategy. When <code>streaming=False</code>, it falls back to the
+default <code>AsyncSingleShotStrategy</code> and only
+<code>.run()</code> works – <code>.stream()</code> raises
+<code>ValueError</code>.</p>
+<ul>
+<li><strong>What</strong>: An execution strategy that yields tokens
+incrementally instead of buffering the full response</li>
+<li><strong>Why</strong>: The strategy abstraction cleanly separates
+streaming from non-streaming behavior without conditional logic in the
+agent</li>
+<li><strong>How</strong>: Automatically selected when
+<code>streaming=True</code> in the constructor; verified via
+<code>isinstance(agent.strategy, StreamingStrategy)</code></li>
+<li><strong>When</strong>: Whenever the <code>StreamingChatAgent</code>
+is instantiated with <code>streaming=True</code> (the default)</li>
+</ul>
+<h3 id="concept-3-chunk-size">Concept 3: Chunk Size</h3>
+<p>Chunk size controls the latency-throughput trade-off.
+<code>chunk_size=1</code> yields one token at a time (lowest latency,
+more overhead). Larger values (5, 10, 20) batch tokens for higher
+throughput at the cost of slightly delayed display.</p>
+<ul>
+<li><strong>What</strong>: The number of tokens yielded per iteration of
+the async iterator</li>
+<li><strong>Why</strong>: Token-by-token streaming has per-yield
+overhead; batching amortizes this cost</li>
+<li><strong>How</strong>: Set <code>chunk_size=N</code> in the
+constructor; each <code>async for</code> iteration yields N tokens</li>
+<li><strong>When</strong>: Use <code>chunk_size=1</code> for chat UIs,
+larger values for batch processing or high-throughput pipelines</li>
+</ul>
+<h3 id="concept-4-dual-mode-interface">Concept 4: Dual-Mode
+Interface</h3>
+<p>StreamingChatAgent provides two interfaces:
+<code>.stream(message)</code> for streaming output and
+<code>.run(message=...)</code> for standard dict output.
+<code>.run()</code> always works regardless of the streaming setting.
+<code>.stream()</code> requires <code>StreamingStrategy</code> and
+raises <code>ValueError</code> without it.</p>
+<ul>
+<li><strong>What</strong>: Two methods that provide the same answer in
+different delivery modes</li>
+<li><strong>Why</strong>: Some consumers need streaming (chat UIs),
+others need the full response at once (batch processing, testing)</li>
+<li><strong>How</strong>: <code>.stream()</code> -&gt;
+<code>async for token in ...</code>; <code>.run()</code> -&gt;
+<code>dict</code> with <code>response</code> key</li>
+<li><strong>When</strong>: Use <code>.stream()</code> for interactive
+interfaces, <code>.run()</code> for programmatic consumption</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 37%" />
+<col style="width: 15%" />
+<col style="width: 29%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StreamingChatAgent()</code></td>
+<td><code>llm_provider</code>, <code>model</code>,
+<code>streaming</code>, <code>chunk_size</code></td>
+<td><code>StreamingChatAgent</code></td>
+<td>Create a streaming chat agent</td>
+</tr>
+<tr>
+<td><code>agent.stream()</code></td>
+<td><code>message: str</code></td>
+<td><code>AsyncIterator[str]</code></td>
+<td>Stream tokens incrementally</td>
+</tr>
+<tr>
+<td><code>agent.run()</code></td>
+<td><code>message: str</code></td>
+<td><code>dict</code></td>
+<td>Get the full response as a dict</td>
+</tr>
+<tr>
+<td><code>StreamingChatConfig()</code></td>
+<td><code>streaming</code>, <code>chunk_size</code>,
+<code>temperature</code>, …</td>
+<td><code>StreamingChatConfig</code></td>
+<td>Configuration for streaming behavior</td>
+</tr>
+<tr>
+<td><code>ChatSignature</code></td>
+<td>–</td>
+<td><code>Signature</code></td>
+<td>Minimal chat I/O (message -&gt; response)</td>
+</tr>
+<tr>
+<td><code>StreamingStrategy</code></td>
+<td>–</td>
+<td><code>Strategy</code></td>
+<td>Token-level streaming execution strategy</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.agents.specialized.streaming_chat <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    StreamingChatAgent,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    StreamingChatConfig,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ChatSignature,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.core.base_agent <span class="im">import</span> BaseAgent</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.strategies.streaming <span class="im">import</span> StreamingStrategy</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<h3 id="chatsignature-minimal-chat-io">ChatSignature – Minimal Chat
+I/O</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;message&quot;</span> <span class="kw">in</span> ChatSignature._signature_inputs</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;response&quot;</span> <span class="kw">in</span> ChatSignature._signature_outputs</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>message_field <span class="op">=</span> ChatSignature._signature_inputs[<span class="st">&quot;message&quot;</span>]</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> message_field.required <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>The simplest possible signature: one required input
+(<code>message</code>) and one output (<code>response</code>). This
+reflects the natural chat interface – user sends a message, agent sends
+a response.</p>
+<h3 id="streamingchatconfig">StreamingChatConfig</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> StreamingChatConfig()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.streaming <span class="kw">is</span> <span class="va">True</span>, <span class="st">&quot;Streaming enabled by default&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.chunk_size <span class="op">==</span> <span class="dv">1</span>, <span class="st">&quot;Token-by-token streaming by default&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.temperature <span class="op">==</span> <span class="fl">0.7</span>, <span class="st">&quot;Higher temperature for conversational style&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.max_tokens <span class="op">==</span> <span class="dv">500</span></span></code></pre></div>
+<p>Notable defaults: <code>streaming=True</code> (opt-out, not opt-in),
+<code>chunk_size=1</code> for the smoothest typing effect, and
+<code>temperature=0.7</code> – higher than factual agents (0.1) because
+conversational style benefits from some variation.</p>
+<p>Chunk size trade-offs:</p>
+<table>
+<thead>
+<tr>
+<th><code>chunk_size</code></th>
+<th>Behavior</th>
+<th>Best For</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Token-by-token</td>
+<td>Chat UIs (lowest latency)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Small batches</td>
+<td>Balanced latency/throughput</td>
+</tr>
+<tr>
+<td>20</td>
+<td>Large batches</td>
+<td>High-throughput pipelines</td>
+</tr>
+</tbody>
+</table>
+<h3 id="streaming-mode-agent">Streaming Mode Agent</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> StreamingChatAgent(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    streaming<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    chunk_size<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, StreamingChatAgent)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, BaseAgent)</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    agent.strategy, StreamingStrategy</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>), <span class="st">&quot;Streaming mode uses StreamingStrategy&quot;</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent.chat_config.streaming <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>With <code>streaming=True</code>, the agent uses
+<code>StreamingStrategy</code> and both <code>.stream()</code> and
+<code>.run()</code> are available.</p>
+<h3 id="non-streaming-mode-agent">Non-Streaming Mode Agent</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>sync_agent <span class="op">=</span> StreamingChatAgent(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    streaming<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sync_agent.chat_config.streaming <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="kw">not</span> <span class="bu">isinstance</span>(</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    sync_agent.strategy, StreamingStrategy</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>), <span class="st">&quot;Non-streaming mode uses default strategy&quot;</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="co"># stream() requires StreamingStrategy</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    <span class="im">import</span> asyncio</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    asyncio.run(sync_agent.stream(<span class="st">&quot;test&quot;</span>).<span class="fu">__anext__</span>())</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;stream() should raise ValueError without StreamingStrategy&quot;</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;StreamingStrategy&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">StopAsyncIteration</span>:</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Also acceptable if strategy validates differently</span></span></code></pre></div>
+<p>With <code>streaming=False</code>, the agent falls back to
+<code>AsyncSingleShotStrategy</code>. Calling <code>.stream()</code>
+raises <code>ValueError</code> with a clear message. <code>.run()</code>
+still works normally.</p>
+<h3 id="streaming-consumption-pattern">Streaming Consumption
+Pattern</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The standard pattern for consuming streaming output:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co">#   import asyncio</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#   agent = StreamingChatAgent()</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   async def chat():</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co">#       async for token in agent.stream(&quot;What is Python?&quot;):</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co">#           print(token, end=&quot;&quot;, flush=True)</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co">#       print()  # Newline after streaming completes</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="co">#   asyncio.run(chat())</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Key points:</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="co"># - stream() is async (must be awaited in async context)</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a><span class="co"># - Each yield is a string token or chunk</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="co"># - flush=True ensures immediate display</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="co"># - The loop ends when the response is complete</span></span></code></pre></div>
+<p>This is the canonical streaming pattern. <code>flush=True</code> is
+critical – without it, Python buffers the output and the typing effect
+is lost. The newline after the loop ensures the terminal prompt appears
+on a fresh line.</p>
+<h3 id="custom-chunk-size">Custom Chunk Size</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>batch_agent <span class="op">=</span> StreamingChatAgent(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    streaming<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    chunk_size<span class="op">=</span><span class="dv">10</span>,</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> batch_agent.chat_config.chunk_size <span class="op">==</span> <span class="dv">10</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(batch_agent.strategy, StreamingStrategy)</span></code></pre></div>
+<p>Larger chunk sizes reduce the number of yields, trading latency for
+throughput. A <code>chunk_size=10</code> agent yields 10 tokens per
+iteration.</p>
+<h3 id="environment-variable-configuration">Environment Variable
+Configuration</h3>
+<p>All settings can be configured via <code>KAIZEN_*</code> environment
+variables:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KAIZEN_STREAMING</code></td>
+<td>Enable/disable streaming</td>
+</tr>
+<tr>
+<td><code>KAIZEN_CHUNK_SIZE</code></td>
+<td>Tokens per chunk</td>
+</tr>
+<tr>
+<td><code>KAIZEN_LLM_PROVIDER</code></td>
+<td>Provider selection</td>
+</tr>
+<tr>
+<td><code>KAIZEN_MODEL</code></td>
+<td>Model selection</td>
+</tr>
+</tbody>
+</table>
+<p>The config reads these at instantiation time.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 49%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Forgetting <code>flush=True</code> in the print loop</td>
+<td><code>print(token, end="", flush=True)</code></td>
+<td>Without flush, Python buffers output and the streaming effect is
+invisible</td>
+</tr>
+<tr>
+<td>Calling <code>.stream()</code> on a non-streaming agent</td>
+<td>Check <code>agent.chat_config.streaming</code> first</td>
+<td><code>.stream()</code> raises <code>ValueError</code> when
+<code>StreamingStrategy</code> is not active</td>
+</tr>
+<tr>
+<td>Using <code>chunk_size=1</code> for batch processing</td>
+<td>Use <code>chunk_size=10-20</code> for throughput</td>
+<td>Token-by-token streaming has per-yield overhead that adds up in
+batch workloads</td>
+</tr>
+<tr>
+<td>Setting <code>temperature=0.1</code> for chat</td>
+<td>Use <code>0.7</code> (default) for conversational style</td>
+<td>Very low temperature makes responses robotic and repetitive in
+conversational contexts</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create two <code>StreamingChatAgent</code> instances: one with
+<code>streaming=True</code> and one with <code>streaming=False</code>.
+Verify the strategy type of each using <code>isinstance()</code>. Then
+try calling <code>.stream()</code> on the non-streaming agent and catch
+the expected <code>ValueError</code>.</li>
+<li>Create three streaming agents with <code>chunk_size</code> values of
+1, 5, and 20. For each, describe the expected user experience in a chat
+UI. Which would you choose for a mobile app with high latency?</li>
+<li>Compare <code>StreamingChatConfig.temperature</code> (0.7) with
+<code>SimpleQAConfig.temperature</code> (0.1) and
+<code>ChainOfThoughtConfig.temperature</code> (0.1). Explain why chat
+uses a higher temperature.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>StreamingChatAgent</code> yields tokens incrementally for
+real-time chat interfaces</li>
+<li>Dual-mode interface: <code>.stream()</code> for streaming,
+<code>.run()</code> for buffered dict output</li>
+<li><code>StreamingStrategy</code> is used when
+<code>streaming=True</code>; <code>AsyncSingleShotStrategy</code> when
+False</li>
+<li><code>chunk_size</code> controls the latency-throughput trade-off (1
+= smoothest, 20 = fastest)</li>
+<li><code>.stream()</code> raises <code>ValueError</code> without
+<code>StreamingStrategy</code> – always check or use
+<code>streaming=True</code></li>
+<li>Higher temperature (0.7) produces more natural conversational
+style</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="07_governed_supervisor.md">Chapter 7: Governed
+Supervisor</a> – Use PACT governance to build budget-governed
+multi-agent supervisors with audit trails and clearance enforcement.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 5: LocalRuntime
+Execution &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-5-localruntime-execution">Chapter 5: LocalRuntime
+Execution</h1>
+<h2 id="overview">Overview</h2>
+<p>Once you have a built <code>Workflow</code>, you need a
+<strong>runtime</strong> to execute it. <code>LocalRuntime</code> is the
+synchronous, single-machine runtime that runs all nodes in topological
+order and returns results as a dictionary. This chapter covers basic
+execution, the context manager pattern, parameter overrides, multiple
+executions on a single runtime, and the result structure.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash SDK installed (<code>pip install kailash</code>)</li>
+<li>Completed <a href="01_workflow_builder.md">Chapter 1:
+WorkflowBuilder Basics</a> and <a href="04_connections.md">Chapter 4:
+Connections</a></li>
+<li>Understanding of <code>WorkflowBuilder.build()</code> producing an
+immutable <code>Workflow</code></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-runtime-abstraction">Concept 1: The Runtime
+Abstraction</h3>
+<p>A runtime takes an immutable <code>Workflow</code> and executes it.
+Kailash provides two runtimes: <code>LocalRuntime</code> (synchronous,
+for scripts and CLI tools) and <code>AsyncLocalRuntime</code>
+(asynchronous, for servers and Docker). <code>LocalRuntime</code> wraps
+the async internals with its own event loop, so you never need
+<code>await</code>.</p>
+<ul>
+<li><strong>What</strong>: A synchronous executor that runs workflows on
+the local machine</li>
+<li><strong>Why</strong>: Provides a simple
+<code>execute(workflow)</code> call without requiring async
+boilerplate</li>
+<li><strong>How</strong>: Internally creates an event loop, executes
+nodes in topological order, and returns a
+<code>(results_dict, run_id)</code> tuple</li>
+<li><strong>When</strong>: Use <code>LocalRuntime</code> for scripts,
+CLI tools, notebooks, and tests. Use <code>AsyncLocalRuntime</code> for
+web servers and production deployments</li>
+</ul>
+<h3 id="concept-2-the-result-tuple">Concept 2: The Result Tuple</h3>
+<p><code>execute()</code> returns a tuple of
+<code>(results: dict, run_id: str)</code>. The results dictionary is
+keyed by node ID, and each value contains that node’s output. The
+<code>run_id</code> is a unique identifier for this execution – useful
+for logging and debugging.</p>
+<ul>
+<li><strong>What</strong>: A <code>(dict, str)</code> pair containing
+all node outputs and a unique execution identifier</li>
+<li><strong>Why</strong>: The dict provides access to every node’s
+output, not just the final one, enabling inspection and debugging</li>
+<li><strong>How</strong>: Results are collected as each node completes;
+the dict is built incrementally during execution</li>
+<li><strong>When</strong>: Always – every call to <code>execute()</code>
+returns this tuple</li>
+</ul>
+<h3 id="concept-3-context-manager-pattern">Concept 3: Context Manager
+Pattern</h3>
+<p><code>LocalRuntime</code> manages an internal event loop and
+connection resources. Using <code>with LocalRuntime() as rt:</code>
+ensures proper cleanup. Without the context manager, you must call
+<code>runtime.close()</code> manually.</p>
+<ul>
+<li><strong>What</strong>: Python’s <code>with</code> statement applied
+to runtime lifecycle management</li>
+<li><strong>Why</strong>: Guarantees resources are released even if an
+exception occurs during execution</li>
+<li><strong>How</strong>: <code>__enter__</code> initializes the
+runtime; <code>__exit__</code> calls <code>close()</code> to tear down
+the event loop</li>
+<li><strong>When</strong>: Always prefer the context manager unless you
+need the runtime to persist across multiple function boundaries</li>
+</ul>
+<h3 id="concept-4-parameter-overrides">Concept 4: Parameter
+Overrides</h3>
+<p>You can pass <code>parameters={node_id: {param: value}}</code> to
+<code>execute()</code> to inject values into nodes at runtime without
+rebuilding the workflow. This is how you make workflows reusable with
+different inputs.</p>
+<ul>
+<li><strong>What</strong>: A dictionary of node-level parameter
+overrides passed at execution time</li>
+<li><strong>Why</strong>: Separates the workflow definition (what to do)
+from the workflow input (what data to process)</li>
+<li><strong>How</strong>: Overrides are merged into each node’s input
+namespace before the node’s code runs</li>
+<li><strong>When</strong>: Use for any workflow that processes external
+input – user queries, file paths, configuration values</li>
+</ul>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 39%" />
+<col style="width: 11%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LocalRuntime()</code></td>
+<td>–</td>
+<td><code>LocalRuntime</code></td>
+<td>Create a synchronous runtime</td>
+</tr>
+<tr>
+<td><code>execute()</code></td>
+<td><code>workflow: Workflow</code>,
+<code>parameters: dict = None</code></td>
+<td><code>(dict, str)</code></td>
+<td>Run the workflow, return (results, run_id)</td>
+</tr>
+<tr>
+<td><code>close()</code></td>
+<td>–</td>
+<td><code>None</code></td>
+<td>Release all runtime resources</td>
+</tr>
+<tr>
+<td>Context manager</td>
+<td><code>with LocalRuntime() as rt:</code></td>
+<td><code>LocalRuntime</code></td>
+<td>Auto-cleanup runtime lifecycle</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> WorkflowBuilder, LocalRuntime</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co"># ── Helper: build a simple workflow ─────────────────────────────────</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> build_math_workflow() <span class="op">-&gt;</span> <span class="st">&quot;Workflow&quot;</span>:</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Two-node workflow: generate a number, then double it.&quot;&quot;&quot;</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    builder.add_node(</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;generate&quot;</span>,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>        {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = 21&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;int&quot;</span>},</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    builder.add_node(</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;double&quot;</span>,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>        {</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = value * 2&quot;</span>,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;value&quot;</span>: <span class="st">&quot;int&quot;</span>},</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;int&quot;</span>,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    builder.<span class="ex">connect</span>(<span class="st">&quot;generate&quot;</span>, <span class="st">&quot;double&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;value&quot;</span>})</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> builder.build(name<span class="op">=</span><span class="st">&quot;math-demo&quot;</span>)</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 1. Basic execution ──────────────────────────────────────────────</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="co"># LocalRuntime.execute() returns (results_dict, run_id).</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="co"># Results are keyed by node_id.</span></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>workflow <span class="op">=</span> build_math_workflow()</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>runtime <span class="op">=</span> LocalRuntime()</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>results, run_id <span class="op">=</span> runtime.execute(workflow)</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>runtime.close()</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(results, <span class="bu">dict</span>), <span class="st">&quot;Results is a dict&quot;</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> run_id <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>, <span class="st">&quot;run_id is always returned&quot;</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;generate&quot;</span> <span class="kw">in</span> results, <span class="st">&quot;Each node produces output&quot;</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;double&quot;</span> <span class="kw">in</span> results</span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 2. Context manager pattern (recommended) ────────────────────────</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a><span class="co"># Ensures proper cleanup of the runtime&#39;s event loop and resources.</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>    results2, run_id2 <span class="op">=</span> rt.execute(workflow)</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> results2 <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> run_id2 <span class="op">!=</span> run_id, <span class="st">&quot;Each execution gets a unique run_id&quot;</span></span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 3. Parameter overrides ──────────────────────────────────────────</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a><span class="co"># Pass parameters={node_id: {param: value}} to override node inputs</span></span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a><span class="co"># at execution time without rebuilding the workflow.</span></span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>builder.add_node(</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;greet&quot;</span>,</span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = f&#39;Hello, </span><span class="sc">{name}</span><span class="st">!&#39;&quot;</span>,</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;name&quot;</span>: <span class="st">&quot;str&quot;</span>},</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>,</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>wf_greet <span class="op">=</span> builder.build(name<span class="op">=</span><span class="st">&quot;param-demo&quot;</span>)</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>    results3, _ <span class="op">=</span> rt.execute(wf_greet, parameters<span class="op">=</span>{<span class="st">&quot;greet&quot;</span>: {<span class="st">&quot;name&quot;</span>: <span class="st">&quot;Kailash&quot;</span>}})</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>greet_output <span class="op">=</span> results3.get(<span class="st">&quot;greet&quot;</span>, {})</span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 4. Multiple executions on same runtime ──────────────────────────</span></span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a><span class="co"># A single runtime instance can execute multiple workflows.</span></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a><span class="co"># Connection pools and async resources are reused.</span></span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>    r1, id1 <span class="op">=</span> rt.execute(workflow)</span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>    r2, id2 <span class="op">=</span> rt.execute(workflow)</span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> id1 <span class="op">!=</span> id2, <span class="st">&quot;Each execution gets a unique run_id&quot;</span></span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 5. Return structure ─────────────────────────────────────────────</span></span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a><span class="co"># execute() returns a (dict, str) tuple. The dict is keyed by node_id.</span></span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(results, <span class="bu">dict</span>)</span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(run_id, (<span class="bu">str</span>, <span class="bu">type</span>(<span class="va">None</span>)))</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 6. Edge case: empty workflow ────────────────────────────────────</span></span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a>empty_wf <span class="op">=</span> WorkflowBuilder().build(name<span class="op">=</span><span class="st">&quot;empty&quot;</span>)</span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>    empty_results, empty_id <span class="op">=</span> rt.execute(empty_wf)</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(empty_results, <span class="bu">dict</span>)</span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(empty_results) <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;Empty workflow produces no results&quot;</span></span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;PASS: 00-core/05_local_runtime&quot;</span>)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Helper function</strong>:
+<code>build_math_workflow()</code> creates a reusable two-node pipeline
+that generates 21 and doubles it to 42. Separating workflow construction
+from execution is a standard pattern.</p></li>
+<li><p><strong>Basic execution</strong>: Create a
+<code>LocalRuntime</code>, call <code>execute(workflow)</code>, then
+<code>close()</code>. The result tuple gives you every node’s output
+plus a unique run ID for this execution.</p></li>
+<li><p><strong>Context manager</strong>:
+<code>with LocalRuntime() as rt:</code> is the recommended pattern. It
+handles <code>close()</code> automatically, even if your code raises an
+exception.</p></li>
+<li><p><strong>Parameter overrides</strong>:
+<code>parameters={"greet": {"name": "Kailash"}}</code> injects
+<code>name="Kailash"</code> into the <code>"greet"</code> node at
+execution time. The workflow definition stays unchanged – you can reuse
+it with different parameters.</p></li>
+<li><p><strong>Multiple executions</strong>: A single runtime instance
+can execute the same or different workflows multiple times. Each call
+returns a new, unique <code>run_id</code>. Internal resources like
+connection pools are reused.</p></li>
+<li><p><strong>Empty workflow</strong>: Executing a workflow with zero
+nodes is valid. It returns an empty dict and a run ID.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 28%" />
+<col style="width: 20%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>runtime.execute(builder)</code> (no
+<code>.build()</code>)</td>
+<td><code>runtime.execute(builder.build())</code></td>
+<td>The runtime expects a <code>Workflow</code>, not a
+<code>WorkflowBuilder</code>. Missing <code>.build()</code> is a
+crash</td>
+</tr>
+<tr>
+<td>Forgetting to call <code>close()</code></td>
+<td>Use <code>with LocalRuntime() as rt:</code></td>
+<td>Leaked runtimes hold event loops and connection pools open
+indefinitely</td>
+</tr>
+<tr>
+<td>Unpacking only results: <code>results = rt.execute(wf)</code></td>
+<td><code>results, run_id = rt.execute(wf)</code></td>
+<td><code>execute()</code> returns a tuple; assigning to one variable
+gives you the tuple, not the dict</td>
+</tr>
+<tr>
+<td>Using <code>LocalRuntime</code> in async code</td>
+<td>Use <code>AsyncLocalRuntime</code> with <code>await</code></td>
+<td><code>LocalRuntime</code> creates its own event loop, which
+conflicts with an existing one</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p>Build a three-node pipeline where the first node generates a list
+of names, the second filters names starting with “A”, and the third
+counts them. Execute it and inspect all three nodes’ results from the
+returned dict.</p></li>
+<li><p>Create a workflow with a <code>"greet"</code> node that uses a
+<code>name</code> input parameter. Execute it three times with different
+names using parameter overrides, all on the same
+<code>LocalRuntime</code> instance. Verify each run gets a unique
+<code>run_id</code>.</p></li>
+<li><p>What happens if you pass a parameter override for a node ID that
+does not exist in the workflow? Try
+<code>parameters={"nonexistent": {"x": 1}}</code> and observe the
+behavior.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>LocalRuntime</code> is the synchronous runtime for scripts,
+CLI tools, and notebooks</li>
+<li><code>execute()</code> returns <code>(results_dict, run_id)</code> –
+results are keyed by node ID</li>
+<li>Always use the context manager pattern
+(<code>with LocalRuntime() as rt:</code>) for automatic cleanup</li>
+<li>Parameter overrides let you reuse workflows with different inputs
+without rebuilding</li>
+<li>A single runtime can execute multiple workflows; each gets a unique
+run ID</li>
+<li>Empty workflows execute successfully and return an empty results
+dict</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="06_python_code_node.md">Chapter 6: PythonCodeNode Deep
+Dive</a> – Master PythonCodeNode for custom logic: code strings, inputs,
+multiple outputs, <code>from_function()</code>, and
+<code>from_class()</code>.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

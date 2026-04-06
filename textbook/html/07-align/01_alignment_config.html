@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: AlignmentConfig
+Basics &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-1-alignmentconfig-basics">Chapter 1: AlignmentConfig
+Basics</h1>
+<h2 id="overview">Overview</h2>
+<p>Every fine-tuning job in Kailash Align starts with an
+<strong>AlignmentConfig</strong> – a dataclass that declares which
+alignment method to use, which base model to tune, and how to configure
+the training run. This chapter teaches you how to create, validate, and
+inspect alignment configurations for all 12 built-in methods.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Align installed
+(<code>pip install kailash-align</code>)</li>
+<li>Familiarity with LLM fine-tuning concepts (SFT, DPO, LoRA)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-alignmentconfig-as-the-root-configuration">Concept 1:
+AlignmentConfig as the Root Configuration</h3>
+<p>AlignmentConfig is the <strong>top-level container</strong> for an
+entire alignment job. It specifies the method (e.g., <code>"sft"</code>,
+<code>"dpo"</code>, <code>"grpo"</code>), the base model to fine-tune,
+and sub-configurations for LoRA, SFT, DPO, and other method-specific
+settings.</p>
+<ul>
+<li><strong>What</strong>: A dataclass that holds the method name, base
+model ID, and all method-specific sub-configs</li>
+<li><strong>Why</strong>: A single configuration object makes it easy to
+serialize, validate, and reproduce training runs</li>
+<li><strong>How</strong>: Instantiate with <code>method</code> and
+<code>base_model_id</code> at minimum; sub-configs (LoRA, SFT, DPO,
+etc.) are auto-created with sensible defaults</li>
+<li><strong>When</strong>: Use AlignmentConfig as the first step before
+calling <code>AlignmentPipeline.train()</code></li>
+</ul>
+<h3 id="concept-2-method-registry">Concept 2: Method Registry</h3>
+<p>Kailash Align ships with 12+ built-in alignment methods, tracked in
+<code>METHOD_REGISTRY</code>. Each method has metadata describing its
+category (offline, online, unpaired, monolithic), required dataset
+columns, and whether it needs a reward function or generation
+backend.</p>
+<ul>
+<li><strong>What</strong>: A dictionary mapping method names to their
+metadata descriptors</li>
+<li><strong>Why</strong>: The registry validates method names at config
+creation time, preventing typos from reaching the training loop</li>
+<li><strong>How</strong>: <code>AlignmentConfig.__post_init__()</code>
+checks that the method name exists in <code>METHOD_REGISTRY</code> (with
+a special case for <code>sft_then_dpo</code>)</li>
+<li><strong>When</strong>: Consult the registry when choosing between
+alignment approaches</li>
+</ul>
+<h3 id="concept-3-auto-created-sub-configs">Concept 3: Auto-Created
+Sub-Configs</h3>
+<p>When you set <code>method="kto"</code> but do not pass a
+<code>kto=KTOConfig(...)</code>, the AlignmentConfig’s
+<code>__post_init__</code> creates a default <code>KTOConfig()</code>
+for you. This auto-creation means you only need to override the
+parameters you care about.</p>
+<h3 id="concept-4-validation">Concept 4: Validation</h3>
+<p><code>validate()</code> returns a list of warning strings. An empty
+list means the config is ready for training. Warnings flag missing but
+recommended settings – for example, GRPO without
+<code>reward_funcs</code> produces a warning because GRPO requires
+reward functions to score completions.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 40%" />
+<col style="width: 11%" />
+<col style="width: 29%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Class</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AlignmentConfig()</code></td>
+<td><code>method: str</code>, <code>base_model_id: str</code>,
+<code>lora</code>, <code>sft</code>, <code>dpo</code> …</td>
+<td><code>AlignmentConfig</code></td>
+<td>Create a root alignment configuration</td>
+</tr>
+<tr>
+<td><code>config.validate()</code></td>
+<td>–</td>
+<td><code>list[str]</code></td>
+<td>Return warnings (empty = valid)</td>
+</tr>
+<tr>
+<td><code>config.get_method_config()</code></td>
+<td><code>method: str</code></td>
+<td>sub-config</td>
+<td>Dispatch to the correct method sub-config</td>
+</tr>
+<tr>
+<td><code>METHOD_REGISTRY</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>All registered alignment methods and metadata</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> AlignmentConfig</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align.config <span class="im">import</span> LoRAConfig, SFTConfig, DPOConfig</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align.method_registry <span class="im">import</span> METHOD_REGISTRY</span></code></pre></div>
+<p>We import the core config classes and the method registry.
+<code>load_dotenv()</code> loads environment variables so we can use
+<code>DEFAULT_LLM_MODEL</code> for the base model.</p>
+<h3 id="creating-a-basic-config">Creating a Basic Config</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;meta-llama/Llama-3.1-8B&quot;</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;sft&quot;</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.method <span class="op">==</span> <span class="st">&quot;sft&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.base_model_id <span class="op">==</span> model_id</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(config.lora, LoRAConfig), <span class="st">&quot;LoRA config auto-populated&quot;</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(config.sft, SFTConfig), <span class="st">&quot;SFT config auto-populated&quot;</span></span></code></pre></div>
+<p>Even though we only specified <code>method</code> and
+<code>base_model_id</code>, the config automatically creates default
+<code>LoRAConfig</code> and <code>SFTConfig</code> instances. This is
+the auto-creation behavior.</p>
+<h3 id="validation-missing-base_model_id">Validation: Missing
+base_model_id</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    AlignmentConfig(method<span class="op">=</span><span class="st">&quot;sft&quot;</span>, base_model_id<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: base_model_id is required</span></span></code></pre></div>
+<p>An empty <code>base_model_id</code> is rejected at creation time –
+you must specify which model to fine-tune.</p>
+<h3 id="validation-invalid-method">Validation: Invalid Method</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    AlignmentConfig(method<span class="op">=</span><span class="st">&quot;nonexistent_method&quot;</span>, base_model_id<span class="op">=</span>model_id)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: unknown training method</span></span></code></pre></div>
+<p>Method names are validated against <code>METHOD_REGISTRY</code>.
+Typos are caught immediately.</p>
+<h3 id="iterating-over-all-registered-methods">Iterating Over All
+Registered Methods</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>registered_methods <span class="op">=</span> <span class="bu">sorted</span>(METHOD_REGISTRY.keys())</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(registered_methods) <span class="op">&gt;=</span> <span class="dv">11</span>, <span class="ss">f&quot;Expected at least 11 methods, got </span><span class="sc">{</span><span class="bu">len</span>(registered_methods)<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> method_name <span class="kw">in</span> [<span class="st">&quot;sft&quot;</span>, <span class="st">&quot;dpo&quot;</span>, <span class="st">&quot;kto&quot;</span>, <span class="st">&quot;orpo&quot;</span>, <span class="st">&quot;grpo&quot;</span>, <span class="st">&quot;rloo&quot;</span>, <span class="st">&quot;online_dpo&quot;</span>]:</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    cfg <span class="op">=</span> AlignmentConfig(method<span class="op">=</span>method_name, base_model_id<span class="op">=</span>model_id)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> cfg.method <span class="op">==</span> method_name</span></code></pre></div>
+<p>All registered methods produce valid configs. The registry contains
+at least 11 methods including SFT, DPO, KTO, ORPO, GRPO, RLOO, and
+OnlineDPO.</p>
+<h3 id="the-sft_then_dpo-combo-method">The sft_then_dpo Combo
+Method</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>combo_config <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;sft_then_dpo&quot;</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> combo_config.method <span class="op">==</span> <span class="st">&quot;sft_then_dpo&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(combo_config.sft, SFTConfig)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(combo_config.dpo, DPOConfig)</span></code></pre></div>
+<p>The special <code>sft_then_dpo</code> method runs SFT first, then DPO
+on the SFT output. It auto-creates both sub-configs.</p>
+<h3 id="validate-checks-for-missing-configs">validate() Checks for
+Missing Configs</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>grpo_no_reward <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;grpo&quot;</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>warnings <span class="op">=</span> grpo_no_reward.validate()</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">any</span>(<span class="st">&quot;reward_funcs&quot;</span> <span class="kw">in</span> w <span class="cf">for</span> w <span class="kw">in</span> warnings), <span class="st">&quot;GRPO without reward_funcs should produce a warning&quot;</span></span></code></pre></div>
+<p>GRPO requires reward functions. Without them, <code>validate()</code>
+returns a warning rather than raising an error – this lets you build
+configs incrementally.</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>sft_config <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;sft&quot;</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>warnings <span class="op">=</span> sft_config.validate()</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> warnings <span class="op">==</span> [], <span class="ss">f&quot;SFT config should be valid, got warnings: </span><span class="sc">{</span>warnings<span class="sc">}</span><span class="ss">&quot;</span></span></code></pre></div>
+<p>A fully-specified SFT config validates cleanly with no warnings.</p>
+<h3 id="get_method_config-dispatches-to-sub-configs">get_method_config()
+Dispatches to Sub-Configs</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>cfg <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;dpo&quot;</span>,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    dpo<span class="op">=</span>DPOConfig(beta<span class="op">=</span><span class="fl">0.2</span>, learning_rate<span class="op">=</span><span class="fl">3e-5</span>),</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>dpo_sub <span class="op">=</span> cfg.get_method_config(<span class="st">&quot;dpo&quot;</span>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dpo_sub <span class="kw">is</span> cfg.dpo</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dpo_sub.beta <span class="op">==</span> <span class="fl">0.2</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co"># For unknown methods, falls back to SFT config</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>sft_fallback <span class="op">=</span> cfg.get_method_config(<span class="st">&quot;cpo&quot;</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sft_fallback <span class="kw">is</span> cfg.sft, <span class="st">&quot;Experimental methods fall back to SFT config&quot;</span></span></code></pre></div>
+<p><code>get_method_config()</code> returns the sub-config for the given
+method. Experimental methods that do not have a dedicated sub-config
+fall back to the SFT config.</p>
+<h3 id="additional-options">Additional Options</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>config_opts <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;sft&quot;</span>,</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    experiment_dir<span class="op">=</span><span class="st">&quot;/tmp/my-experiment&quot;</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    local_files_only<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    base_model_revision<span class="op">=</span><span class="st">&quot;abc123&quot;</span>,</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config_opts.experiment_dir <span class="op">==</span> <span class="st">&quot;/tmp/my-experiment&quot;</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config_opts.local_files_only <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config_opts.base_model_revision <span class="op">==</span> <span class="st">&quot;abc123&quot;</span></span></code></pre></div>
+<p>AlignmentConfig also accepts <code>experiment_dir</code> (where to
+store checkpoints), <code>local_files_only</code> (skip HuggingFace Hub
+downloads), and <code>base_model_revision</code> (pin a specific model
+commit).</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create an AlignmentConfig for the <code>"kto"</code> method and
+verify that a KTOConfig is auto-created. Then call
+<code>validate()</code> and confirm it returns an empty list.</li>
+<li>Loop over all keys in <code>METHOD_REGISTRY</code> and create an
+AlignmentConfig for each. Which methods produce validation warnings with
+default settings?</li>
+<li>Create an <code>sft_then_dpo</code> config with custom SFT learning
+rate of <code>1e-4</code> and DPO beta of <code>0.2</code>. Use
+<code>get_method_config()</code> to retrieve each sub-config and verify
+your custom values.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>AlignmentConfig</code> is the root configuration for all
+fine-tuning jobs in Kailash Align</li>
+<li><code>base_model_id</code> is required; <code>method</code> must be
+a registered method name or <code>sft_then_dpo</code></li>
+<li>Sub-configs (LoRA, SFT, DPO, KTO, etc.) are auto-created with
+sensible defaults</li>
+<li><code>validate()</code> returns warnings without raising errors,
+enabling incremental config building</li>
+<li><code>get_method_config()</code> dispatches to the right sub-config,
+with SFT as the fallback</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_lora_config.md">Chapter 2: LoRA Configuration</a> – Learn
+how to configure Low-Rank Adaptation parameters including rank, alpha,
+target modules, and dropout.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

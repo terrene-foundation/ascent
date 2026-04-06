@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 7: Event Bus — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 7: Event Bus &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,130 +24,367 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 7: Event Bus</h1>
+<h1 id="chapter-7-event-bus">Chapter 7: Event Bus</h1>
+<h2 id="overview">Overview</h2>
+<p>The EventBus is Nexus’s internal event system for event-driven
+architectures. It provides thread-safe publishing, async subscriptions
+with optional filtering, bounded history with LRU eviction, and
+round-trip serialization. This chapter provides a deep dive into the
+<code>NexusEventType</code> enum, <code>NexusEvent</code> dataclass, the
+<code>EventBus</code> lifecycle (start/stop), and how Nexus integrates
+the EventBus internally.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-6 (especially Chapter 4: SSE Transport for
+EventBus basics)</li>
+<li>Understanding of async/await and asyncio.Queue</li>
+<li>Familiarity with the producer-consumer pattern</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="event-types">Event Types</h3>
+<p>Events are typed via the <code>NexusEventType</code> enum. Each value
+is a dotted string matching the Rust SDK’s event types:</p>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 30%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>Event Type</th>
+<th>Value</th>
+<th>When Published</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HANDLER_REGISTERED</code></td>
+<td><code>"handler.registered"</code></td>
+<td>A new handler is added</td>
+</tr>
+<tr>
+<td><code>HANDLER_CALLED</code></td>
+<td><code>"handler.called"</code></td>
+<td>A handler begins execution</td>
+</tr>
+<tr>
+<td><code>HANDLER_COMPLETED</code></td>
+<td><code>"handler.completed"</code></td>
+<td>A handler finishes successfully</td>
+</tr>
+<tr>
+<td><code>HANDLER_ERROR</code></td>
+<td><code>"handler.error"</code></td>
+<td>A handler throws an error</td>
+</tr>
+<tr>
+<td><code>HEALTH_CHECK</code></td>
+<td><code>"health.check"</code></td>
+<td>A health check is performed</td>
+</tr>
+<tr>
+<td><code>CUSTOM</code></td>
+<td><code>"custom"</code></td>
+<td>Application-defined events</td>
+</tr>
+</tbody>
+</table>
+<h3 id="janus-queue-bridge">Janus Queue Bridge</h3>
+<p>The EventBus uses a <code>janus.Queue</code> to bridge synchronous
+publishers (any thread) and asynchronous consumers (SSE endpoint,
+subscribers). <code>publish()</code> writes to the sync side; the
+dispatch loop reads from the async side and fans events to subscribers
+and history.</p>
+<h3 id="bounded-history">Bounded History</h3>
+<p>The internal history is a <code>collections.deque</code> with
+<code>maxlen=capacity</code>. When full, the oldest events are
+automatically evicted. This prevents unbounded memory growth in
+long-running services.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 36%" />
+<col style="width: 11%" />
+<col style="width: 24%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EventBus(capacity)</code></td>
+<td><code>capacity: int = 256</code></td>
+<td><code>EventBus</code></td>
+<td>Create a bounded event bus</td>
+</tr>
+<tr>
+<td><code>bus.publish(event)</code></td>
+<td><code>event: NexusEvent</code></td>
+<td><code>None</code></td>
+<td>Publish event (sync, thread-safe)</td>
+</tr>
+<tr>
+<td><code>bus.publish_handler_registered(name)</code></td>
+<td><code>name: str</code></td>
+<td><code>None</code></td>
+<td>Convenience publish</td>
+</tr>
+<tr>
+<td><code>bus.subscribe()</code></td>
+<td>–</td>
+<td><code>asyncio.Queue</code></td>
+<td>Subscribe to all events</td>
+</tr>
+<tr>
+<td><code>bus.subscribe_filtered(predicate)</code></td>
+<td><code>predicate: Callable[[NexusEvent], bool]</code></td>
+<td><code>asyncio.Queue</code></td>
+<td>Subscribe with filter</td>
+</tr>
+<tr>
+<td><code>bus.subscriber_count</code></td>
+<td>–</td>
+<td><code>int</code></td>
+<td>Active subscriber count</td>
+</tr>
+<tr>
+<td><code>bus.get_history(event_type, limit)</code></td>
+<td><code>event_type: str</code>, <code>limit: int</code></td>
+<td><code>list[dict]</code></td>
+<td>Query bounded history</td>
+</tr>
+<tr>
+<td><code>bus.start()</code></td>
+<td>–</td>
+<td><code>None</code> (async)</td>
+<td>Start the dispatch loop</td>
+</tr>
+<tr>
+<td><code>bus.stop()</code></td>
+<td>–</td>
+<td><code>None</code> (async)</td>
+<td>Stop the dispatch loop</td>
+</tr>
+<tr>
+<td><code>EventBus.sse_url()</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Returns <code>"/events/stream"</code></td>
+</tr>
+<tr>
+<td><code>NexusEvent(...)</code></td>
+<td><code>event_type</code>, <code>handler_name</code>,
+<code>request_id</code>, <code>data</code></td>
+<td><code>NexusEvent</code></td>
+<td>Create an event</td>
+</tr>
+<tr>
+<td><code>event.to_dict()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Serialize for JSON</td>
+</tr>
+<tr>
+<td><code>NexusEvent.from_dict(d)</code></td>
+<td><code>d: dict</code></td>
+<td><code>NexusEvent</code></td>
+<td>Deserialize</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-nexuseventtype-enum">Step 1: NexusEventType Enum</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.events <span class="im">import</span> EventBus, NexusEvent, NexusEventType</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NexusEventType.HANDLER_REGISTERED.value <span class="op">==</span> <span class="st">&quot;handler.registered&quot;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NexusEventType.HANDLER_CALLED.value <span class="op">==</span> <span class="st">&quot;handler.called&quot;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NexusEventType.HANDLER_COMPLETED.value <span class="op">==</span> <span class="st">&quot;handler.completed&quot;</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NexusEventType.HANDLER_ERROR.value <span class="op">==</span> <span class="st">&quot;handler.error&quot;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NexusEventType.HEALTH_CHECK.value <span class="op">==</span> <span class="st">&quot;health.check&quot;</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NexusEventType.CUSTOM.value <span class="op">==</span> <span class="st">&quot;custom&quot;</span></span></code></pre></div>
+<h3 id="step-2-create-and-serialize-events">Step 2: Create and Serialize
+Events</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> datetime <span class="im">import</span> datetime</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>event <span class="op">=</span> NexusEvent(</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    event_type<span class="op">=</span>NexusEventType.HANDLER_CALLED,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    handler_name<span class="op">=</span><span class="st">&quot;greet&quot;</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    request_id<span class="op">=</span><span class="st">&quot;req-001&quot;</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    data<span class="op">=</span>{<span class="st">&quot;input_name&quot;</span>: <span class="st">&quot;Alice&quot;</span>},</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(event.timestamp, datetime)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>event_dict <span class="op">=</span> event.to_dict()</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> event_dict[<span class="st">&quot;event_type&quot;</span>] <span class="op">==</span> <span class="st">&quot;handler.called&quot;</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(event_dict[<span class="st">&quot;timestamp&quot;</span>], <span class="bu">str</span>)  <span class="co"># ISO format</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>restored <span class="op">=</span> NexusEvent.from_dict(event_dict)</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> restored.event_type <span class="op">==</span> event.event_type</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> restored.data <span class="op">==</span> event.data</span></code></pre></div>
+<h3 id="step-3-publish-events">Step 3: Publish Events</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>bus <span class="op">=</span> EventBus(capacity<span class="op">=</span><span class="dv">128</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>bus.publish(NexusEvent(</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    event_type<span class="op">=</span>NexusEventType.HANDLER_CALLED,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    handler_name<span class="op">=</span><span class="st">&quot;add&quot;</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    data<span class="op">=</span>{<span class="st">&quot;a&quot;</span>: <span class="dv">1</span>, <span class="st">&quot;b&quot;</span>: <span class="dv">2</span>},</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>))</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>bus.publish(NexusEvent(</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    event_type<span class="op">=</span>NexusEventType.HANDLER_COMPLETED,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    handler_name<span class="op">=</span><span class="st">&quot;add&quot;</span>,</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    data<span class="op">=</span>{<span class="st">&quot;result&quot;</span>: <span class="dv">3</span>},</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>))</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>bus.publish_handler_registered(<span class="st">&quot;new_handler&quot;</span>)</span></code></pre></div>
+<h3 id="step-4-run-the-dispatch-loop">Step 4: Run the Dispatch Loop</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> run_bus_briefly():</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> bus.start()</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> asyncio.sleep(<span class="fl">0.1</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> bus.stop()</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>asyncio.run(run_bus_briefly())</span></code></pre></div>
+<p>After the dispatch loop runs, events move from the janus queue into
+history and are fanned to subscribers.</p>
+<h3 id="step-5-query-history">Step 5: Query History</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>all_history <span class="op">=</span> bus.get_history()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>called_only <span class="op">=</span> bus.get_history(event_type<span class="op">=</span><span class="st">&quot;handler.called&quot;</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>recent_two <span class="op">=</span> bus.get_history(limit<span class="op">=</span><span class="dv">2</span>)</span></code></pre></div>
+<h3 id="step-6-subscribe">Step 6: Subscribe</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>q_all <span class="op">=</span> bus.subscribe()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bus.subscriber_count <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>q_errors <span class="op">=</span> bus.subscribe_filtered(</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">lambda</span> evt: evt.event_type <span class="op">==</span> NexusEventType.HANDLER_ERROR</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bus.subscriber_count <span class="op">==</span> <span class="dv">2</span></span></code></pre></div>
+<h3 id="step-7-bounded-history-demonstration">Step 7: Bounded History
+Demonstration</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>small_bus <span class="op">=</span> EventBus(capacity<span class="op">=</span><span class="dv">3</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">5</span>):</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    small_bus._history.append(</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>        NexusEvent(event_type<span class="op">=</span>NexusEventType.CUSTOM, data<span class="op">=</span>{<span class="st">&quot;index&quot;</span>: i})</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>history <span class="op">=</span> small_bus.get_history()</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(history) <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> history[<span class="dv">0</span>][<span class="st">&quot;data&quot;</span>][<span class="st">&quot;index&quot;</span>] <span class="op">==</span> <span class="dv">2</span>  <span class="co"># Oldest surviving</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> history[<span class="dv">2</span>][<span class="st">&quot;data&quot;</span>][<span class="st">&quot;index&quot;</span>] <span class="op">==</span> <span class="dv">4</span>  <span class="co"># Most recent</span></span></code></pre></div>
+<h3 id="step-8-eventbus-inside-nexus">Step 8: EventBus Inside Nexus</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(api_port<span class="op">=</span><span class="dv">8000</span>, enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(app._event_bus, EventBus)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="at">@app.handler</span>(<span class="st">&quot;multiply&quot;</span>, description<span class="op">=</span><span class="st">&quot;Multiply two numbers&quot;</span>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> multiply(x: <span class="bu">int</span>, y: <span class="bu">int</span> <span class="op">=</span> <span class="dv">1</span>) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">&quot;result&quot;</span>: x <span class="op">*</span> y}</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>handler_def <span class="op">=</span> app._registry.get_handler(<span class="st">&quot;multiply&quot;</span>)</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> handler_def.name <span class="op">==</span> <span class="st">&quot;multiply&quot;</span></span></code></pre></div>
+<p>Nexus creates an EventBus internally (capacity=256). The
+HandlerRegistry publishes <code>HANDLER_REGISTERED</code> events
+automatically.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 39%" />
+<col style="width: 26%" />
+<col style="width: 34%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Querying history before dispatch loop runs</td>
+<td>History is empty</td>
+<td>Call <code>bus.start()</code> to drain the janus queue</td>
+</tr>
+<tr>
+<td>Creating EventBus with capacity=1</td>
+<td>All but the latest event evicted</td>
+<td>Use capacity &gt;= 128 for production</td>
+</tr>
+<tr>
+<td>Forgetting <code>await</code> on
+<code>bus.start()</code>/<code>bus.stop()</code></td>
+<td>Coroutine never runs</td>
+<td>Both are async methods</td>
+</tr>
+<tr>
+<td>Publishing after <code>bus.stop()</code></td>
+<td>Events lost</td>
+<td>Ensure the bus is running during publish</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Event Lifecycle</strong>: Create an EventBus, publish
+events of each type (HANDLER_REGISTERED, HANDLER_CALLED,
+HANDLER_COMPLETED, HANDLER_ERROR, CUSTOM). Run the dispatch loop
+briefly, then query history with type filters.</p></li>
+<li><p><strong>Subscriber Fan-Out</strong>: Create three filtered
+subscribers – one for errors, one for handler calls, one for
+completions. Publish mixed events and verify each subscriber receives
+only matching events (requires running the dispatch loop).</p></li>
+<li><p><strong>Capacity Testing</strong>: Create buses with capacity 1,
+5, and 100. Add 50 events to each. Verify the history length matches the
+capacity.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>NexusEventType</code> is a typed enum with dotted string
+values matching the Rust SDK.</li>
+<li><code>NexusEvent</code> provides
+<code>to_dict()</code>/<code>from_dict()</code> for round-trip
+serialization.</li>
+<li><code>EventBus(capacity=256)</code> is bounded, thread-safe, and
+uses janus for sync/async bridging.</li>
+<li><code>publish()</code> is sync and thread-safe; works before the
+async dispatch loop starts.</li>
+<li><code>subscribe()</code> and <code>subscribe_filtered()</code>
+return async queues for event consumption.</li>
+<li><code>get_history()</code> reads from the bounded deque with
+optional type and limit filters.</li>
+<li>Nexus creates an EventBus internally; handlers auto-publish
+registration events.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="08_openapi.md">Chapter 8: OpenAPI</a> – Auto-generate
+OpenAPI documentation from registered handlers and workflows.</p>
 
-  <h2>Overview</h2>
-  <p>The EventBus is Nexus's internal event system for event-driven architectures. It provides thread-safe publishing, async subscriptions with optional filtering, bounded history with LRU eviction, and round-trip serialization.</p>
-
-  <h2>Concepts</h2>
-
-  <h3>Event Types</h3>
-  <table>
-    <tr><th>Event Type</th><th>Value</th><th>When Published</th></tr>
-    <tr><td><code>HANDLER_REGISTERED</code></td><td><code>"handler.registered"</code></td><td>New handler added</td></tr>
-    <tr><td><code>HANDLER_CALLED</code></td><td><code>"handler.called"</code></td><td>Handler begins execution</td></tr>
-    <tr><td><code>HANDLER_COMPLETED</code></td><td><code>"handler.completed"</code></td><td>Handler finishes successfully</td></tr>
-    <tr><td><code>HANDLER_ERROR</code></td><td><code>"handler.error"</code></td><td>Handler throws an error</td></tr>
-    <tr><td><code>HEALTH_CHECK</code></td><td><code>"health.check"</code></td><td>Health check performed</td></tr>
-    <tr><td><code>CUSTOM</code></td><td><code>"custom"</code></td><td>Application-defined</td></tr>
-  </table>
-
-  <h3>Janus Queue Bridge</h3>
-  <p>The EventBus uses <code>janus.Queue</code> to bridge synchronous publishers (any thread) and asynchronous consumers (SSE endpoint, subscribers). <code>publish()</code> writes to the sync side; the dispatch loop reads from the async side.</p>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Create and Serialize Events</h3>
-  <pre><code class="language-python">from nexus.events import EventBus, NexusEvent, NexusEventType
-
-event = NexusEvent(
-    event_type=NexusEventType.HANDLER_CALLED,
-    handler_name="greet",
-    request_id="req-001",
-    data={"input_name": "Alice"},
-)
-
-event_dict = event.to_dict()
-assert event_dict["event_type"] == "handler.called"
-
-restored = NexusEvent.from_dict(event_dict)
-assert restored.event_type == event.event_type</code></pre>
-
-  <h3>Step 2: Publish and Dispatch</h3>
-  <pre><code class="language-python">import asyncio
-
-bus = EventBus(capacity=128)
-
-bus.publish(NexusEvent(
-    event_type=NexusEventType.HANDLER_CALLED,
-    handler_name="add",
-    data={"a": 1, "b": 2},
-))
-
-bus.publish(NexusEvent(
-    event_type=NexusEventType.HANDLER_COMPLETED,
-    handler_name="add",
-    data={"result": 3},
-))
-
-async def run_bus_briefly():
-    await bus.start()
-    await asyncio.sleep(0.1)
-    await bus.stop()
-
-asyncio.run(run_bus_briefly())</code></pre>
-
-  <h3>Step 3: Query History</h3>
-  <pre><code class="language-python">all_history = bus.get_history()
-assert len(all_history) >= 2
-
-called_only = bus.get_history(event_type="handler.called")
-assert all(e["type"] == "handler.called" for e in called_only)
-
-recent_two = bus.get_history(limit=2)
-assert len(recent_two) == 2</code></pre>
-
-  <h3>Step 4: Subscribe with Filters</h3>
-  <pre><code class="language-python">q_all = bus.subscribe()
-assert bus.subscriber_count == 1
-
-q_errors = bus.subscribe_filtered(
-    lambda evt: evt.event_type == NexusEventType.HANDLER_ERROR
-)
-assert bus.subscriber_count == 2</code></pre>
-
-  <h3>Step 5: Bounded History</h3>
-  <pre><code class="language-python">small_bus = EventBus(capacity=3)
-
-for i in range(5):
-    small_bus._history.append(
-        NexusEvent(event_type=NexusEventType.CUSTOM, data={"index": i})
-    )
-
-history = small_bus.get_history()
-assert len(history) == 3
-assert history[0]["data"]["index"] == 2  # Oldest surviving
-assert history[2]["data"]["index"] == 4  # Most recent</code></pre>
-
-  <div class="callout">
-    <strong>Note:</strong> Nexus creates an EventBus internally (capacity=256). The HandlerRegistry publishes <code>HANDLER_REGISTERED</code> events automatically when handlers are added.
-  </div>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Querying history before dispatch loop</td><td>History is empty</td><td>Call <code>bus.start()</code> first</td></tr>
-    <tr><td>Capacity too small</td><td>Events evicted quickly</td><td>Use capacity &ge; 128</td></tr>
-    <tr><td>Forgetting <code>await</code> on start/stop</td><td>Coroutine never runs</td><td>Both are async methods</td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li><code>NexusEventType</code> is a typed enum with dotted string values matching the Rust SDK.</li>
-    <li><code>NexusEvent</code> provides <code>to_dict()</code>/<code>from_dict()</code> for round-trip serialization.</li>
-    <li><code>publish()</code> is sync and thread-safe; works before the async loop starts.</li>
-    <li><code>subscribe()</code> and <code>subscribe_filtered()</code> return async queues.</li>
-    <li><code>get_history()</code> reads from the bounded deque with optional filters.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="06_presets.html">&larr; Previous: Presets</a>
-    <a href="08_openapi.html">Next: OpenAPI &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

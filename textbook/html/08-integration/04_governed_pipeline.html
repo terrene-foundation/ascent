@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 4: PACT-Governed
+Pipeline &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-4-pact-governed-pipeline">Chapter 4: PACT-Governed
+Pipeline</h1>
+<h2 id="overview">Overview</h2>
+<p>In production, AI agents must operate within governance boundaries.
+<strong>PACT</strong> (the governance framework) wraps Kaizen agents
+with clearance checks, budget limits, and action restrictions. The
+pattern is: compile an organization structure, create a frozen
+GovernanceContext, and hand it to a GovernedSupervisor that enforces
+constraints on every agent action. This chapter teaches the governance +
+agent integration pattern and how all eight Kailash packages combine in
+a governed ML platform.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="03_agent_with_tools.md">Chapter 3: Agent with ML
+Tools</a></li>
+<li>Familiarity with PACT concepts from the PACT section (D/T/R
+addressing, clearance, envelopes)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-governance-agent-pattern">Concept 1: The
+Governance + Agent Pattern</h3>
+<p>The production pattern chains three components:</p>
+<pre><code>GovernanceEngine.compile_org(org_yaml)
+    -&gt; GovernanceContext (frozen, immutable)
+        -&gt; PactGovernedAgent(agent, context)
+            -&gt; Agent can only act within its envelope</code></pre>
+<ul>
+<li><strong>What</strong>: A three-layer pattern that wraps agent
+autonomy with organizational constraints</li>
+<li><strong>Why</strong>: Without governance, agents can access data
+above their clearance, exceed budgets, and modify their own
+constraints</li>
+<li><strong>How</strong>: Compile an org, create a frozen context, pass
+it to the governed agent or supervisor</li>
+<li><strong>When</strong>: Every production agent deployment</li>
+</ul>
+<h3 id="concept-2-governancecontext-is-frozen">Concept 2:
+GovernanceContext Is Frozen</h3>
+<p>Agents receive a <code>GovernanceContext</code>, <strong>not</strong>
+a <code>GovernanceEngine</code>. The context is a frozen snapshot of the
+agent’s envelope, clearance, and allowed actions. Because it is frozen,
+agents cannot escalate their own privileges, widen their envelope, or
+modify organizational structure.</p>
+<ul>
+<li><strong>What</strong>: An immutable snapshot of governance
+constraints for a specific role</li>
+<li><strong>Why</strong>: If agents could access the engine, they could
+call <code>grant_clearance()</code> or <code>set_role_envelope()</code>
+on themselves</li>
+<li><strong>How</strong>:
+<code>engine.get_context(role_address="D1-R1-T1-R1-R1", posture=TrustPosture.SUPERVISED)</code></li>
+<li><strong>When</strong>: Before handing any governance information to
+an agent</li>
+</ul>
+<h3 id="concept-3-governedsupervisor">Concept 3: GovernedSupervisor</h3>
+<p>GovernedSupervisor wraps a multi-agent pipeline with governance.
+Before each agent action, it checks clearance. It tracks cost against
+budget. It enforces monotonic tightening on child agent envelopes
+(children can never have more authority than their parent). And it
+creates an audit trail of all decisions.</p>
+<h3 id="concept-4-dtr-addressing">Concept 4: D/T/R Addressing</h3>
+<p>PACT uses Department/Team/Role addressing to locate entities in the
+organizational hierarchy. Addresses like <code>D1-R1-T1-R1</code>
+identify specific positions. The <code>Address</code> class parses and
+validates these strings.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 34%" />
+<col style="width: 16%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Address.parse()</code></td>
+<td><code>address_str: str</code></td>
+<td><code>Address</code></td>
+<td>Parse a D/T/R address string</td>
+</tr>
+<tr>
+<td><code>GovernanceEngine()</code></td>
+<td><code>org_def</code> or <code>compiled_org</code></td>
+<td><code>GovernanceEngine</code></td>
+<td>Create the governance decision engine</td>
+</tr>
+<tr>
+<td><code>engine.get_context()</code></td>
+<td><code>role_address</code>, <code>posture</code></td>
+<td><code>GovernanceContext</code></td>
+<td>Create a frozen context for an agent</td>
+</tr>
+<tr>
+<td><code>GovernedSupervisor()</code></td>
+<td><code>model</code>, <code>budget_usd</code>,
+<code>governance_context</code></td>
+<td><code>GovernedSupervisor</code></td>
+<td>Create a governed multi-agent supervisor</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> Address</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>addr <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1-T1-R1&quot;</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> addr.depth() <span class="op">==</span> <span class="dv">4</span></span></code></pre></div>
+<p>The address <code>D1-R1-T1-R1</code> has depth 4: department 1, role
+1, team 1, role 1. This identifies a specific role within a specific
+team within a specific department.</p>
+<h3 id="organization-structure">Organization Structure</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># PACT uses D/T/R (Department/Team/Role) addressing:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"># org:</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co">#   departments:</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">#     - name: &quot;Data Science&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">#       teams:</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co">#         - name: &quot;ML Engineering&quot;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">#           roles:</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#             - name: &quot;Senior ML Engineer&quot;</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co">#               clearance: SECRET</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co">#               envelope:</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="co">#                 max_cost_usd: 50.0</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co">#                 allowed_tools: [DataExplorer, TrainingPipeline, ModelRegistry]</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Address: D1-T1-R1 (first dept, first team, first role)</span></span></code></pre></div>
+<p>Each role has a clearance level and a constraint envelope that limits
+what it can do and spend.</p>
+<h3 id="frozen-governancecontext">Frozen GovernanceContext</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># GovernanceContext is frozen at creation -- agents cannot modify it.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co"># This is the anti-self-modification defense.</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># from kailash.trust.pact import GovernanceContext, GovernanceEngine</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co"># engine = GovernanceEngine()</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># compiled = engine.compile_org(org_definition)</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co"># context = GovernanceContext(compiled_org=compiled, agent_address=addr)</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"># context.envelope is immutable</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co"># context.clearance is immutable</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Attempting to modify raises GovernanceBlockedError</span></span></code></pre></div>
+<p>The frozen context prevents:</p>
+<ul>
+<li>Agents accessing data above their clearance level</li>
+<li>Agents exceeding their budget or time constraints</li>
+<li>Agents modifying their own governance context</li>
+</ul>
+<h3 id="governedsupervisor-pattern">GovernedSupervisor Pattern</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># GovernedSupervisor wraps a multi-agent pipeline with governance:</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co"># from kaizen_agents import GovernedSupervisor</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co"># supervisor = GovernedSupervisor(</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">#     model=os.environ[&quot;DEFAULT_LLM_MODEL&quot;],</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co">#     budget_usd=10.0,</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     governance_context=context,</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="co"># )</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co"># result = await supervisor.run(&quot;Analyze and retrain the credit model&quot;)</span></span></code></pre></div>
+<p>The supervisor performs four governance functions at runtime:</p>
+<ol type="1">
+<li><strong>Clearance check</strong> before each agent action</li>
+<li><strong>Cost tracking</strong> against the budget</li>
+<li><strong>Monotonic tightening</strong> on child agent envelopes
+(children never get more authority)</li>
+<li><strong>Audit trail</strong> of all decisions</li>
+</ol>
+<h3 id="the-full-platform-all-eight-packages">The Full Platform: All
+Eight Packages</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># All 8 packages working together:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co">#   kailash (core)      -&gt; Workflow orchestration</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">#   kailash-ml          -&gt; ML engines (training, inference, drift)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#   kailash-dataflow    -&gt; Database persistence</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co">#   kailash-nexus       -&gt; Multi-channel deployment</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co">#   kailash-kaizen      -&gt; Agent framework (signatures, LLM)</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co">#   kaizen-agents       -&gt; Specialized agents (ReAct, RAG, etc.)</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co">#   kailash-pact        -&gt; Governance (D/T/R, clearance, envelopes)</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co">#   kailash-align       -&gt; LLM fine-tuning</span></span></code></pre></div>
+<p>This is the capstone integration: a governed ML platform where agents
+train models, serve predictions, and operate within organizational
+constraints – all through Kailash frameworks.</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create an Address for “Department 2, Team 3, Role 1” and verify its
+depth. How would you use this address to create a
+GovernanceContext?</li>
+<li>Why do agents receive GovernanceContext instead of GovernanceEngine?
+List three things an agent could do if it had engine access that the
+frozen context prevents.</li>
+<li>Design a governed ML pipeline where: (a) a data analyst agent
+profiles data, (b) a training agent builds a model, and (c) a deployment
+agent pushes to production. Each agent should have different clearance
+levels and budget limits. Describe the org structure and envelopes.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>PACT governance wraps agents with clearance, budget, and action
+constraints</li>
+<li>Agents receive frozen GovernanceContext, never GovernanceEngine
+(anti-self-modification)</li>
+<li>GovernedSupervisor enforces governance on every agent action with
+audit trails</li>
+<li>D/T/R addressing identifies roles in the organizational
+hierarchy</li>
+<li>Monotonic tightening ensures child agents never exceed parent
+authority</li>
+<li>All eight Kailash packages combine into a governed ML platform</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="05_full_platform.md">Chapter 5: Full Platform</a> – Import
+and validate all eight Kailash packages working together.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

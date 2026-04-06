@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 4: LLM Providers — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 4: LLM Providers &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,74 +24,239 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 4: LLM Providers</h1>
+<h1 id="chapter-4-llm-providers">Chapter 4: LLM Providers</h1>
+<h2 id="overview">Overview</h2>
+<p>Kaizen supports multiple LLM providers (Anthropic, OpenAI, Google)
+through a uniform environment-variable-based configuration system. This
+chapter covers how provider detection works from model name prefixes,
+the API key pairing rules, the cost estimation table, and the security
+pattern for managing secrets via <code>.env</code> files.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-3</li>
+<li>A <code>.env</code> file with at least
+<code>DEFAULT_LLM_MODEL</code> set</li>
+<li>Understanding of environment variable patterns</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="provider-detection">Provider Detection</h3>
+<p>The SDK detects the provider from model name prefixes:</p>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 12%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Prefix</th>
+<th>Provider</th>
+<th>Required API Key</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>claude-</code></td>
+<td>Anthropic</td>
+<td><code>ANTHROPIC_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>gpt-</code>, <code>o1-</code>, <code>o3-</code>,
+<code>o4-</code></td>
+<td>OpenAI</td>
+<td><code>OPENAI_API_KEY</code></td>
+</tr>
+<tr>
+<td><code>gemini-</code></td>
+<td>Google</td>
+<td><code>GOOGLE_API_KEY</code> or <code>GEMINI_API_KEY</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="environment-only-pattern">Environment-Only Pattern</h3>
+<p>API keys are always loaded from environment variables at runtime,
+never at import time and never hardcoded. The standard pattern is:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>api_key <span class="op">=</span> os.environ[<span class="st">&quot;ANTHROPIC_API_KEY&quot;</span>]</span></code></pre></div>
+<h3 id="cost-estimation">Cost Estimation</h3>
+<p>Delegate tracks cost estimates per 1M tokens for budget
+enforcement:</p>
+<table>
+<thead>
+<tr>
+<th>Model Prefix</th>
+<th>Input Cost</th>
+<th>Output Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>claude-</code></td>
+<td>$3.00</td>
+<td>$15.00</td>
+</tr>
+<tr>
+<td><code>gpt-4o</code></td>
+<td>$2.50</td>
+<td>$10.00</td>
+</tr>
+<tr>
+<td><code>gpt-4</code></td>
+<td>$30.00</td>
+<td>$60.00</td>
+</tr>
+<tr>
+<td><code>gemini-</code></td>
+<td>$1.25</td>
+<td>$5.00</td>
+</tr>
+</tbody>
+</table>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 11%" />
+<col style="width: 8%" />
+<col style="width: 37%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>os.environ.get("DEFAULT_LLM_MODEL")</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Primary model for all agents</td>
+</tr>
+<tr>
+<td><code>os.environ.get("OPENAI_PROD_MODEL")</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>OpenAI-specific override</td>
+</tr>
+<tr>
+<td><code>load_dotenv()</code></td>
+<td>–</td>
+<td><code>None</code></td>
+<td>Load <code>.env</code> file into environment</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-model-from-environment">Step 1: Model from
+Environment</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(model, <span class="bu">str</span>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(model) <span class="op">&gt;</span> <span class="dv">0</span></span></code></pre></div>
+<h3 id="step-2-provider-detection">Step 2: Provider Detection</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> detect_provider(model_name: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> model_name.startswith(<span class="st">&quot;claude-&quot;</span>):</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;anthropic&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> model_name.startswith((<span class="st">&quot;gpt-&quot;</span>, <span class="st">&quot;o1&quot;</span>, <span class="st">&quot;o3&quot;</span>, <span class="st">&quot;o4&quot;</span>)):</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;openai&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">elif</span> model_name.startswith(<span class="st">&quot;gemini-&quot;</span>):</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">&quot;google&quot;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="st">&quot;unknown&quot;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> detect_provider(<span class="st">&quot;claude-sonnet-4-20250514&quot;</span>) <span class="op">==</span> <span class="st">&quot;anthropic&quot;</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> detect_provider(<span class="st">&quot;gpt-4o&quot;</span>) <span class="op">==</span> <span class="st">&quot;openai&quot;</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> detect_provider(<span class="st">&quot;gemini-pro&quot;</span>) <span class="op">==</span> <span class="st">&quot;google&quot;</span></span></code></pre></div>
+<h3 id="step-3-security-verification">Step 3: Security Verification</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> inspect</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>source <span class="op">=</span> inspect.getsource(detect_provider)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;sk-&quot;</span> <span class="kw">not</span> <span class="kw">in</span> source, <span class="st">&quot;No hardcoded API keys&quot;</span></span></code></pre></div>
+<p>No API keys should ever appear in source code.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 22%" />
+<col style="width: 41%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hardcoding <code>model="gpt-4"</code></td>
+<td>Breaks on deprecation, prevents env-based switching</td>
+<td>Use <code>os.environ.get("DEFAULT_LLM_MODEL")</code></td>
+</tr>
+<tr>
+<td>Forgetting <code>load_dotenv()</code></td>
+<td><code>os.environ</code> returns <code>None</code> for
+<code>.env</code> vars</td>
+<td>Always call <code>load_dotenv()</code> first</td>
+</tr>
+<tr>
+<td>Committing <code>.env</code> to git</td>
+<td>API keys leaked in history</td>
+<td>Add <code>.env</code> to <code>.gitignore</code></td>
+</tr>
+<tr>
+<td>Mismatched model-key pairing</td>
+<td>Opaque 401/403 errors</td>
+<td>Verify the model prefix matches the API key</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Provider Matrix</strong>: Write a function that returns
+the required API key environment variable name for a given model name.
+Test with at least five different model names.</p></li>
+<li><p><strong>Cost Calculator</strong>: Write a function that estimates
+the cost for a given model, prompt token count, and completion token
+count. Test with multiple models and verify the math.</p></li>
+<li><p><strong>Security Audit</strong>: Scan a Python file for hardcoded
+API key patterns (strings starting with <code>sk-</code>,
+<code>key-</code>, etc.). Report any findings.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Provider is detected from model name prefixes: <code>claude-</code>
+(Anthropic), <code>gpt-</code> (OpenAI), <code>gemini-</code>
+(Google).</li>
+<li>API keys always come from environment variables via
+<code>load_dotenv()</code> + <code>os.environ</code>.</li>
+<li><code>.env</code> files must be in <code>.gitignore</code> – never
+committed to source control.</li>
+<li>Cost estimation uses conservative per-1M-token rates for budget
+enforcement.</li>
+<li>The SDK reads keys at runtime, not at import time.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="05_cost_tracking.md">Chapter 5: Cost Tracking</a> – Track
+LLM costs and enforce budget limits on agents.</p>
 
-  <h2>Overview</h2>
-  <p>Kaizen supports multiple LLM providers through environment-variable-based configuration. This chapter covers provider detection from model name prefixes, API key pairing, cost estimation, and the security pattern for managing secrets.</p>
-
-  <h2>Concepts</h2>
-
-  <h3>Provider Detection</h3>
-  <table>
-    <tr><th>Prefix</th><th>Provider</th><th>Required API Key</th></tr>
-    <tr><td><code>claude-</code></td><td>Anthropic</td><td><code>ANTHROPIC_API_KEY</code></td></tr>
-    <tr><td><code>gpt-</code>, <code>o1-</code>, <code>o3-</code>, <code>o4-</code></td><td>OpenAI</td><td><code>OPENAI_API_KEY</code></td></tr>
-    <tr><td><code>gemini-</code></td><td>Google</td><td><code>GOOGLE_API_KEY</code></td></tr>
-  </table>
-
-  <h3>Cost Estimation</h3>
-  <table>
-    <tr><th>Model Prefix</th><th>Input (per 1M)</th><th>Output (per 1M)</th></tr>
-    <tr><td><code>claude-</code></td><td>$3.00</td><td>$15.00</td></tr>
-    <tr><td><code>gpt-4o</code></td><td>$2.50</td><td>$10.00</td></tr>
-    <tr><td><code>gpt-4</code></td><td>$30.00</td><td>$60.00</td></tr>
-    <tr><td><code>gemini-</code></td><td>$1.25</td><td>$5.00</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Model from Environment</h3>
-  <pre><code class="language-python">import os
-from dotenv import load_dotenv
-load_dotenv()
-
-model = os.environ.get("DEFAULT_LLM_MODEL", "claude-sonnet-4-20250514")</code></pre>
-
-  <h3>Step 2: Provider Detection</h3>
-  <pre><code class="language-python">def detect_provider(model_name: str) -> str:
-    if model_name.startswith("claude-"):
-        return "anthropic"
-    elif model_name.startswith(("gpt-", "o1", "o3", "o4")):
-        return "openai"
-    elif model_name.startswith("gemini-"):
-        return "google"
-    return "unknown"
-
-assert detect_provider("claude-sonnet-4-20250514") == "anthropic"
-assert detect_provider("gpt-4o") == "openai"
-assert detect_provider("gemini-pro") == "google"</code></pre>
-
-  <div class="warning">
-    <strong>Security:</strong> API keys must never appear in source code. Always use <code>os.environ</code> with <code>load_dotenv()</code>, and ensure <code>.env</code> is in <code>.gitignore</code>.
-  </div>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li>Provider detected from model name prefix automatically.</li>
-    <li>API keys always from environment variables, never hardcoded.</li>
-    <li><code>.env</code> files must be in <code>.gitignore</code>.</li>
-    <li>Cost estimation uses per-1M-token rates for budget enforcement.</li>
-    <li>The SDK reads keys at runtime, not at import time.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="03_agent_config.html">&larr; Previous: Agent Configuration</a>
-    <a href="05_cost_tracking.html">Next: Cost Tracking &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 5: Advanced Alignment
+Methods &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-5-advanced-alignment-methods">Chapter 5: Advanced
+Alignment Methods</h1>
+<h2 id="overview">Overview</h2>
+<p>Beyond SFT and DPO, Kailash Align supports five additional alignment
+methods, each addressing different data availability and optimization
+constraints. <strong>KTO</strong> works with unpaired binary feedback.
+<strong>ORPO</strong> combines SFT and preference alignment in one pass.
+<strong>GRPO</strong> and <strong>RLOO</strong> are online RL methods
+that generate completions and score them with reward functions.
+<strong>OnlineDPO</strong> applies DPO loss to online-generated pairs.
+This chapter teaches you how to configure each method and when to choose
+one over another.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_alignment_config.md">Chapter 1: AlignmentConfig
+Basics</a></li>
+<li><a href="04_dpo_config.md">Chapter 4: DPO Configuration</a></li>
+<li>Understanding of online vs offline RL concepts (helpful)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-method-categories">Concept 1: Method Categories</h3>
+<p>Kailash Align organizes methods into four categories:</p>
+<table>
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 24%" />
+<col style="width: 42%" />
+<col style="width: 18%" />
+</colgroup>
+<thead>
+<tr>
+<th>Category</th>
+<th>Methods</th>
+<th>Data Requirement</th>
+<th>Reward Function?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>offline</code></td>
+<td>DPO</td>
+<td>Preference pairs (chosen/rejected)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>unpaired</code></td>
+<td>KTO</td>
+<td>Binary labels (good/bad)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>monolithic</code></td>
+<td>ORPO</td>
+<td>Preference pairs (one-pass SFT+pref)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>online</code></td>
+<td>GRPO, RLOO, OnlineDPO</td>
+<td>Prompts only (generates completions)</td>
+<td>GRPO/RLOO: Yes</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>What</strong>: A taxonomy that determines what data and
+infrastructure each method needs</li>
+<li><strong>Why</strong>: Choosing the right category depends on your
+data availability and compute budget</li>
+<li><strong>How</strong>: Check
+<code>METHOD_REGISTRY[method].category</code> for any method’s
+category</li>
+<li><strong>When</strong>: Use offline methods when you have preference
+data; online methods when you have reward functions and prompts</li>
+</ul>
+<h3 id="concept-2-reward-functions-online-methods">Concept 2: Reward
+Functions (Online Methods)</h3>
+<p>GRPO and RLOO require reward functions to score generated
+completions. These functions are registered in the
+<code>RewardRegistry</code> and called during training to evaluate each
+completion. OnlineDPO does not require reward functions – it uses the
+model’s own log probabilities.</p>
+<h3 id="concept-3-generation-backend">Concept 3: Generation Backend</h3>
+<p>Online methods (GRPO, RLOO, OnlineDPO) generate completions during
+training. They can use either vLLM (<code>use_vllm=True</code>) for
+faster generation or HuggingFace’s generate function. The
+<code>num_generations</code> parameter controls how many completions are
+generated per prompt.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 12%" />
+<col style="width: 67%" />
+</colgroup>
+<thead>
+<tr>
+<th>Config Class</th>
+<th>Category</th>
+<th>Key Parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KTOConfig</code></td>
+<td>unpaired</td>
+<td><code>beta</code>, <code>desirable_weight</code>,
+<code>undesirable_weight</code></td>
+</tr>
+<tr>
+<td><code>ORPOConfig</code></td>
+<td>monolithic</td>
+<td><code>beta</code>, <code>max_length</code>,
+<code>max_prompt_length</code></td>
+</tr>
+<tr>
+<td><code>GRPOConfig</code></td>
+<td>online</td>
+<td><code>num_generations</code>, <code>temperature</code>,
+<code>kl_coef</code>, <code>use_vllm</code></td>
+</tr>
+<tr>
+<td><code>RLOOConfig</code></td>
+<td>online</td>
+<td><code>num_generations</code>, <code>temperature</code>,
+<code>kl_coef</code>, <code>use_vllm</code></td>
+</tr>
+<tr>
+<td><code>OnlineDPOConfig</code></td>
+<td>online</td>
+<td><code>beta</code>, <code>max_completion_length</code>,
+<code>use_vllm</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    AlignmentConfig,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    GRPOConfig,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    KTOConfig,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    OnlineDPOConfig,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    ORPOConfig,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    RLOOConfig,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align.method_registry <span class="im">import</span> METHOD_REGISTRY</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;meta-llama/Llama-3.1-8B&quot;</span>)</span></code></pre></div>
+<h3 id="kto-unpaired-binary-feedback">KTO – Unpaired Binary
+Feedback</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>kto <span class="op">=</span> KTOConfig()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto.learning_rate <span class="op">==</span> <span class="fl">5e-7</span>, <span class="st">&quot;KTO paper recommends very low LR&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto.beta <span class="op">==</span> <span class="fl">0.1</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto.desirable_weight <span class="op">==</span> <span class="fl">1.0</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto.undesirable_weight <span class="op">==</span> <span class="fl">1.0</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto.max_length <span class="op">==</span> <span class="dv">1024</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto.max_prompt_length <span class="op">==</span> <span class="dv">512</span></span></code></pre></div>
+<p>KTO works with <code>(prompt, completion, label)</code> triples where
+label is binary (good/bad). This dramatically lowers the data barrier –
+you do not need paired preferences (chosen vs rejected), just a
+thumbs-up or thumbs-down per completion. Note the very low default
+learning rate (5e-7), which is 10x lower than DPO’s default.</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom KTO with asymmetric weighting</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>kto_custom <span class="op">=</span> KTOConfig(</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    desirable_weight<span class="op">=</span><span class="fl">1.5</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    undesirable_weight<span class="op">=</span><span class="fl">0.5</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    learning_rate<span class="op">=</span><span class="fl">1e-6</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    beta<span class="op">=</span><span class="fl">0.05</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto_custom.desirable_weight <span class="op">==</span> <span class="fl">1.5</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto_custom.undesirable_weight <span class="op">==</span> <span class="fl">0.5</span></span></code></pre></div>
+<p>Asymmetric weighting lets you emphasize learning from good examples
+(higher desirable_weight) or bad examples (higher undesirable_weight).
+Weights must be positive.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>kto_method <span class="op">=</span> METHOD_REGISTRY[<span class="st">&quot;kto&quot;</span>]</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto_method.category <span class="op">==</span> <span class="st">&quot;unpaired&quot;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> kto_method.requires_preference_data <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;prompt&quot;</span> <span class="kw">in</span> kto_method.dataset_required_columns</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;completion&quot;</span> <span class="kw">in</span> kto_method.dataset_required_columns</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;label&quot;</span> <span class="kw">in</span> kto_method.dataset_required_columns</span></code></pre></div>
+<p>KTO’s dataset requires <code>prompt</code>, <code>completion</code>,
+and <code>label</code> columns – not the
+<code>chosen</code>/<code>rejected</code> columns that DPO needs.</p>
+<h3 id="orpo-monolithic-sft-preference">ORPO – Monolithic SFT +
+Preference</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>orpo <span class="op">=</span> ORPOConfig()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> orpo.learning_rate <span class="op">==</span> <span class="fl">8e-6</span>, <span class="st">&quot;ORPO paper recommends 8e-6&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> orpo.beta <span class="op">==</span> <span class="fl">0.1</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> orpo.max_length <span class="op">==</span> <span class="dv">1024</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> orpo.max_prompt_length <span class="op">==</span> <span class="dv">512</span></span></code></pre></div>
+<p>ORPO combines SFT and preference alignment in one training pass,
+eliminating the need for a two-stage <code>sft_then_dpo</code> pipeline.
+It uses the same preference data format as DPO but learns the task
+format and preferences simultaneously.</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>orpo_method <span class="op">=</span> METHOD_REGISTRY[<span class="st">&quot;orpo&quot;</span>]</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> orpo_method.category <span class="op">==</span> <span class="st">&quot;monolithic&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> orpo_method.requires_preference_data <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;prompt&quot;</span> <span class="kw">in</span> orpo_method.dataset_required_columns</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;chosen&quot;</span> <span class="kw">in</span> orpo_method.dataset_required_columns</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;rejected&quot;</span> <span class="kw">in</span> orpo_method.dataset_required_columns</span></code></pre></div>
+<h3 id="grpo-online-rl-deepseek-r1-method">GRPO – Online RL (DeepSeek-R1
+Method)</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>grpo <span class="op">=</span> GRPOConfig()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo.num_generations <span class="op">==</span> <span class="dv">4</span>, <span class="st">&quot;Default: 4 completions per prompt&quot;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo.temperature <span class="op">==</span> <span class="fl">0.7</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo.max_completion_length <span class="op">==</span> <span class="dv">2048</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo.learning_rate <span class="op">==</span> <span class="fl">1e-5</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo.kl_coef <span class="op">==</span> <span class="fl">0.001</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo.use_vllm <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo.vllm_gpu_utilization <span class="op">==</span> <span class="fl">0.5</span></span></code></pre></div>
+<p>GRPO (Group Relative Policy Optimization) generates multiple
+completions per prompt and scores them with reward functions. The
+<code>num_generations</code> parameter controls how many completions are
+generated. <code>kl_coef</code> penalizes divergence from the reference
+policy (similar to beta in DPO). <code>use_vllm=True</code> enables
+faster generation via vLLM.</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom GRPO for single-GPU training</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>grpo_custom <span class="op">=</span> GRPOConfig(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    num_generations<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    temperature<span class="op">=</span><span class="fl">1.0</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    kl_coef<span class="op">=</span><span class="fl">0.01</span>,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    max_completion_length<span class="op">=</span><span class="dv">1024</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    per_device_train_batch_size<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    gradient_accumulation_steps<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo_custom.num_generations <span class="op">==</span> <span class="dv">8</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo_custom.temperature <span class="op">==</span> <span class="fl">1.0</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo_custom.kl_coef <span class="op">==</span> <span class="fl">0.01</span></span></code></pre></div>
+<p>On a single GPU, use batch size 1 with high accumulation to fit the
+multiple generations in memory.</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>grpo_method <span class="op">=</span> METHOD_REGISTRY[<span class="st">&quot;grpo&quot;</span>]</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo_method.category <span class="op">==</span> <span class="st">&quot;online&quot;</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo_method.requires_reward_func <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> grpo_method.requires_generation_backend <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;prompt&quot;</span> <span class="kw">in</span> grpo_method.dataset_required_columns</span></code></pre></div>
+<p>GRPO requires reward functions and a generation backend, but only
+<code>prompt</code> in the dataset – completions are generated during
+training.</p>
+<h3 id="rloo-reinforce-leave-one-out">RLOO – REINFORCE
+Leave-One-Out</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>rloo <span class="op">=</span> RLOOConfig()</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rloo.num_generations <span class="op">==</span> <span class="dv">4</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rloo.temperature <span class="op">==</span> <span class="fl">0.7</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rloo.kl_coef <span class="op">==</span> <span class="fl">0.001</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rloo.use_vllm <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>RLOO uses the same infrastructure as GRPO but with a leave-one-out
+baseline for variance reduction. The configuration parameters are
+identical.</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>rloo_method <span class="op">=</span> METHOD_REGISTRY[<span class="st">&quot;rloo&quot;</span>]</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rloo_method.category <span class="op">==</span> <span class="st">&quot;online&quot;</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rloo_method.requires_reward_func <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<h3 id="onlinedpo-dpo-with-online-generation">OnlineDPO – DPO with
+Online Generation</h3>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>online_dpo <span class="op">=</span> OnlineDPOConfig()</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo.beta <span class="op">==</span> <span class="fl">0.1</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo.max_length <span class="op">==</span> <span class="dv">2048</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo.max_prompt_length <span class="op">==</span> <span class="dv">512</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo.max_completion_length <span class="op">==</span> <span class="dv">512</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo.use_vllm <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>OnlineDPO generates completions online and applies DPO loss. Unlike
+GRPO/RLOO, it does not require reward functions – it uses the model’s
+own log probabilities to create preference pairs.</p>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>online_dpo_method <span class="op">=</span> METHOD_REGISTRY[<span class="st">&quot;online_dpo&quot;</span>]</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo_method.category <span class="op">==</span> <span class="st">&quot;online&quot;</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo_method.requires_reward_func <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> online_dpo_method.requires_generation_backend <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<h3 id="shared-validation-rules">Shared Validation Rules</h3>
+<p>All five configs enforce bf16/fp16 mutual exclusion and frozen
+immutability:</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> ConfigClass <span class="kw">in</span> (KTOConfig, ORPOConfig, GRPOConfig, RLOOConfig, OnlineDPOConfig):</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>        ConfigClass(bf16<span class="op">=</span><span class="va">True</span>, fp16<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="ss">f&quot;</span><span class="sc">{</span>ConfigClass<span class="sc">.</span><span class="va">__name__</span><span class="sc">}</span><span class="ss"> should reject bf16+fp16&quot;</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;bf16&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e) <span class="kw">and</span> <span class="st">&quot;fp16&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> config_obj <span class="kw">in</span> (kto, orpo, grpo, rloo, online_dpo):</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>        config_obj.learning_rate <span class="op">=</span> <span class="fl">999.0</span>  <span class="co"># type: ignore[misc]</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="ss">f&quot;</span><span class="sc">{</span><span class="bu">type</span>(config_obj)<span class="sc">.</span><span class="va">__name__</span><span class="sc">}</span><span class="ss"> should be frozen&quot;</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">AttributeError</span>:</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">pass</span>  <span class="co"># Expected: all frozen</span></span></code></pre></div>
+<h3 id="auto-creation-in-alignmentconfig">Auto-Creation in
+AlignmentConfig</h3>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> method <span class="kw">in</span> (<span class="st">&quot;kto&quot;</span>, <span class="st">&quot;orpo&quot;</span>, <span class="st">&quot;grpo&quot;</span>, <span class="st">&quot;rloo&quot;</span>, <span class="st">&quot;online_dpo&quot;</span>):</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    cfg <span class="op">=</span> AlignmentConfig(method<span class="op">=</span>method, base_model_id<span class="op">=</span>model_id)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    sub <span class="op">=</span> <span class="bu">getattr</span>(cfg, method)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> sub <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>, <span class="ss">f&quot;</span><span class="sc">{</span>method<span class="sc">}</span><span class="ss"> config should be auto-created&quot;</span></span></code></pre></div>
+<p>All method-specific configs are auto-created when you set the method
+on AlignmentConfig, just like SFT and DPO.</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>You have a dataset of 10,000 customer support responses, each
+labeled “helpful” or “unhelpful” (no paired preferences). Which method
+should you use? Create the config.</li>
+<li>Create a GRPOConfig for a single T4 GPU (16GB). What values would
+you choose for <code>num_generations</code>,
+<code>per_device_train_batch_size</code>, and
+<code>gradient_accumulation_steps</code>?</li>
+<li>Compare the dataset requirements for DPO, KTO, and GRPO by
+inspecting their <code>dataset_required_columns</code> in
+METHOD_REGISTRY. Which method requires the least annotation effort?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>KTO lowers the data barrier by using binary feedback instead of
+preference pairs</li>
+<li>ORPO eliminates the two-stage pipeline by combining SFT and
+preference alignment</li>
+<li>GRPO and RLOO are online RL methods that generate and score
+completions during training</li>
+<li>OnlineDPO generates completions online but does not need reward
+functions</li>
+<li>All configs share validation rules: bf16/fp16 mutual exclusion,
+frozen immutability, positive learning rates</li>
+<li>Method-specific configs are auto-created in AlignmentConfig</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="06_adapter_registry.md">Chapter 6: Adapter Registry</a> –
+Learn how to version, manage, and promote LoRA adapters through their
+lifecycle.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: Agent with ML
+Tools &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-3-agent-with-ml-tools">Chapter 3: Agent with ML
+Tools</h1>
+<h2 id="overview">Overview</h2>
+<p>AI agents become powerful when they can use ML engines as tools.
+Instead of hardcoding an analysis pipeline, you give a <strong>Kaizen
+agent</strong> access to DataExplorer, ModelVisualizer, and
+TrainingPipeline as callable tools. The agent decides
+<strong>when</strong> to call each tool based on its reasoning, not your
+code logic. This chapter teaches the tool wrapping pattern, the ReAct
+agent loop, the double opt-in safety protocol, and budget-governed agent
+deployment.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="02_ml_to_nexus.md">Chapter 2: ML to Nexus
+Deployment</a></li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Understanding of AI agent concepts (ReAct, tool use)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-signatures-define-agent-behavior">Concept 1:
+Signatures Define Agent Behavior</h3>
+<p>A <code>Signature</code> declares what the agent receives
+(InputFields) and what it must produce (OutputFields). The docstring
+becomes the system prompt, <code>__intent__</code> describes the agent’s
+purpose, and <code>__guidelines__</code> provide behavioral constraints.
+The LLM reasons about these fields – it is never hardcoded.</p>
+<ul>
+<li><strong>What</strong>: A declarative specification of agent inputs,
+outputs, intent, and guidelines</li>
+<li><strong>Why</strong>: Signatures separate the agent’s behavioral
+contract from its implementation, making agents configurable without
+code changes</li>
+<li><strong>How</strong>: Subclass <code>Signature</code> with typed
+fields decorated with <code>InputField</code> and
+<code>OutputField</code></li>
+<li><strong>When</strong>: Every agent starts with a signature
+definition</li>
+</ul>
+<h3 id="concept-2-tool-wrapping-pattern">Concept 2: Tool Wrapping
+Pattern</h3>
+<p>ML engines become agent tools by wrapping them in async functions.
+The function docstring tells the agent what the tool does. The function
+body calls the engine. The agent decides when to call each tool based on
+its reasoning.</p>
+<ul>
+<li><strong>What</strong>: Async functions that wrap ML engine calls for
+agent consumption</li>
+<li><strong>Why</strong>: Tools are dumb data endpoints – they fetch,
+compute, or store. The LLM does all the reasoning about when and why to
+call them</li>
+<li><strong>How</strong>: Write an async function with a clear
+docstring, call the engine inside, return raw results</li>
+<li><strong>When</strong>: For every ML engine you want the agent to be
+able to use</li>
+</ul>
+<h3 id="concept-3-agentinfusionprotocol-double-opt-in">Concept 3:
+AgentInfusionProtocol – Double Opt-In</h3>
+<p>When ML agents interact with ML engines, both sides must consent. The
+engine declares “I accept agent guidance” (<code>MLToolProtocol</code>).
+The agent declares “I respect engine constraints”
+(<code>AgentInfusionProtocol</code>). This prevents agents from
+bypassing engine safety checks.</p>
+<ul>
+<li><strong>What</strong>: A bidirectional consent protocol between
+agents and ML engines</li>
+<li><strong>Why</strong>: Without double opt-in, agents could call
+engines in unsafe ways (e.g., skipping validation)</li>
+<li><strong>How</strong>: Engines implement <code>MLToolProtocol</code>,
+agents implement <code>AgentInfusionProtocol</code></li>
+<li><strong>When</strong>: Automatically enforced when agents call ML
+engines through the Kaizen tool protocol</li>
+</ul>
+<h3 id="concept-4-budget-governed-agents">Concept 4: Budget-Governed
+Agents</h3>
+<p>In production, agents must have a cost budget. The
+<code>Delegate</code> class accepts <code>budget_usd</code> to cap LLM
+API costs. Without a budget, a runaway agent could consume unlimited API
+credits.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 40%" />
+<col style="width: 8%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Signature</code></td>
+<td>typed fields with <code>InputField</code> /
+<code>OutputField</code></td>
+<td>–</td>
+<td>Agent behavioral contract</td>
+</tr>
+<tr>
+<td><code>InputField()</code></td>
+<td><code>description: str</code></td>
+<td>field</td>
+<td>Declare an input to the agent</td>
+</tr>
+<tr>
+<td><code>OutputField()</code></td>
+<td><code>description: str</code></td>
+<td>field</td>
+<td>Declare an expected output</td>
+</tr>
+<tr>
+<td><code>Delegate()</code></td>
+<td><code>model</code>, <code>tools</code>, <code>budget_usd</code>,
+<code>system_prompt</code></td>
+<td><code>Delegate</code></td>
+<td>Budget-governed autonomous agent</td>
+</tr>
+<tr>
+<td><code>AgentInfusionProtocol</code></td>
+<td>–</td>
+<td>protocol</td>
+<td>Agent-side consent for engine access</td>
+</tr>
+<tr>
+<td><code>MLToolProtocol</code></td>
+<td>–</td>
+<td>protocol</td>
+<td>Engine-side consent for agent access</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen <span class="im">import</span> Signature, InputField, OutputField</span></code></pre></div>
+<h3 id="defining-an-agent-signature">Defining an Agent Signature</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DataAnalystSignature(Signature):</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;You are a data analyst with access to ML tools.</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">    Use the available tools to explore data and build insights.&quot;&quot;&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    __intent__ <span class="op">=</span> <span class="st">&quot;Analyze datasets and provide actionable insights&quot;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    __guidelines__ <span class="op">=</span> [</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Always profile data before analysis&quot;</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Use DataExplorer for initial profiling&quot;</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Use ModelVisualizer for charts&quot;</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Stay within budget&quot;</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    question: <span class="bu">str</span> <span class="op">=</span> InputField(description<span class="op">=</span><span class="st">&quot;Analysis question&quot;</span>)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    dataset_name: <span class="bu">str</span> <span class="op">=</span> InputField(description<span class="op">=</span><span class="st">&quot;Name of the dataset to analyze&quot;</span>)</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    analysis: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Detailed analysis with findings&quot;</span>)</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    recommendations: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Actionable recommendations&quot;</span>)</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;question&quot;</span> <span class="kw">in</span> DataAnalystSignature._signature_inputs</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;analysis&quot;</span> <span class="kw">in</span> DataAnalystSignature._signature_outputs</span></code></pre></div>
+<p>The signature tells the LLM exactly what role it plays, what it
+receives, and what it must produce. The <code>__guidelines__</code> list
+constrains behavior – the agent will profile data before analysis
+because the guideline says so, not because code forces it.</p>
+<h3 id="tool-wrapping-pattern">Tool Wrapping Pattern</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ML engines become agent tools by wrapping them in async functions.</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co"># The agent decides WHEN to call each tool (LLM reasoning, not code logic).</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Pattern:</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co">#   async def profile_data(dataset: str) -&gt; dict:</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">#       &quot;&quot;&quot;Profile a dataset using DataExplorer.&quot;&quot;&quot;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co">#       df = loader.load(dataset)</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="co">#       explorer = DataExplorer()</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co">#       profile = await explorer.profile(df)</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co">#       return profile.to_dict()</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="co">#   async def create_chart(data: str, chart_type: str) -&gt; str:</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co">#       &quot;&quot;&quot;Create a visualization using ModelVisualizer.&quot;&quot;&quot;</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="co">#       viz = ModelVisualizer()</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="co">#       fig = viz.create(json.loads(data), chart_type=chart_type)</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="co">#       return fig.to_html()</span></span></code></pre></div>
+<p>Each tool is a simple async function with a docstring. The docstring
+is critical – the LLM reads it to understand what the tool does. The
+function body calls the ML engine and returns raw results. No decision
+logic in the tool.</p>
+<h3 id="reactagent-with-ml-tools">ReActAgent with ML Tools</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ReActAgent uses Reason -&gt; Act -&gt; Observe loops:</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co">#   1. Reason about what to do next</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co">#   2. Call a tool (Act)</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co">#   3. Observe the result</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co">#   4. Decide if done or need more info</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># from kaizen_agents.agents.specialized.react import ReActAgent</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="co"># agent = ReActAgent(</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co">#     config=agent_config,</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="co">#     tools=[profile_data, create_chart, run_query],</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co"># )</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="co"># result = await agent.solve(&quot;What are the key trends in HDB prices?&quot;)</span></span></code></pre></div>
+<p>The ReAct loop is the core agent execution pattern. The agent reasons
+about each step, calls tools as needed, observes results, and decides
+when it has enough information to answer. All reasoning happens in the
+LLM, not in code.</p>
+<h3 id="double-opt-in-safety">Double Opt-In Safety</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml.types <span class="im">import</span> AgentInfusionProtocol, MLToolProtocol</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> AgentInfusionProtocol <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> MLToolProtocol <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>Both protocols exist in the type system. When an agent calls an ML
+engine through the Kaizen tool protocol, both sides verify consent
+before the call proceeds.</p>
+<h3 id="production-pattern-budget-governed-analyst">Production Pattern:
+Budget-Governed Analyst</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># from kaizen_agents import Delegate</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># delegate = Delegate(</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">#     model=os.environ[&quot;DEFAULT_LLM_MODEL&quot;],</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#     tools=[profile_data, create_chart, run_query],</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co">#     budget_usd=2.0,  # MANDATORY: cap LLM costs</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co">#     system_prompt=&quot;You are a data analyst. Use tools to answer questions.&quot;,</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co"># )</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co"># async for event in delegate.run(&quot;Analyze the credit scoring dataset&quot;):</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co">#     handle_event(event)</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(model) <span class="op">&gt;</span> <span class="dv">0</span></span></code></pre></div>
+<p>In production, always use <code>Delegate</code> with
+<code>budget_usd</code> set. The Delegate handles the ReAct loop, tool
+dispatch, and budget tracking automatically. Without a budget, a complex
+analysis could run up costs indefinitely.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 30%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Decision logic in tools</td>
+<td>Tools fetch/compute only; LLM decides</td>
+<td>Logic in tools is invisible to the LLM’s reasoning trace</td>
+</tr>
+<tr>
+<td>Missing <code>budget_usd</code></td>
+<td>Always set <code>budget_usd</code> on Delegate</td>
+<td>Runaway agents can consume unlimited API credits</td>
+</tr>
+<tr>
+<td>Hardcoded tool selection</td>
+<td>Let the LLM choose which tools to call</td>
+<td>Hardcoded selection defeats the purpose of agent reasoning</td>
+</tr>
+<tr>
+<td>No docstring on tool functions</td>
+<td>Every tool needs a clear docstring</td>
+<td>The LLM reads docstrings to understand tool capabilities</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Define a Signature for a “Model Diagnostician” agent that takes a
+model name and a dataset, and outputs a diagnostic report and
+improvement recommendations. What <code>__guidelines__</code> would you
+include?</li>
+<li>Write three tool wrapper functions: one for DataExplorer profiling,
+one for TrainingPipeline training, and one for ModelVisualizer charting.
+Each should be an async function with a clear docstring.</li>
+<li>Why is <code>budget_usd</code> mandatory in production? Calculate
+the worst-case cost of a ReAct agent with 20 reasoning steps using a
+model that costs $0.015 per 1K output tokens, assuming 500 tokens per
+step.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Agent signatures declare inputs, outputs, intent, and guidelines –
+the LLM does the reasoning</li>
+<li>ML engines become agent tools via async wrapper functions with clear
+docstrings</li>
+<li>Tools are dumb data endpoints: they fetch, compute, and return. They
+never decide.</li>
+<li>AgentInfusionProtocol enforces double opt-in safety between agents
+and ML engines</li>
+<li>Always set <code>budget_usd</code> on production agents to cap LLM
+API costs</li>
+<li>ReAct (Reason, Act, Observe) is the core agent execution loop</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="04_governed_pipeline.md">Chapter 4: PACT-Governed
+Pipeline</a> – Combine PACT governance with Kaizen agents and ML engines
+for production-safe AI systems.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

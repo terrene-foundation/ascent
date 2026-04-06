@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chapter 1: WorkflowBuilder Basics &mdash; Kailash SDK Textbook</title>
+  <title>Chapter 1: WorkflowBuilder
+Basics &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
@@ -25,173 +26,341 @@
 </head>
 <body>
   <header>
-    <p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">00-core</a></p>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
   </header>
 
-  <h1>Chapter 1: WorkflowBuilder Basics</h1>
-
-  <h2>Overview</h2>
-  <p>Every Kailash application begins with a <strong>workflow</strong> &mdash; a directed graph of processing nodes wired together to form a data pipeline. The <code>WorkflowBuilder</code> is your entry point: it provides a fluent API for adding nodes, connecting them, and compiling the graph into an immutable <code>Workflow</code> object ready for execution. This chapter teaches you how to create, wire, validate, and inspect workflows from scratch.</p>
-
-  <h2>Prerequisites</h2>
-  <ul>
-    <li>Python 3.10+ installed</li>
-    <li>Kailash SDK installed (<code>pip install kailash</code>)</li>
-    <li>No prior Kailash knowledge required &mdash; this is where you start</li>
-  </ul>
-
-  <h2>Concepts</h2>
-
-  <h3>The Builder Pattern</h3>
-  <p>WorkflowBuilder uses the <strong>builder pattern</strong> &mdash; you accumulate configuration (nodes, connections) through method calls, then finalize everything with a single <code>.build()</code> call. This separates construction from validation: you can add nodes in any order, wire them up, and the builder only checks the graph's validity when you call <code>build()</code>.</p>
-  <ul>
-    <li><strong>What</strong>: A mutable container that collects nodes and connections before producing an immutable workflow</li>
-    <li><strong>Why</strong>: Separating construction from validation lets you build workflows incrementally without worrying about ordering constraints</li>
-    <li><strong>How</strong>: Internally, the builder maintains two lists &mdash; <code>nodes</code> and <code>connections</code> &mdash; that are validated and frozen into a <code>Workflow</code> object on <code>build()</code></li>
-    <li><strong>When</strong>: Use WorkflowBuilder whenever you need a multi-step processing pipeline. For simple single-record CRUD, use DataFlow Express instead</li>
-  </ul>
-
-  <h3>Nodes</h3>
-  <p>Nodes are the processing units in a workflow. Each node has a <strong>type</strong> (what it does), a <strong>node ID</strong> (a unique string identifier), and a <strong>configuration dictionary</strong> (parameters that control its behavior). The simplest built-in node type is <code>PythonCodeNode</code>, which executes a Python code string.</p>
-
-  <h3>Connections</h3>
-  <p>Connections define how data flows between nodes. A connection maps an <strong>output port</strong> of one node to an <strong>input port</strong> of another. The default port name is <code>"data"</code>, but you can use explicit port names via the <code>mapping</code> parameter or the <code>from_output</code>/<code>to_input</code> keyword arguments.</p>
-
-  <h3>The Workflow Object</h3>
-  <p>The <code>Workflow</code> returned by <code>build()</code> is <strong>immutable</strong> &mdash; it cannot be modified after creation. It contains the validated graph (node instances and connections) plus optional metadata (name, description, version).</p>
-
-  <h3>Key API</h3>
-  <table>
-    <thead>
-      <tr><th>Method</th><th>Parameters</th><th>Returns</th><th>Description</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>WorkflowBuilder()</code></td><td>&mdash;</td><td><code>WorkflowBuilder</code></td><td>Create an empty builder</td></tr>
-      <tr><td><code>add_node()</code></td><td><code>node_type: str</code>, <code>node_id: str</code>, <code>config: dict</code></td><td><code>str</code></td><td>Add a node to the builder</td></tr>
-      <tr><td><code>connect()</code></td><td><code>source: str</code>, <code>target: str</code>, <code>mapping: dict</code></td><td><code>None</code></td><td>Wire an output port to an input port</td></tr>
-      <tr><td><code>build()</code></td><td><code>name</code>, <code>description</code>, <code>version</code>, <code>workflow_id</code></td><td><code>Workflow</code></td><td>Validate and compile the graph</td></tr>
-      <tr><td><code>builder.nodes</code></td><td>&mdash;</td><td><code>list</code></td><td>Current list of added nodes</td></tr>
-      <tr><td><code>builder.connections</code></td><td>&mdash;</td><td><code>list</code></td><td>Current list of connections</td></tr>
-    </tbody>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-  <pre><code class="language-python">from __future__ import annotations
-
-from kailash import WorkflowBuilder
-from kailash.workflow.graph import Workflow
-
-# 1. Create an empty builder
-builder = WorkflowBuilder()
-assert len(builder.nodes) == 0, "Builder should start empty"
-assert len(builder.connections) == 0, "No connections yet"
-
-# 2. Add nodes
-node_id_1 = builder.add_node(
-    "PythonCodeNode",
-    "generate",
-    {
-        "code": "output = 'Hello from Kailash!'",
-        "output_type": "str",
-    },
-)
-
-node_id_2 = builder.add_node(
-    "PythonCodeNode",
-    "transform",
-    {
-        "code": "output = text.upper()",
-        "inputs": {"text": "str"},
-        "output_type": "str",
-    },
-)
-
-assert node_id_1 == "generate", "add_node returns the node_id"
-
-# 3. Connect nodes
-builder.connect("generate", "transform", mapping={"output": "text"})
-assert len(builder.connections) == 1
-
-# 4. Build the workflow
-workflow = builder.build(
-    name="hello-workflow",
-    description="A minimal two-node workflow",
-    version="1.0.0",
-)
-
-assert isinstance(workflow, Workflow)
-assert workflow.name == "hello-workflow"
-assert workflow.version == "1.0.0"
-
-# 5. Inspect the workflow
-assert len(workflow.node_instances) == 2
-assert "generate" in workflow.node_instances
-assert "transform" in workflow.node_instances
-
-# 6. Edge case: duplicate node IDs raise WorkflowValidationError
-from kailash.sdk_exceptions import WorkflowValidationError
-
-try:
-    builder.add_node("PythonCodeNode", "generate", {"code": "x = 1"})
-except WorkflowValidationError:
-    pass  # Expected: duplicate node ID
-
-# 7. Edge case: connecting non-existent nodes
-try:
-    builder.connect("nonexistent", "transform")
-except WorkflowValidationError:
-    pass  # Expected: source node not found
-
-# 8. Empty workflow is valid
-empty_builder = WorkflowBuilder()
-empty_wf = empty_builder.build(name="empty")
-assert len(empty_wf.node_instances) == 0</code></pre>
-
-  <h3>Step-by-Step Explanation</h3>
-  <ol>
-    <li><strong>Import</strong>: <code>WorkflowBuilder</code> is the primary import from <code>kailash</code>. The <code>Workflow</code> class lives in <code>kailash.workflow.graph</code>.</li>
-    <li><strong>Empty builder</strong>: A fresh <code>WorkflowBuilder()</code> has zero nodes and zero connections.</li>
-    <li><strong>Adding nodes</strong>: <code>add_node("PythonCodeNode", "generate", {...})</code> adds a node and returns the node ID string.</li>
-    <li><strong>Connecting nodes</strong>: The <code>mapping</code> parameter routes the <code>"output"</code> port of <code>"generate"</code> to the <code>"text"</code> input of <code>"transform"</code>.</li>
-    <li><strong>Building</strong>: <code>build()</code> validates the graph and returns an immutable <code>Workflow</code> with metadata.</li>
-    <li><strong>Duplicate IDs</strong>: Caught immediately at <code>add_node()</code> time, not deferred to <code>build()</code>.</li>
-    <li><strong>Non-existent connections</strong>: Caught immediately at <code>connect()</code> time.</li>
-    <li><strong>Empty workflows</strong>: Valid &mdash; <code>build()</code> succeeds with zero nodes.</li>
-  </ol>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <thead>
-      <tr><th>Mistake</th><th>Correct Pattern</th><th>Why</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>runtime.execute(builder)</code></td><td><code>runtime.execute(builder.build())</code></td><td>The runtime expects a <code>Workflow</code>, not a <code>WorkflowBuilder</code>. Missing <code>.build()</code> skips validation.</td></tr>
-      <tr><td>Using variables for node IDs</td><td><code>add_node("PythonCodeNode", "my_node", {...})</code></td><td>Dynamic node IDs break graph analysis and checkpoint recovery.</td></tr>
-      <tr><td>Forgetting <code>mapping</code></td><td><code>connect("a", "b", mapping={"output": "text"})</code></td><td>Without <code>mapping</code>, default ports <code>"data"</code> are used, which may not match your node's ports.</td></tr>
-    </tbody>
-  </table>
-
-  <h2>Exercises</h2>
-  <ol>
-    <li>Create a three-node workflow: generate a list of numbers, filter for even numbers, then sum them.</li>
-    <li>What happens if you call <code>build()</code> twice on the same builder?</li>
-    <li>Try connecting two nodes with <code>connect("a", "b")</code> (no mapping) when the source node's output is named <code>"output"</code>. What error do you get?</li>
-  </ol>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li><code>WorkflowBuilder</code> is the entry point for all workflow construction in Kailash</li>
-    <li>The builder pattern separates construction from validation &mdash; <code>build()</code> is where validation happens</li>
-    <li><code>add_node()</code> takes a type string, a node ID string, and a config dict</li>
-    <li><code>connect()</code> wires output ports to input ports with <code>mapping</code> for explicit routing</li>
-    <li>The resulting <code>Workflow</code> is immutable and can be executed repeatedly</li>
-    <li>Duplicate node IDs and references to non-existent nodes are caught immediately</li>
-  </ul>
-
-  <div class="nav">
-    <span>&mdash;</span>
-    <a href="02_node_types.html">Chapter 2: Node Types &rarr;</a>
-  </div>
+<h1 id="chapter-1-workflowbuilder-basics">Chapter 1: WorkflowBuilder
+Basics</h1>
+<h2 id="overview">Overview</h2>
+<p>Every Kailash application begins with a <strong>workflow</strong> – a
+directed graph of processing nodes wired together to form a data
+pipeline. The <code>WorkflowBuilder</code> is your entry point: it
+provides a fluent API for adding nodes, connecting them, and compiling
+the graph into an immutable <code>Workflow</code> object ready for
+execution. This chapter teaches you how to create, wire, validate, and
+inspect workflows from scratch.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash SDK installed (<code>pip install kailash</code>)</li>
+<li>No prior Kailash knowledge required – this is where you start</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-builder-pattern">Concept 1: The Builder
+Pattern</h3>
+<p>WorkflowBuilder uses the <strong>builder pattern</strong> – you
+accumulate configuration (nodes, connections) through method calls, then
+finalize everything with a single <code>.build()</code> call. This
+separates construction from validation: you can add nodes in any order,
+wire them up, and the builder only checks the graph’s validity when you
+call <code>build()</code>.</p>
+<ul>
+<li><strong>What</strong>: A mutable container that collects nodes and
+connections before producing an immutable workflow</li>
+<li><strong>Why</strong>: Separating construction from validation lets
+you build workflows incrementally without worrying about ordering
+constraints</li>
+<li><strong>How</strong>: Internally, the builder maintains two lists –
+<code>nodes</code> and <code>connections</code> – that are validated and
+frozen into a <code>Workflow</code> object on <code>build()</code></li>
+<li><strong>When</strong>: Use WorkflowBuilder whenever you need a
+multi-step processing pipeline. For simple single-record CRUD, use
+DataFlow Express instead</li>
+</ul>
+<h3 id="concept-2-nodes">Concept 2: Nodes</h3>
+<p>Nodes are the processing units in a workflow. Each node has a
+<strong>type</strong> (what it does), a <strong>node ID</strong> (a
+unique string identifier), and a <strong>configuration
+dictionary</strong> (parameters that control its behavior). The simplest
+built-in node type is <code>PythonCodeNode</code>, which executes a
+Python code string.</p>
+<h3 id="concept-3-connections">Concept 3: Connections</h3>
+<p>Connections define how data flows between nodes. A connection maps an
+<strong>output port</strong> of one node to an <strong>input
+port</strong> of another. The default port name is <code>"data"</code>,
+but you can use explicit port names via the <code>mapping</code>
+parameter or the <code>from_output</code>/<code>to_input</code> keyword
+arguments.</p>
+<h3 id="concept-4-the-workflow-object">Concept 4: The Workflow
+Object</h3>
+<p>The <code>Workflow</code> returned by <code>build()</code> is
+<strong>immutable</strong> – it cannot be modified after creation. It
+contains the validated graph (node instances and connections) plus
+optional metadata (name, description, version). Immutability guarantees
+that a workflow can be executed repeatedly with consistent behavior.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 57%" />
+<col style="width: 10%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WorkflowBuilder()</code></td>
+<td>–</td>
+<td><code>WorkflowBuilder</code></td>
+<td>Create an empty builder</td>
+</tr>
+<tr>
+<td><code>add_node()</code></td>
+<td><code>node_type: str</code>, <code>node_id: str</code>,
+<code>config: dict</code></td>
+<td><code>str</code> (the node_id)</td>
+<td>Add a node to the builder</td>
+</tr>
+<tr>
+<td><code>connect()</code></td>
+<td><code>source: str</code>, <code>target: str</code>,
+<code>mapping: dict = None</code>, <code>from_output: str = None</code>,
+<code>to_input: str = None</code></td>
+<td><code>None</code></td>
+<td>Wire an output port to an input port</td>
+</tr>
+<tr>
+<td><code>build()</code></td>
+<td><code>name: str = None</code>, <code>description: str = None</code>,
+<code>version: str = None</code>,
+<code>workflow_id: str = None</code></td>
+<td><code>Workflow</code></td>
+<td>Validate and compile the graph</td>
+</tr>
+<tr>
+<td><code>builder.nodes</code></td>
+<td>–</td>
+<td><code>list</code></td>
+<td>Current list of added nodes</td>
+</tr>
+<tr>
+<td><code>builder.connections</code></td>
+<td>–</td>
+<td><code>list</code></td>
+<td>Current list of connections</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> WorkflowBuilder</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.workflow.graph <span class="im">import</span> Workflow</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 1. Create an empty builder ──────────────────────────────────────</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># The builder starts with no nodes and no connections</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(builder.nodes) <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;Builder should start empty&quot;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(builder.connections) <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;No connections yet&quot;</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 2. Add nodes ────────────────────────────────────────────────────</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Preferred pattern: add_node(&quot;NodeType&quot;, &quot;node_id&quot;, {config_dict})</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Returns the node_id for chaining convenience.</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>node_id_1 <span class="op">=</span> builder.add_node(</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;generate&quot;</span>,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = &#39;Hello from Kailash!&#39;&quot;</span>,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>,</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>node_id_2 <span class="op">=</span> builder.add_node(</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;transform&quot;</span>,</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = text.upper()&quot;</span>,</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;text&quot;</span>: <span class="st">&quot;str&quot;</span>},</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>,</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> node_id_1 <span class="op">==</span> <span class="st">&quot;generate&quot;</span>, <span class="st">&quot;add_node returns the node_id&quot;</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> node_id_2 <span class="op">==</span> <span class="st">&quot;transform&quot;</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(builder.nodes) <span class="op">==</span> <span class="dv">2</span>, <span class="st">&quot;Two nodes added&quot;</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 3. Connect nodes ────────────────────────────────────────────────</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a><span class="co"># connect() supports three patterns:</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a><span class="co">#   connect(&quot;src&quot;, &quot;dst&quot;)                    -&gt; default &quot;data&quot; -&gt; &quot;data&quot;</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="co">#   connect(&quot;src&quot;, &quot;dst&quot;, mapping={&quot;a&quot;: &quot;b&quot;})-&gt; explicit port mapping</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a><span class="co">#   connect(&quot;src&quot;, &quot;dst&quot;, from_output=&quot;a&quot;, to_input=&quot;b&quot;) -&gt; named ports</span></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>builder.<span class="ex">connect</span>(<span class="st">&quot;generate&quot;</span>, <span class="st">&quot;transform&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;text&quot;</span>})</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(builder.connections) <span class="op">==</span> <span class="dv">1</span>, <span class="st">&quot;One connection added&quot;</span></span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 4. Build the workflow ───────────────────────────────────────────</span></span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a><span class="co"># build() validates the graph and returns an immutable Workflow object.</span></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a><span class="co"># Optional: pass workflow_id, name, description, version.</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>workflow <span class="op">=</span> builder.build(</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;hello-workflow&quot;</span>,</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;A minimal two-node workflow&quot;</span>,</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    version<span class="op">=</span><span class="st">&quot;1.0.0&quot;</span>,</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(workflow, Workflow), <span class="st">&quot;build() returns a Workflow&quot;</span></span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> workflow.name <span class="op">==</span> <span class="st">&quot;hello-workflow&quot;</span></span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> workflow.version <span class="op">==</span> <span class="st">&quot;1.0.0&quot;</span></span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 5. Inspect the workflow ─────────────────────────────────────────</span></span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a><span class="co"># The Workflow object has node_instances and connections.</span></span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(workflow.node_instances) <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;generate&quot;</span> <span class="kw">in</span> workflow.node_instances</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;transform&quot;</span> <span class="kw">in</span> workflow.node_instances</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(workflow.connections) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 6. Edge case: duplicate node IDs ───────────────────────────────</span></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a><span class="co"># Adding a node with an existing ID raises WorkflowValidationError.</span></span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.sdk_exceptions <span class="im">import</span> WorkflowValidationError</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>    builder.add_node(<span class="st">&quot;PythonCodeNode&quot;</span>, <span class="st">&quot;generate&quot;</span>, {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;x = 1&quot;</span>})</span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised WorkflowValidationError&quot;</span></span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> WorkflowValidationError:</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: duplicate node ID</span></span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 7. Edge case: connect non-existent node ────────────────────────</span></span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>    builder.<span class="ex">connect</span>(<span class="st">&quot;nonexistent&quot;</span>, <span class="st">&quot;transform&quot;</span>)</span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised WorkflowValidationError&quot;</span></span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> WorkflowValidationError:</span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: source node not found</span></span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 8. Edge case: build with no nodes ──────────────────────────────</span></span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>empty_builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>empty_wf <span class="op">=</span> empty_builder.build(name<span class="op">=</span><span class="st">&quot;empty&quot;</span>)</span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(empty_wf.node_instances) <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;Empty workflow is valid&quot;</span></span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;PASS: 00-core/01_workflow_builder&quot;</span>)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Import</strong>: <code>WorkflowBuilder</code> is the
+primary import from <code>kailash</code>. The <code>Workflow</code>
+class lives in <code>kailash.workflow.graph</code> and is what
+<code>build()</code> returns.</p></li>
+<li><p><strong>Empty builder</strong>: A fresh
+<code>WorkflowBuilder()</code> has zero nodes and zero connections. This
+is your blank canvas.</p></li>
+<li><p><strong>Adding nodes</strong>:
+<code>add_node("PythonCodeNode", "generate", {...})</code> adds a node
+of type <code>PythonCodeNode</code> with the ID <code>"generate"</code>.
+The config dict sets the code to execute and declares the output type.
+The method returns the node ID string, which is convenient for storing
+references.</p></li>
+<li><p><strong>Connecting nodes</strong>:
+<code>connect("generate", "transform", mapping={"output": "text"})</code>
+wires the <code>"output"</code> port of <code>"generate"</code> to the
+<code>"text"</code> input port of <code>"transform"</code>. The mapping
+dict lets you route named ports explicitly.</p></li>
+<li><p><strong>Building</strong>: <code>build()</code> validates the
+entire graph – checking for dangling references, type mismatches, and
+structural issues – then returns an immutable <code>Workflow</code>. You
+can attach metadata like <code>name</code>, <code>description</code>,
+and <code>version</code>.</p></li>
+<li><p><strong>Inspection</strong>: The <code>Workflow</code> object
+exposes <code>node_instances</code> (a dict of node ID to node) and
+<code>connections</code> (a list of connection descriptors).</p></li>
+<li><p><strong>Duplicate IDs</strong>: Adding a second node with the
+same ID raises <code>WorkflowValidationError</code> immediately – the
+builder catches this at add-time, not build-time.</p></li>
+<li><p><strong>Non-existent connections</strong>: Connecting to a node
+that does not exist also raises <code>WorkflowValidationError</code> at
+connect-time.</p></li>
+<li><p><strong>Empty workflows</strong>: An empty workflow is valid –
+<code>build()</code> succeeds and returns a workflow with zero
+nodes.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 22%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>runtime.execute(builder)</code></td>
+<td><code>runtime.execute(builder.build())</code></td>
+<td>The runtime expects a <code>Workflow</code>, not a
+<code>WorkflowBuilder</code>. Missing <code>.build()</code> skips
+validation and causes cryptic errors.</td>
+</tr>
+<tr>
+<td>Using variable names for node IDs</td>
+<td><code>add_node("PythonCodeNode", "my_node", {...})</code></td>
+<td>Dynamic node IDs break graph analysis, checkpoint recovery, and
+debugging. Always use string literals.</td>
+</tr>
+<tr>
+<td>Forgetting <code>mapping</code> when ports do not match</td>
+<td><code>connect("a", "b", mapping={"output": "text"})</code></td>
+<td>Without <code>mapping</code>, the default ports <code>"data"</code>
+to <code>"data"</code> are used, which may not match your node’s actual
+port names.</td>
+</tr>
+<tr>
+<td>Modifying the workflow after <code>build()</code></td>
+<td>Build a new workflow from a new builder</td>
+<td>The <code>Workflow</code> object is immutable. Create a fresh
+<code>WorkflowBuilder</code> if you need a different graph.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a three-node workflow: one that generates a list of numbers,
+one that filters for even numbers, and one that sums them. Use
+<code>PythonCodeNode</code> for all three.</li>
+<li>What happens if you call <code>build()</code> twice on the same
+builder? Does it return the same <code>Workflow</code> instance or a new
+one?</li>
+<li>Try connecting two nodes with <code>connect("a", "b")</code> (no
+mapping) when the source node’s output is named <code>"output"</code>
+instead of <code>"data"</code>. What error do you get at execution
+time?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>WorkflowBuilder</code> is the entry point for all workflow
+construction in Kailash</li>
+<li>The builder pattern separates construction from validation –
+<code>build()</code> is where validation happens</li>
+<li><code>add_node()</code> takes a type string, a node ID string, and a
+config dict</li>
+<li><code>connect()</code> wires output ports to input ports, with
+<code>mapping</code> for explicit routing</li>
+<li>The resulting <code>Workflow</code> is immutable and can be executed
+repeatedly</li>
+<li>Duplicate node IDs and references to non-existent nodes are caught
+immediately</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_node_types.md">Chapter 2: Node Types</a> – Discover the
+built-in node types available through the <code>NodeRegistry</code>, and
+learn how to inspect node metadata and parameters.</p>
 
   <footer>
     <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>

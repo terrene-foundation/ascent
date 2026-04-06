@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 8: Value Types in
+Workflows &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-8-value-types-in-workflows">Chapter 8: Value Types in
+Workflows</h1>
+<h2 id="overview">Overview</h2>
+<p>Kailash workflows pass data between nodes as Python values –
+integers, floats, strings, booleans, lists, dicts, and
+<code>None</code>. Understanding how these types are preserved (or not)
+through workflow execution is essential for building reliable pipelines.
+This chapter demonstrates each type flowing through PythonCodeNode,
+covers nested structures, type coercion responsibilities, and the result
+structure convention.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash SDK installed (<code>pip install kailash</code>)</li>
+<li>Completed <a href="06_python_code_node.md">Chapter 6: PythonCodeNode
+Deep Dive</a></li>
+<li>Familiarity with <code>WorkflowBuilder</code>,
+<code>connect()</code>, and <code>LocalRuntime</code></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-type-preservation">Concept 1: Type Preservation</h3>
+<p>Python values flowing through Kailash workflows retain their original
+types. An <code>int</code> stays an <code>int</code>, a
+<code>float</code> stays a <code>float</code>, and a <code>bool</code>
+stays a <code>bool</code> (it is not coerced to <code>int</code>). The
+SDK does not perform implicit type conversion between nodes.</p>
+<ul>
+<li><strong>What</strong>: Values maintain their Python type as they
+pass through workflow connections</li>
+<li><strong>Why</strong>: Implicit conversion would silently corrupt
+data (e.g., <code>True</code> becoming <code>1</code> would lose boolean
+semantics)</li>
+<li><strong>How</strong>: The runtime passes values by reference through
+the execution graph without any coercion layer</li>
+<li><strong>When</strong>: Always – this is a fundamental guarantee of
+the workflow system</li>
+</ul>
+<h3 id="concept-2-no-automatic-type-coercion">Concept 2: No Automatic
+Type Coercion</h3>
+<p>If a node outputs an <code>int</code> and the next node’s code
+expects a <code>str</code>, the code must convert explicitly (e.g.,
+<code>str(val)</code>). Kailash does not insert automatic casts between
+nodes.</p>
+<ul>
+<li><strong>What</strong>: The absence of implicit type conversion in
+the connection layer</li>
+<li><strong>Why</strong>: Automatic coercion hides bugs – a downstream
+node receiving <code>"42"</code> instead of <code>42</code> might
+silently produce wrong results</li>
+<li><strong>How</strong>: Each node is responsible for handling or
+converting its input types</li>
+<li><strong>When</strong>: Any time you connect nodes whose output and
+input types differ</li>
+</ul>
+<h3 id="concept-3-the-result-structure-convention">Concept 3: The Result
+Structure Convention</h3>
+<p>Every workflow execution returns results as
+<code>{node_id: {output_name: value, ...}, ...}</code>. The outer dict
+is keyed by node ID (always a string). The inner dict is keyed by output
+variable names. This structure is consistent regardless of value
+types.</p>
+<ul>
+<li><strong>What</strong>: A two-level dictionary convention for
+workflow results</li>
+<li><strong>Why</strong>: Uniform structure makes it possible to inspect
+any node’s output without knowing the workflow shape</li>
+<li><strong>How</strong>: The runtime collects each node’s namespace
+outputs into the inner dict, then assembles the outer dict</li>
+<li><strong>When</strong>: Every call to <code>execute()</code> returns
+this structure</li>
+</ul>
+<h3 id="concept-4-nested-structures">Concept 4: Nested Structures</h3>
+<p>Complex nested structures – lists of dicts, dicts of lists, deeply
+nested objects – pass through workflows without flattening or
+transformation. Kailash does not impose a schema on the data flowing
+between nodes.</p>
+<ul>
+<li><strong>What</strong>: Arbitrarily nested Python data structures
+flowing intact through workflows</li>
+<li><strong>Why</strong>: Many real-world data shapes are hierarchical
+(JSON responses, database records, ML feature sets)</li>
+<li><strong>How</strong>: The runtime treats all values as opaque Python
+objects and passes them as-is</li>
+<li><strong>When</strong>: Use freely for any structured data; no depth
+or complexity limits</li>
+</ul>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 8%" />
+<col style="width: 23%" />
+<col style="width: 68%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th><code>output_type</code> String</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code></td>
+<td><code>"int"</code></td>
+<td>Preserved as Python int; not coerced to float</td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td><code>"float"</code></td>
+<td>Preserved as Python float</td>
+</tr>
+<tr>
+<td><code>str</code></td>
+<td><code>"str"</code></td>
+<td>Preserved including Unicode content</td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td><code>"bool"</code></td>
+<td>Preserved as <code>True</code>/<code>False</code>; not coerced to
+<code>1</code>/<code>0</code></td>
+</tr>
+<tr>
+<td><code>list</code></td>
+<td><code>"list"</code></td>
+<td>Can contain mixed types (homogeneous recommended)</td>
+</tr>
+<tr>
+<td><code>dict</code></td>
+<td><code>"dict"</code></td>
+<td>Primary structured data type; node results are always dicts</td>
+</tr>
+<tr>
+<td><code>None</code></td>
+<td><code>"None"</code></td>
+<td>Valid value; downstream nodes must handle <code>None</code>
+gracefully</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> LocalRuntime, WorkflowBuilder</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 1. Integer values ──────────────────────────────────────────────</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>builder.add_node(</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;int_source&quot;</span>,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = 42&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;int&quot;</span>},</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>builder.add_node(</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;int_check&quot;</span>,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = {&#39;value&#39;: n, &#39;type_name&#39;: type(n).__name__}&quot;</span>,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;n&quot;</span>: <span class="st">&quot;int&quot;</span>},</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>builder.<span class="ex">connect</span>(<span class="st">&quot;int_source&quot;</span>, <span class="st">&quot;int_check&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;n&quot;</span>})</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>workflow <span class="op">=</span> builder.build(name<span class="op">=</span><span class="st">&quot;int-types&quot;</span>)</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    results, _ <span class="op">=</span> rt.execute(workflow)</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 2. Float values ────────────────────────────────────────────────</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>builder2 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>builder2.add_node(</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;float_source&quot;</span>,</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = 3.14159&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;float&quot;</span>},</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>builder2.add_node(</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;float_check&quot;</span>,</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = {&#39;value&#39;: n, &#39;type_name&#39;: type(n).__name__}&quot;</span>,</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;n&quot;</span>: <span class="st">&quot;float&quot;</span>},</span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>builder2.<span class="ex">connect</span>(<span class="st">&quot;float_source&quot;</span>, <span class="st">&quot;float_check&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;n&quot;</span>})</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>workflow2 <span class="op">=</span> builder2.build(name<span class="op">=</span><span class="st">&quot;float-types&quot;</span>)</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>    results2, _ <span class="op">=</span> rt.execute(workflow2)</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 3. String values ───────────────────────────────────────────────</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>builder3 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>builder3.add_node(</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;str_source&quot;</span>,</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = &#39;Kailash SDK&#39;&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>},</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>builder3.add_node(</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;str_transform&quot;</span>,</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = {&#39;original&#39;: s, &#39;length&#39;: len(s), &#39;upper&#39;: s.upper()}&quot;</span>,</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;s&quot;</span>: <span class="st">&quot;str&quot;</span>},</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>builder3.<span class="ex">connect</span>(<span class="st">&quot;str_source&quot;</span>, <span class="st">&quot;str_transform&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;s&quot;</span>})</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>workflow3 <span class="op">=</span> builder3.build(name<span class="op">=</span><span class="st">&quot;str-types&quot;</span>)</span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>    results3, _ <span class="op">=</span> rt.execute(workflow3)</span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 4. Boolean values ──────────────────────────────────────────────</span></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>builder4 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>builder4.add_node(</span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;bool_source&quot;</span>,</span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = True&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;bool&quot;</span>},</span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>builder4.add_node(</span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;bool_check&quot;</span>,</span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = {&#39;value&#39;: flag, &#39;type_name&#39;: type(flag).__name__, &#39;negated&#39;: not flag}&quot;</span>,</span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;flag&quot;</span>: <span class="st">&quot;bool&quot;</span>},</span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>builder4.<span class="ex">connect</span>(<span class="st">&quot;bool_source&quot;</span>, <span class="st">&quot;bool_check&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;flag&quot;</span>})</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>workflow4 <span class="op">=</span> builder4.build(name<span class="op">=</span><span class="st">&quot;bool-types&quot;</span>)</span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>    results4, _ <span class="op">=</span> rt.execute(workflow4)</span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 5. List values ─────────────────────────────────────────────────</span></span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>builder5 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a>builder5.add_node(</span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;list_source&quot;</span>,</span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = [1, &#39;two&#39;, 3.0, True, None]&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;list&quot;</span>},</span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a>builder5.add_node(</span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;list_check&quot;</span>,</span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: (</span>
+<span id="cb1-114"><a href="#cb1-114" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;output = {&quot;</span></span>
+<span id="cb1-115"><a href="#cb1-115" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;length&#39;: len(items), &quot;</span></span>
+<span id="cb1-116"><a href="#cb1-116" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;types&#39;: [type(x).__name__ for x in items]&quot;</span></span>
+<span id="cb1-117"><a href="#cb1-117" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;}&quot;</span></span>
+<span id="cb1-118"><a href="#cb1-118" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-119"><a href="#cb1-119" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;items&quot;</span>: <span class="st">&quot;list&quot;</span>},</span>
+<span id="cb1-120"><a href="#cb1-120" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-121"><a href="#cb1-121" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-122"><a href="#cb1-122" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-123"><a href="#cb1-123" aria-hidden="true" tabindex="-1"></a>builder5.<span class="ex">connect</span>(<span class="st">&quot;list_source&quot;</span>, <span class="st">&quot;list_check&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;items&quot;</span>})</span>
+<span id="cb1-124"><a href="#cb1-124" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-125"><a href="#cb1-125" aria-hidden="true" tabindex="-1"></a>workflow5 <span class="op">=</span> builder5.build(name<span class="op">=</span><span class="st">&quot;list-types&quot;</span>)</span>
+<span id="cb1-126"><a href="#cb1-126" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-127"><a href="#cb1-127" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-128"><a href="#cb1-128" aria-hidden="true" tabindex="-1"></a>    results5, _ <span class="op">=</span> rt.execute(workflow5)</span>
+<span id="cb1-129"><a href="#cb1-129" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-130"><a href="#cb1-130" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 6. Dict values ─────────────────────────────────────────────────</span></span>
+<span id="cb1-131"><a href="#cb1-131" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-132"><a href="#cb1-132" aria-hidden="true" tabindex="-1"></a>builder6 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-133"><a href="#cb1-133" aria-hidden="true" tabindex="-1"></a>builder6.add_node(</span>
+<span id="cb1-134"><a href="#cb1-134" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-135"><a href="#cb1-135" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;dict_source&quot;</span>,</span>
+<span id="cb1-136"><a href="#cb1-136" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-137"><a href="#cb1-137" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = {&#39;name&#39;: &#39;Alice&#39;, &#39;scores&#39;: [95, 87, 92], &#39;active&#39;: True}&quot;</span>,</span>
+<span id="cb1-138"><a href="#cb1-138" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-139"><a href="#cb1-139" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-140"><a href="#cb1-140" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-141"><a href="#cb1-141" aria-hidden="true" tabindex="-1"></a>builder6.add_node(</span>
+<span id="cb1-142"><a href="#cb1-142" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-143"><a href="#cb1-143" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;dict_check&quot;</span>,</span>
+<span id="cb1-144"><a href="#cb1-144" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-145"><a href="#cb1-145" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: (</span>
+<span id="cb1-146"><a href="#cb1-146" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;output = {&quot;</span></span>
+<span id="cb1-147"><a href="#cb1-147" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;keys&#39;: list(data.keys()), &quot;</span></span>
+<span id="cb1-148"><a href="#cb1-148" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;name&#39;: data[&#39;name&#39;], &quot;</span></span>
+<span id="cb1-149"><a href="#cb1-149" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;avg_score&#39;: sum(data[&#39;scores&#39;]) / len(data[&#39;scores&#39;])&quot;</span></span>
+<span id="cb1-150"><a href="#cb1-150" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;}&quot;</span></span>
+<span id="cb1-151"><a href="#cb1-151" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-152"><a href="#cb1-152" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;data&quot;</span>: <span class="st">&quot;dict&quot;</span>},</span>
+<span id="cb1-153"><a href="#cb1-153" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-154"><a href="#cb1-154" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-155"><a href="#cb1-155" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-156"><a href="#cb1-156" aria-hidden="true" tabindex="-1"></a>builder6.<span class="ex">connect</span>(<span class="st">&quot;dict_source&quot;</span>, <span class="st">&quot;dict_check&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;data&quot;</span>})</span>
+<span id="cb1-157"><a href="#cb1-157" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-158"><a href="#cb1-158" aria-hidden="true" tabindex="-1"></a>workflow6 <span class="op">=</span> builder6.build(name<span class="op">=</span><span class="st">&quot;dict-types&quot;</span>)</span>
+<span id="cb1-159"><a href="#cb1-159" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-160"><a href="#cb1-160" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-161"><a href="#cb1-161" aria-hidden="true" tabindex="-1"></a>    results6, _ <span class="op">=</span> rt.execute(workflow6)</span>
+<span id="cb1-162"><a href="#cb1-162" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-163"><a href="#cb1-163" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 7. None values ─────────────────────────────────────────────────</span></span>
+<span id="cb1-164"><a href="#cb1-164" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-165"><a href="#cb1-165" aria-hidden="true" tabindex="-1"></a>builder7 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-166"><a href="#cb1-166" aria-hidden="true" tabindex="-1"></a>builder7.add_node(</span>
+<span id="cb1-167"><a href="#cb1-167" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-168"><a href="#cb1-168" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;none_source&quot;</span>,</span>
+<span id="cb1-169"><a href="#cb1-169" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = None&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;None&quot;</span>},</span>
+<span id="cb1-170"><a href="#cb1-170" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-171"><a href="#cb1-171" aria-hidden="true" tabindex="-1"></a>builder7.add_node(</span>
+<span id="cb1-172"><a href="#cb1-172" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-173"><a href="#cb1-173" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;none_check&quot;</span>,</span>
+<span id="cb1-174"><a href="#cb1-174" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-175"><a href="#cb1-175" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = {&#39;is_none&#39;: val is None, &#39;type_name&#39;: type(val).__name__}&quot;</span>,</span>
+<span id="cb1-176"><a href="#cb1-176" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;val&quot;</span>: <span class="st">&quot;None&quot;</span>},</span>
+<span id="cb1-177"><a href="#cb1-177" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-178"><a href="#cb1-178" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-179"><a href="#cb1-179" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-180"><a href="#cb1-180" aria-hidden="true" tabindex="-1"></a>builder7.<span class="ex">connect</span>(<span class="st">&quot;none_source&quot;</span>, <span class="st">&quot;none_check&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;val&quot;</span>})</span>
+<span id="cb1-181"><a href="#cb1-181" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-182"><a href="#cb1-182" aria-hidden="true" tabindex="-1"></a>workflow7 <span class="op">=</span> builder7.build(name<span class="op">=</span><span class="st">&quot;none-types&quot;</span>)</span>
+<span id="cb1-183"><a href="#cb1-183" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-184"><a href="#cb1-184" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-185"><a href="#cb1-185" aria-hidden="true" tabindex="-1"></a>    results7, _ <span class="op">=</span> rt.execute(workflow7)</span>
+<span id="cb1-186"><a href="#cb1-186" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-187"><a href="#cb1-187" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 8. Nested structures ──────────────────────────────────────────</span></span>
+<span id="cb1-188"><a href="#cb1-188" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-189"><a href="#cb1-189" aria-hidden="true" tabindex="-1"></a>builder8 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-190"><a href="#cb1-190" aria-hidden="true" tabindex="-1"></a>builder8.add_node(</span>
+<span id="cb1-191"><a href="#cb1-191" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-192"><a href="#cb1-192" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;nested_source&quot;</span>,</span>
+<span id="cb1-193"><a href="#cb1-193" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-194"><a href="#cb1-194" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: (</span>
+<span id="cb1-195"><a href="#cb1-195" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;output = {&quot;</span></span>
+<span id="cb1-196"><a href="#cb1-196" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;users&#39;: [&quot;</span></span>
+<span id="cb1-197"><a href="#cb1-197" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;{&#39;name&#39;: &#39;Alice&#39;, &#39;tags&#39;: [&#39;admin&#39;, &#39;active&#39;]}, &quot;</span></span>
+<span id="cb1-198"><a href="#cb1-198" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;{&#39;name&#39;: &#39;Bob&#39;, &#39;tags&#39;: [&#39;user&#39;]}&quot;</span></span>
+<span id="cb1-199"><a href="#cb1-199" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;], &quot;</span></span>
+<span id="cb1-200"><a href="#cb1-200" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;metadata&#39;: {&#39;version&#39;: 1, &#39;counts&#39;: [2, 0]}&quot;</span></span>
+<span id="cb1-201"><a href="#cb1-201" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;}&quot;</span></span>
+<span id="cb1-202"><a href="#cb1-202" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-203"><a href="#cb1-203" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-204"><a href="#cb1-204" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-205"><a href="#cb1-205" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-206"><a href="#cb1-206" aria-hidden="true" tabindex="-1"></a>builder8.add_node(</span>
+<span id="cb1-207"><a href="#cb1-207" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-208"><a href="#cb1-208" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;nested_check&quot;</span>,</span>
+<span id="cb1-209"><a href="#cb1-209" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-210"><a href="#cb1-210" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: (</span>
+<span id="cb1-211"><a href="#cb1-211" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;user_count = len(data[&#39;users&#39;])</span><span class="ch">\n</span><span class="st">&quot;</span></span>
+<span id="cb1-212"><a href="#cb1-212" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;all_tags = []</span><span class="ch">\n</span><span class="st">&quot;</span></span>
+<span id="cb1-213"><a href="#cb1-213" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;for u in data[&#39;users&#39;]:</span><span class="ch">\n</span><span class="st">&quot;</span></span>
+<span id="cb1-214"><a href="#cb1-214" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;    all_tags.extend(u[&#39;tags&#39;])</span><span class="ch">\n</span><span class="st">&quot;</span></span>
+<span id="cb1-215"><a href="#cb1-215" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;output = {&#39;user_count&#39;: user_count, &#39;all_tags&#39;: all_tags, &quot;</span></span>
+<span id="cb1-216"><a href="#cb1-216" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;&#39;meta_version&#39;: data[&#39;metadata&#39;][&#39;version&#39;]}&quot;</span></span>
+<span id="cb1-217"><a href="#cb1-217" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-218"><a href="#cb1-218" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;data&quot;</span>: <span class="st">&quot;dict&quot;</span>},</span>
+<span id="cb1-219"><a href="#cb1-219" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;dict&quot;</span>,</span>
+<span id="cb1-220"><a href="#cb1-220" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-221"><a href="#cb1-221" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-222"><a href="#cb1-222" aria-hidden="true" tabindex="-1"></a>builder8.<span class="ex">connect</span>(<span class="st">&quot;nested_source&quot;</span>, <span class="st">&quot;nested_check&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;data&quot;</span>})</span>
+<span id="cb1-223"><a href="#cb1-223" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-224"><a href="#cb1-224" aria-hidden="true" tabindex="-1"></a>workflow8 <span class="op">=</span> builder8.build(name<span class="op">=</span><span class="st">&quot;nested-types&quot;</span>)</span>
+<span id="cb1-225"><a href="#cb1-225" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-226"><a href="#cb1-226" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-227"><a href="#cb1-227" aria-hidden="true" tabindex="-1"></a>    results8, _ <span class="op">=</span> rt.execute(workflow8)</span>
+<span id="cb1-228"><a href="#cb1-228" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-229"><a href="#cb1-229" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 9. Type coercion between nodes ────────────────────────────────</span></span>
+<span id="cb1-230"><a href="#cb1-230" aria-hidden="true" tabindex="-1"></a><span class="co"># Kailash does not perform automatic type coercion. The code must</span></span>
+<span id="cb1-231"><a href="#cb1-231" aria-hidden="true" tabindex="-1"></a><span class="co"># handle the conversion explicitly.</span></span>
+<span id="cb1-232"><a href="#cb1-232" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-233"><a href="#cb1-233" aria-hidden="true" tabindex="-1"></a>builder9 <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-234"><a href="#cb1-234" aria-hidden="true" tabindex="-1"></a>builder9.add_node(</span>
+<span id="cb1-235"><a href="#cb1-235" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-236"><a href="#cb1-236" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;int_producer&quot;</span>,</span>
+<span id="cb1-237"><a href="#cb1-237" aria-hidden="true" tabindex="-1"></a>    {<span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = 42&quot;</span>, <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;int&quot;</span>},</span>
+<span id="cb1-238"><a href="#cb1-238" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-239"><a href="#cb1-239" aria-hidden="true" tabindex="-1"></a>builder9.add_node(</span>
+<span id="cb1-240"><a href="#cb1-240" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-241"><a href="#cb1-241" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;str_consumer&quot;</span>,</span>
+<span id="cb1-242"><a href="#cb1-242" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-243"><a href="#cb1-243" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = f&#39;The answer is {str(val)}&#39;&quot;</span>,</span>
+<span id="cb1-244"><a href="#cb1-244" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;val&quot;</span>: <span class="st">&quot;int&quot;</span>},</span>
+<span id="cb1-245"><a href="#cb1-245" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>,</span>
+<span id="cb1-246"><a href="#cb1-246" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-247"><a href="#cb1-247" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-248"><a href="#cb1-248" aria-hidden="true" tabindex="-1"></a>builder9.<span class="ex">connect</span>(<span class="st">&quot;int_producer&quot;</span>, <span class="st">&quot;str_consumer&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;val&quot;</span>})</span>
+<span id="cb1-249"><a href="#cb1-249" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-250"><a href="#cb1-250" aria-hidden="true" tabindex="-1"></a>workflow9 <span class="op">=</span> builder9.build(name<span class="op">=</span><span class="st">&quot;coercion-demo&quot;</span>)</span>
+<span id="cb1-251"><a href="#cb1-251" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-252"><a href="#cb1-252" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-253"><a href="#cb1-253" aria-hidden="true" tabindex="-1"></a>    results9, _ <span class="op">=</span> rt.execute(workflow9)</span>
+<span id="cb1-254"><a href="#cb1-254" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-255"><a href="#cb1-255" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 10. Result structure recap ─────────────────────────────────────</span></span>
+<span id="cb1-256"><a href="#cb1-256" aria-hidden="true" tabindex="-1"></a><span class="co"># {node_id: {output_name: value, ...}, ...}</span></span>
+<span id="cb1-257"><a href="#cb1-257" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-258"><a href="#cb1-258" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> LocalRuntime() <span class="im">as</span> rt:</span>
+<span id="cb1-259"><a href="#cb1-259" aria-hidden="true" tabindex="-1"></a>    all_results, run_id <span class="op">=</span> rt.execute(workflow)</span>
+<span id="cb1-260"><a href="#cb1-260" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-261"><a href="#cb1-261" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(all_results, <span class="bu">dict</span>), <span class="st">&quot;Top-level results is always a dict&quot;</span></span>
+<span id="cb1-262"><a href="#cb1-262" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> node_id, node_outputs <span class="kw">in</span> all_results.items():</span>
+<span id="cb1-263"><a href="#cb1-263" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(node_id, <span class="bu">str</span>), <span class="st">&quot;Node IDs are always strings&quot;</span></span>
+<span id="cb1-264"><a href="#cb1-264" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-265"><a href="#cb1-265" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;PASS: 00-core/08_value_types&quot;</span>)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Integers</strong>: <code>output = 42</code> produces an
+int. The downstream node verifies the type name is <code>"int"</code> –
+no coercion to float occurs.</p></li>
+<li><p><strong>Floats</strong>: <code>output = 3.14159</code> produces a
+float. Python’s <code>int</code> and <code>float</code> remain distinct
+types throughout execution.</p></li>
+<li><p><strong>Strings</strong>: Strings pass through unchanged,
+including Unicode content. String methods like <code>.upper()</code>
+work as expected in downstream nodes.</p></li>
+<li><p><strong>Booleans</strong>: <code>output = True</code> stays as a
+Python <code>bool</code>. It is not coerced to <code>1</code>. You can
+negate it, check its type, and it behaves exactly like a native
+boolean.</p></li>
+<li><p><strong>Lists</strong>: Lists can contain mixed types
+(<code>[1, 'two', 3.0, True, None]</code>), though homogeneous lists are
+recommended for clarity. Each element preserves its original
+type.</p></li>
+<li><p><strong>Dicts</strong>: Dictionaries are the primary structured
+data type. Node results are always dictionaries keyed by output variable
+names.</p></li>
+<li><p><strong>None</strong>: <code>None</code> is a valid value that
+flows through workflows. Downstream nodes must handle <code>None</code>
+gracefully with explicit checks (<code>val is None</code>).</p></li>
+<li><p><strong>Nested structures</strong>: A dict containing lists of
+dicts with lists passes through without flattening. The downstream node
+can traverse the full hierarchy.</p></li>
+<li><p><strong>Explicit coercion</strong>: When connecting an
+int-producing node to a string-consuming node, the code must call
+<code>str(val)</code> explicitly. The SDK does not
+auto-convert.</p></li>
+<li><p><strong>Result structure</strong>: Every execution returns
+<code>{node_id: {output_name: value}}</code>. The outer dict is keyed by
+node ID strings; the inner dict holds output variables.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 23%" />
+<col style="width: 49%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Assuming int-to-float auto-conversion</td>
+<td>Convert explicitly: <code>float(n)</code></td>
+<td>Kailash does not coerce types; passing an int where float is
+expected may cause errors</td>
+</tr>
+<tr>
+<td>Not handling <code>None</code> in downstream code</td>
+<td>Check <code>if val is None:</code> before operations</td>
+<td><code>None</code> flows through connections; calling methods on
+<code>None</code> raises <code>AttributeError</code></td>
+</tr>
+<tr>
+<td>Using <code>type(x) == int</code> instead of
+<code>isinstance</code></td>
+<td><code>isinstance(x, int)</code></td>
+<td><code>isinstance</code> handles inheritance correctly and is the
+Python convention</td>
+</tr>
+<tr>
+<td>Expecting lists to be auto-flattened</td>
+<td>Flatten explicitly in code</td>
+<td>Nested lists pass through as-is; <code>[[1,2],[3,4]]</code> stays
+nested</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p>Create a workflow that produces a <code>bytes</code> value (e.g.,
+<code>b"hello"</code>) and passes it to a downstream node. Does the
+bytes type survive? What does <code>type(val).__name__</code>
+report?</p></li>
+<li><p>Build a workflow where one node outputs <code>True</code> (bool)
+and the downstream node adds it to an integer (<code>val + 10</code>).
+What is the result? Does Python’s bool-as-int behavior work inside
+PythonCodeNode?</p></li>
+<li><p>Create a deeply nested structure (3+ levels) and pass it through
+two intermediate nodes that each extract one level. Verify the final
+node receives the innermost data intact.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>All Python primitive types (int, float, str, bool, list, dict, None)
+are preserved through workflow execution</li>
+<li>Kailash does not perform automatic type coercion – nodes must
+convert types explicitly</li>
+<li>Nested structures pass through without flattening or schema
+enforcement</li>
+<li><code>None</code> is a valid workflow value; downstream nodes must
+handle it gracefully</li>
+<li>The result structure is always
+<code>{node_id: {output_name: value}}</code> regardless of value
+types</li>
+<li>Lists can contain mixed types, but homogeneous lists are recommended
+for clarity</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="09_error_handling.md">Chapter 9: Error Handling</a> – Handle
+workflow errors with the full exception hierarchy: build errors,
+execution errors, node errors, and the catch-all pattern.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

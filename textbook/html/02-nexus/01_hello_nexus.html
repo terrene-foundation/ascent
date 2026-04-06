@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 1: Hello Nexus — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: Hello Nexus &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,133 +24,296 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 1: Hello Nexus</h1>
+<h1 id="chapter-1-hello-nexus">Chapter 1: Hello Nexus</h1>
+<h2 id="overview">Overview</h2>
+<p>Nexus is the Kailash SDK’s multi-channel deployment platform. It
+provides a single entry point that exposes workflows simultaneously as
+HTTP APIs, CLI commands, and MCP tools for AI agents. This chapter
+introduces the core Nexus concepts: creating an instance, registering
+workflows, using the <code>@handler</code> decorator, and understanding
+the preset system. By the end, you will know how to set up a Nexus
+application and register your first handlers without starting a
+server.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Kailash Core SDK installed (<code>pip install kailash</code>)</li>
+<li>Kailash Nexus installed
+(<code>pip install kailash-nexus</code>)</li>
+<li>Familiarity with <code>WorkflowBuilder</code> from the Core SDK
+(Package 00)</li>
+<li>Python 3.10+ with <code>async</code>/<code>await</code> syntax</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-is-nexus">What Is Nexus?</h3>
+<p>Nexus is analogous to web frameworks like FastAPI, but with a key
+difference: instead of exposing only HTTP endpoints, Nexus exposes every
+registered workflow across <strong>three channels</strong>
+simultaneously:</p>
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Protocol</th>
+<th>Endpoint Pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP API</td>
+<td>REST over HTTP</td>
+<td><code>POST /workflows/{name}/execute</code></td>
+</tr>
+<tr>
+<td>CLI</td>
+<td>Command-line</td>
+<td><code>nexus run {name} --param value</code></td>
+</tr>
+<tr>
+<td>MCP</td>
+<td>Model Context Protocol</td>
+<td>Tool <code>workflow_{name}</code></td>
+</tr>
+</tbody>
+</table>
+<p>This means you write the workflow once and it becomes available to
+web clients, terminal users, and AI agents at the same time.</p>
+<h3 id="why-use-nexus">Why Use Nexus?</h3>
+<p>Without Nexus, deploying a workflow requires writing separate HTTP
+routes, CLI argument parsers, and MCP tool registrations. Nexus
+eliminates this boilerplate by auto-generating all three interfaces from
+a single registration call.</p>
+<h3 id="how-does-registration-work">How Does Registration Work?</h3>
+<p>Nexus provides two registration mechanisms:</p>
+<ol type="1">
+<li><strong><code>register(name, workflow)</code></strong> – registers
+an existing Kailash workflow by name. The workflow’s nodes define the
+input/output schema.</li>
+<li><strong><code>@handler</code> decorator</strong> – registers an
+async function directly. Nexus inspects the function’s type annotations
+to derive parameters automatically.</li>
+</ol>
+<h3 id="when-to-use-each-registration-method">When to Use Each
+Registration Method</h3>
+<p>Use <code>register()</code> when you have a pre-built workflow with
+multiple nodes and complex logic. Use <code>@handler</code> when you
+want to expose a simple async function without building a full workflow
+graph.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 47%" />
+<col style="width: 13%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Nexus()</code></td>
+<td><code>api_port: int = 8000</code>,
+<code>cors_origins: list[str]</code>,
+<code>enable_durability: bool</code>, <code>preset: str</code></td>
+<td><code>Nexus</code></td>
+<td>Create a new Nexus instance</td>
+</tr>
+<tr>
+<td><code>app.register(name, workflow)</code></td>
+<td><code>name: str</code>, <code>workflow: Workflow</code></td>
+<td><code>None</code></td>
+<td>Register a workflow on all channels</td>
+</tr>
+<tr>
+<td><code>@app.handler(name, description)</code></td>
+<td><code>name: str</code>, <code>description: str</code></td>
+<td>decorator</td>
+<td>Register an async function as a handler</td>
+</tr>
+<tr>
+<td><code>app._registry</code></td>
+<td>–</td>
+<td><code>HandlerRegistry</code></td>
+<td>Access the handler registry</td>
+</tr>
+<tr>
+<td><code>app.start()</code></td>
+<td>–</td>
+<td><code>None</code></td>
+<td>Start listening on all channels (blocking)</td>
+</tr>
+<tr>
+<td><code>get_preset(name)</code></td>
+<td><code>name: str</code></td>
+<td><code>PresetConfig</code></td>
+<td>Retrieve a named middleware preset</td>
+</tr>
+<tr>
+<td><code>PRESETS</code></td>
+<td>–</td>
+<td><code>dict[str, PresetConfig]</code></td>
+<td>All available preset configurations</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-import-and-create-nexus">Step 1: Import and Create
+Nexus</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> WorkflowBuilder</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    api_port<span class="op">=</span><span class="dv">8000</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;http://localhost:3000&quot;</span>],</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    enable_durability<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>The <code>Nexus()</code> constructor creates the application
+instance. <code>api_port</code> sets the HTTP port (default 8000).
+<code>cors_origins</code> configures Cross-Origin Resource Sharing for
+browser clients. <code>enable_durability</code> controls response
+caching – disable it for tutorials.</p>
+<h3 id="step-2-register-a-workflow">Step 2: Register a Workflow</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>builder.add_node(</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;greet&quot;</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = f&#39;Hello, </span><span class="sc">{name}</span><span class="st">!&#39;&quot;</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;name&quot;</span>: <span class="st">&quot;str&quot;</span>},</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>workflow <span class="op">=</span> builder.build(name<span class="op">=</span><span class="st">&quot;greeter&quot;</span>)</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>app.register(<span class="st">&quot;greet&quot;</span>, workflow)</span></code></pre></div>
+<p><code>register()</code> makes the workflow available on all channels.
+After this call, the workflow is accessible at
+<code>POST /workflows/greet/execute</code> (HTTP), as a CLI command, and
+as an MCP tool.</p>
+<h3 id="step-3-register-via-handler">Step 3: Register via <span
+class="citation" data-cites="handler">@handler</span></h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="at">@app.handler</span>(<span class="st">&quot;add&quot;</span>, description<span class="op">=</span><span class="st">&quot;Add two numbers&quot;</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> add(a: <span class="bu">int</span>, b: <span class="bu">int</span> <span class="op">=</span> <span class="dv">0</span>) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">&quot;sum&quot;</span>: a <span class="op">+</span> b}</span></code></pre></div>
+<p>The <code>@handler</code> decorator is the preferred pattern for
+simple functions. Nexus inspects the function signature to derive:</p>
+<ul>
+<li>Required parameters: <code>a: int</code> (no default)</li>
+<li>Optional parameters: <code>b: int = 0</code> (has default)</li>
+<li>Return type: <code>dict</code></li>
+</ul>
+<h3 id="step-4-inspect-the-registry">Step 4: Inspect the Registry</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>registry <span class="op">=</span> app._registry</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;Registered entries: </span><span class="sc">{</span>registry<span class="sc">}</span><span class="ss">&quot;</span>)</span></code></pre></div>
+<p>The handler registry tracks all registered workflows and handlers.
+Both the workflow-based <code>greet</code> and the function-based
+<code>add</code> appear in the registry.</p>
+<h3 id="step-5-use-presets">Step 5: Use Presets</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> get_preset, PRESETS</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>app_prod <span class="op">=</span> Nexus(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    preset<span class="op">=</span><span class="st">&quot;lightweight&quot;</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;https://app.example.com&quot;</span>],</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    enable_durability<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>Presets provide one-line middleware configuration. The
+<code>"lightweight"</code> preset adds CORS and security headers. Other
+presets (<code>"standard"</code>, <code>"saas"</code>,
+<code>"enterprise"</code>) add progressively more middleware.</p>
+<blockquote>
+<p><strong>Important:</strong> <code>app.start()</code> is not called in
+this tutorial because it blocks the process, listening for incoming
+requests. In production, <code>start()</code> is the final call.</p>
+</blockquote>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 32%" />
+<col style="width: 32%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Calling <code>app.start()</code> before <code>register()</code></td>
+<td>Handlers are not available when the server starts</td>
+<td>Always register all handlers before calling
+<code>start()</code></td>
+</tr>
+<tr>
+<td>Using synchronous functions with <code>@handler</code></td>
+<td>Nexus handlers must be async</td>
+<td>Define handler functions with <code>async def</code></td>
+</tr>
+<tr>
+<td>Hardcoding port numbers across environments</td>
+<td>Port conflicts in deployment</td>
+<td>Use environment variables for port configuration</td>
+</tr>
+<tr>
+<td>Forgetting <code>enable_durability=False</code> in tutorials</td>
+<td>Response caching interferes with testing</td>
+<td>Disable durability for development and tutorials</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Register Multiple Handlers</strong>: Create a Nexus
+instance and register three handlers: <code>multiply</code>,
+<code>subtract</code>, and <code>divide</code>. Inspect the registry to
+verify all three are registered. Ensure <code>divide</code> handles the
+division-by-zero case.</p></li>
+<li><p><strong>Preset Exploration</strong>: Iterate over
+<code>PRESETS</code> and print the name, description, and number of
+middleware factories for each preset. Which preset has the most
+middleware?</p></li>
+<li><p><strong>Workflow vs Handler</strong>: Register the same logic
+(string concatenation) both as a workflow via <code>register()</code>
+and as a function via <code>@handler</code>. Compare the registration
+process and discuss when each approach is appropriate.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Nexus is a multi-channel deployment platform: one registration
+exposes workflows via HTTP, CLI, and MCP simultaneously.</li>
+<li><code>register(name, workflow)</code> registers existing workflows;
+<code>@handler</code> registers async functions directly.</li>
+<li>The <code>@handler</code> decorator derives parameters from Python
+type annotations automatically.</li>
+<li>Presets provide one-line middleware stacks (lightweight, standard,
+saas, enterprise).</li>
+<li>Never call <code>start()</code> until all handlers are
+registered.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_http_transport.md">Chapter 2: HTTP Transport</a> – Learn
+how Nexus configures the HTTP transport layer, including middleware
+queuing, endpoint registration, and the Transport ABC.</p>
 
-  <h2>Overview</h2>
-  <p>Nexus is the Kailash SDK's multi-channel deployment platform. It provides a single entry point that exposes workflows simultaneously as HTTP APIs, CLI commands, and MCP tools for AI agents. This chapter introduces the core Nexus concepts: creating an instance, registering workflows, using the <code>@handler</code> decorator, and understanding the preset system.</p>
-
-  <h2>Prerequisites</h2>
-  <ul>
-    <li>Kailash Core SDK installed (<code>pip install kailash</code>)</li>
-    <li>Kailash Nexus installed (<code>pip install kailash-nexus</code>)</li>
-    <li>Familiarity with <code>WorkflowBuilder</code> from the Core SDK (Package 00)</li>
-    <li>Python 3.10+ with <code>async</code>/<code>await</code> syntax</li>
-  </ul>
-
-  <h2>Concepts</h2>
-
-  <h3>What Is Nexus?</h3>
-  <p>Nexus is analogous to web frameworks like FastAPI, but with a key difference: instead of exposing only HTTP endpoints, Nexus exposes every registered workflow across <strong>three channels</strong> simultaneously:</p>
-
-  <table>
-    <tr><th>Channel</th><th>Protocol</th><th>Endpoint Pattern</th></tr>
-    <tr><td>HTTP API</td><td>REST over HTTP</td><td><code>POST /workflows/{name}/execute</code></td></tr>
-    <tr><td>CLI</td><td>Command-line</td><td><code>nexus run {name} --param value</code></td></tr>
-    <tr><td>MCP</td><td>Model Context Protocol</td><td>Tool <code>workflow_{name}</code></td></tr>
-  </table>
-
-  <h3>Why Use Nexus?</h3>
-  <p>Without Nexus, deploying a workflow requires writing separate HTTP routes, CLI argument parsers, and MCP tool registrations. Nexus eliminates this boilerplate by auto-generating all three interfaces from a single registration call.</p>
-
-  <h3>How Does Registration Work?</h3>
-  <p>Nexus provides two registration mechanisms:</p>
-  <ol>
-    <li><strong><code>register(name, workflow)</code></strong> &mdash; registers an existing Kailash workflow by name.</li>
-    <li><strong><code>@handler</code> decorator</strong> &mdash; registers an async function directly, deriving parameters from type annotations.</li>
-  </ol>
-
-  <h2>Key API</h2>
-  <table>
-    <tr><th>Method / Property</th><th>Parameters</th><th>Returns</th><th>Description</th></tr>
-    <tr><td><code>Nexus()</code></td><td><code>api_port</code>, <code>cors_origins</code>, <code>enable_durability</code>, <code>preset</code></td><td><code>Nexus</code></td><td>Create a new Nexus instance</td></tr>
-    <tr><td><code>app.register(name, workflow)</code></td><td><code>name: str</code>, <code>workflow: Workflow</code></td><td><code>None</code></td><td>Register a workflow on all channels</td></tr>
-    <tr><td><code>@app.handler(name, description)</code></td><td><code>name: str</code>, <code>description: str</code></td><td>decorator</td><td>Register an async function as a handler</td></tr>
-    <tr><td><code>app._registry</code></td><td>&mdash;</td><td><code>HandlerRegistry</code></td><td>Access the handler registry</td></tr>
-    <tr><td><code>app.start()</code></td><td>&mdash;</td><td><code>None</code></td><td>Start listening on all channels (blocking)</td></tr>
-    <tr><td><code>get_preset(name)</code></td><td><code>name: str</code></td><td><code>PresetConfig</code></td><td>Retrieve a named middleware preset</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Import and Create Nexus</h3>
-  <pre><code class="language-python">from kailash import WorkflowBuilder
-from nexus import Nexus
-
-app = Nexus(
-    api_port=8000,
-    cors_origins=["http://localhost:3000"],
-    enable_durability=False,
-)</code></pre>
-  <p>The <code>Nexus()</code> constructor creates the application instance. <code>api_port</code> sets the HTTP port (default 8000). <code>cors_origins</code> configures Cross-Origin Resource Sharing for browser clients. <code>enable_durability</code> controls response caching.</p>
-
-  <h3>Step 2: Register a Workflow</h3>
-  <pre><code class="language-python">builder = WorkflowBuilder()
-builder.add_node(
-    "PythonCodeNode",
-    "greet",
-    {
-        "code": "output = f'Hello, {name}!'",
-        "inputs": {"name": "str"},
-        "output_type": "str",
-    },
-)
-workflow = builder.build(name="greeter")
-
-app.register("greet", workflow)</code></pre>
-  <p><code>register()</code> makes the workflow available on all channels. After this call, the workflow is accessible at <code>POST /workflows/greet/execute</code> (HTTP), as a CLI command, and as an MCP tool.</p>
-
-  <h3>Step 3: Register via @handler</h3>
-  <pre><code class="language-python">@app.handler("add", description="Add two numbers")
-async def add(a: int, b: int = 0) -> dict:
-    return {"sum": a + b}</code></pre>
-  <p>The <code>@handler</code> decorator is the preferred pattern. Nexus inspects the function signature to derive required parameters (<code>a: int</code>), optional parameters (<code>b: int = 0</code>), and return types.</p>
-
-  <h3>Step 4: Use Presets</h3>
-  <pre><code class="language-python">from nexus import get_preset, PRESETS
-
-app_prod = Nexus(
-    preset="lightweight",
-    cors_origins=["https://app.example.com"],
-    enable_durability=False,
-)</code></pre>
-
-  <div class="callout">
-    <strong>Note:</strong> <code>app.start()</code> is not called in this tutorial because it blocks the process. In production, <code>start()</code> is the final call after all handlers are registered.
-  </div>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Calling <code>start()</code> before <code>register()</code></td><td>Handlers not available when server starts</td><td>Register all handlers first</td></tr>
-    <tr><td>Using synchronous functions with <code>@handler</code></td><td>Nexus handlers must be async</td><td>Use <code>async def</code></td></tr>
-    <tr><td>Hardcoding port numbers</td><td>Port conflicts in deployment</td><td>Use environment variables</td></tr>
-    <tr><td>Forgetting <code>enable_durability=False</code></td><td>Caching interferes with testing</td><td>Disable for development</td></tr>
-  </table>
-
-  <h2>Exercises</h2>
-  <ol>
-    <li><strong>Register Multiple Handlers:</strong> Create a Nexus instance and register three handlers: <code>multiply</code>, <code>subtract</code>, and <code>divide</code>. Inspect the registry to verify all three are registered.</li>
-    <li><strong>Preset Exploration:</strong> Iterate over <code>PRESETS</code> and print the name, description, and middleware count for each preset. Which has the most?</li>
-    <li><strong>Workflow vs Handler:</strong> Register the same logic both as a workflow and as a handler. Compare the approaches.</li>
-  </ol>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li>Nexus exposes workflows via HTTP, CLI, and MCP simultaneously from a single registration.</li>
-    <li><code>register()</code> handles workflows; <code>@handler</code> handles async functions directly.</li>
-    <li>The <code>@handler</code> decorator derives parameters from Python type annotations.</li>
-    <li>Presets provide one-line middleware stacks (lightweight, standard, saas, enterprise).</li>
-    <li>Always register all handlers before calling <code>start()</code>.</li>
-  </ul>
-
-  <div class="nav">
-    <span>&mdash;</span>
-    <a href="02_http_transport.html">Next: HTTP Transport &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

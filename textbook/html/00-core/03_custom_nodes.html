@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: Custom Nodes &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-3-custom-nodes">Chapter 3: Custom Nodes</h1>
+<h2 id="overview">Overview</h2>
+<p>While built-in nodes cover many common tasks, real-world workflows
+often need domain-specific processing logic. This chapter teaches you
+how to create custom nodes by subclassing <code>Node</code>, defining
+input and output parameters, implementing the <code>process()</code>
+method, and registering your node with the <code>NodeRegistry</code> so
+it can be referenced by name in workflows. You will also learn the async
+node pattern and how to wrap existing Python functions and classes as
+nodes.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_workflow_builder.md">Chapter 1: WorkflowBuilder
+Basics</a></li>
+<li><a href="02_node_types.md">Chapter 2: Node Types</a> – understanding
+of <code>NodeMetadata</code>, <code>NodeParameter</code>, and
+<code>NodeRegistry</code></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-node-subclassing">Concept 1: Node Subclassing</h3>
+<p>Every custom node inherits from the <code>Node</code> base class. You
+define three things on your subclass:</p>
+<ol type="1">
+<li><strong><code>metadata</code></strong> – a <code>NodeMetadata</code>
+instance with the node’s name, description, version, and optional
+tags</li>
+<li><strong><code>input_parameters</code></strong> – a dict mapping
+parameter names to <code>NodeParameter</code> instances</li>
+<li><strong><code>output_parameters</code></strong> – a dict mapping
+output names to <code>NodeParameter</code> instances</li>
+<li><strong><code>process()</code></strong> – a method that receives
+inputs as keyword arguments and returns a dict of outputs</li>
+</ol>
+<ul>
+<li><strong>What</strong>: A Python class that extends <code>Node</code>
+with custom processing logic</li>
+<li><strong>Why</strong>: Custom nodes encapsulate domain logic into
+reusable, testable units that can be wired into any workflow</li>
+<li><strong>How</strong>: The runtime calls
+<code>process(**inputs)</code> (or <code>process_async()</code> for
+async nodes), passing connected input values as keyword arguments. The
+returned dict becomes the node’s output.</li>
+<li><strong>When</strong>: When no built-in node handles your specific
+transformation or computation</li>
+</ul>
+<h3 id="concept-2-node-registration">Concept 2: Node Registration</h3>
+<p>After defining a custom node class, you register it with
+<code>NodeRegistry.register("NodeName", NodeClass)</code> so the builder
+can reference it by string name. The <code>@register_node</code>
+decorator is the declarative equivalent. Once registered, your node is
+indistinguishable from built-in nodes.</p>
+<h3 id="concept-3-async-nodes">Concept 3: Async Nodes</h3>
+<p>Nodes can implement <code>process_async()</code> instead of (or in
+addition to) <code>process()</code> for I/O-bound operations. The
+runtime automatically detects and awaits async nodes. This is important
+for nodes that call external APIs, read files, or perform database
+queries.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 62%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Attribute</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Node</code> (base class)</td>
+<td>Import from <code>kailash.nodes.base</code></td>
+</tr>
+<tr>
+<td><code>metadata</code> (class attr)</td>
+<td><code>NodeMetadata</code> instance</td>
+</tr>
+<tr>
+<td><code>input_parameters</code> (class attr)</td>
+<td>Dict of <code>NodeParameter</code> – the inputs this node
+accepts</td>
+</tr>
+<tr>
+<td><code>output_parameters</code> (class attr)</td>
+<td>Dict of <code>NodeParameter</code> – the outputs this node
+produces</td>
+</tr>
+<tr>
+<td><code>process(**kwargs)</code></td>
+<td>Sync processing method; returns <code>dict[str, Any]</code></td>
+</tr>
+<tr>
+<td><code>process_async(**kwargs)</code></td>
+<td>Async processing method; returns <code>dict[str, Any]</code></td>
+</tr>
+<tr>
+<td><code>NodeRegistry.register(name, cls)</code></td>
+<td>Register a node class by string name</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> Any</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> WorkflowBuilder, LocalRuntime</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.nodes.base <span class="im">import</span> Node, NodeMetadata, NodeParameter, NodeRegistry</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 1. Define a custom Node by subclassing ──────────────────────────</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> UpperCaseNode(Node):</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Converts input text to uppercase.&quot;&quot;&quot;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    metadata <span class="op">=</span> NodeMetadata(</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">&quot;UpperCaseNode&quot;</span>,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>        description<span class="op">=</span><span class="st">&quot;Converts text to uppercase&quot;</span>,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>        version<span class="op">=</span><span class="st">&quot;1.0.0&quot;</span>,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        tags<span class="op">=</span>{<span class="st">&quot;text&quot;</span>, <span class="st">&quot;transform&quot;</span>},</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    input_parameters <span class="op">=</span> {</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;text&quot;</span>: NodeParameter(</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>            name<span class="op">=</span><span class="st">&quot;text&quot;</span>,</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>            <span class="bu">type</span><span class="op">=</span><span class="st">&quot;str&quot;</span>,</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>            description<span class="op">=</span><span class="st">&quot;Input text to transform&quot;</span>,</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>            required<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    output_parameters <span class="op">=</span> {</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;result&quot;</span>: NodeParameter(</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>            name<span class="op">=</span><span class="st">&quot;result&quot;</span>,</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>            <span class="bu">type</span><span class="op">=</span><span class="st">&quot;str&quot;</span>,</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>            description<span class="op">=</span><span class="st">&quot;Uppercased text&quot;</span>,</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> process(<span class="va">self</span>, <span class="op">**</span>kwargs: Any) <span class="op">-&gt;</span> <span class="bu">dict</span>[<span class="bu">str</span>, Any]:</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Process the input and return uppercased text.&quot;&quot;&quot;</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>        text <span class="op">=</span> kwargs.get(<span class="st">&quot;text&quot;</span>, <span class="st">&quot;&quot;</span>)</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> {<span class="st">&quot;result&quot;</span>: text.upper()}</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a><span class="co"># Validate the custom node&#39;s structure</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(UpperCaseNode, Node)</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;text&quot;</span> <span class="kw">in</span> UpperCaseNode.input_parameters</span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;result&quot;</span> <span class="kw">in</span> UpperCaseNode.output_parameters</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a><span class="co"># Instantiate and test directly</span></span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>node <span class="op">=</span> UpperCaseNode()</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>output <span class="op">=</span> node.process(text<span class="op">=</span><span class="st">&quot;hello kailash&quot;</span>)</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> output[<span class="st">&quot;result&quot;</span>] <span class="op">==</span> <span class="st">&quot;HELLO KAILASH&quot;</span></span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 2. Register the node with NodeRegistry ──────────────────────────</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>NodeRegistry.register(<span class="st">&quot;UpperCaseNode&quot;</span>, UpperCaseNode)</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>retrieved <span class="op">=</span> NodeRegistry.get(<span class="st">&quot;UpperCaseNode&quot;</span>)</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> retrieved <span class="kw">is</span> UpperCaseNode</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 3. Use custom node in a workflow ────────────────────────────────</span></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>builder.add_node(</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;PythonCodeNode&quot;</span>,</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;source&quot;</span>,</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = &#39;the kailash sdk is powerful&#39;&quot;</span>,</span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>,</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a><span class="co"># Reference by class (alternative pattern for custom nodes)</span></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>builder.add_node(UpperCaseNode, <span class="st">&quot;upper&quot;</span>)</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>builder.<span class="ex">connect</span>(<span class="st">&quot;source&quot;</span>, <span class="st">&quot;upper&quot;</span>, mapping<span class="op">=</span>{<span class="st">&quot;output&quot;</span>: <span class="st">&quot;text&quot;</span>})</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>workflow <span class="op">=</span> builder.build(name<span class="op">=</span><span class="st">&quot;custom-node-demo&quot;</span>)</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>runtime <span class="op">=</span> LocalRuntime()</span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>results, run_id <span class="op">=</span> runtime.execute(workflow)</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>runtime.close()</span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>upper_result <span class="op">=</span> results.get(<span class="st">&quot;upper&quot;</span>, {}).get(<span class="st">&quot;result&quot;</span>, <span class="st">&quot;&quot;</span>)</span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;Custom node result: </span><span class="sc">{</span>upper_result<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 4. Edge case: Node without required input ───────────────────────</span></span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>output_missing <span class="op">=</span> node.process()  <span class="co"># No text provided</span></span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> output_missing[<span class="st">&quot;result&quot;</span>] <span class="op">==</span> <span class="st">&quot;&quot;</span>  <span class="co"># defaults to empty string</span></span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 5. Async node pattern ───────────────────────────────────────────</span></span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> AsyncGreetNode(Node):</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;An async node that greets by name.&quot;&quot;&quot;</span></span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a>    metadata <span class="op">=</span> NodeMetadata(</span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">&quot;AsyncGreetNode&quot;</span>, description<span class="op">=</span><span class="st">&quot;Async greeting&quot;</span></span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a>    input_parameters <span class="op">=</span> {</span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;name&quot;</span>: NodeParameter(name<span class="op">=</span><span class="st">&quot;name&quot;</span>, <span class="bu">type</span><span class="op">=</span><span class="st">&quot;str&quot;</span>, required<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a>    output_parameters <span class="op">=</span> {</span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;greeting&quot;</span>: NodeParameter(name<span class="op">=</span><span class="st">&quot;greeting&quot;</span>, <span class="bu">type</span><span class="op">=</span><span class="st">&quot;str&quot;</span>)</span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="kw">def</span> process_async(<span class="va">self</span>, <span class="op">**</span>kwargs: Any) <span class="op">-&gt;</span> <span class="bu">dict</span>[<span class="bu">str</span>, Any]:</span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>        <span class="co">&quot;&quot;&quot;Async process -- the runtime awaits this automatically.&quot;&quot;&quot;</span></span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a>        name <span class="op">=</span> kwargs.get(<span class="st">&quot;name&quot;</span>, <span class="st">&quot;World&quot;</span>)</span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> {<span class="st">&quot;greeting&quot;</span>: <span class="ss">f&quot;Hello, </span><span class="sc">{</span>name<span class="sc">}</span><span class="ss">!&quot;</span>}</span>
+<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-114"><a href="#cb1-114" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-115"><a href="#cb1-115" aria-hidden="true" tabindex="-1"></a>NodeRegistry.register(<span class="st">&quot;AsyncGreetNode&quot;</span>, AsyncGreetNode)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Subclassing</strong>: <code>UpperCaseNode(Node)</code>
+inherits the node lifecycle. The class defines <code>metadata</code>,
+<code>input_parameters</code>, <code>output_parameters</code>, and
+<code>process()</code>.</p></li>
+<li><p><strong>Direct testing</strong>: You can instantiate a custom
+node and call <code>process()</code> directly for unit testing, without
+needing a workflow or runtime.</p></li>
+<li><p><strong>Registration</strong>:
+<code>NodeRegistry.register("UpperCaseNode", UpperCaseNode)</code> makes
+the node available by string name. After this,
+<code>add_node("UpperCaseNode", ...)</code> works just like built-in
+nodes.</p></li>
+<li><p><strong>Class-based add_node</strong>:
+<code>builder.add_node(UpperCaseNode, "upper")</code> is an alternative
+to string-based references. It passes the class directly, which is
+useful during development before you register the node.</p></li>
+<li><p><strong>Graceful defaults</strong>: Using
+<code>kwargs.get("text", "")</code> ensures the node handles missing
+inputs without crashing.</p></li>
+<li><p><strong>Async nodes</strong>: <code>process_async()</code> is the
+async equivalent of <code>process()</code>. The runtime detects it
+automatically and uses <code>await</code>. This is the standard pattern
+for I/O-bound operations.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 26%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Forgetting to return a dict from <code>process()</code></td>
+<td><code>return {"result": value}</code></td>
+<td>The runtime expects a dict keyed by output parameter names</td>
+</tr>
+<tr>
+<td>Using <code>self.text</code> instead of <code>kwargs</code></td>
+<td><code>text = kwargs.get("text", "")</code></td>
+<td>Inputs are passed as keyword arguments, not set as attributes</td>
+</tr>
+<tr>
+<td>Registering the same name twice</td>
+<td>Check with <code>NodeRegistry.get()</code> first</td>
+<td>Duplicate registration overwrites the previous class silently</td>
+</tr>
+<tr>
+<td>Mixing sync and async in one node</td>
+<td>Choose one: <code>process()</code> or
+<code>process_async()</code></td>
+<td>The runtime calls whichever is defined; if both exist, async takes
+precedence</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a <code>ReverseStringNode</code> that reverses input text.
+Register it and use it in a workflow.</li>
+<li>Create an async node that simulates a network delay using
+<code>asyncio.sleep(0.1)</code> before returning a result. Wire it into
+a workflow and execute it.</li>
+<li>What happens if <code>process()</code> returns a dict with keys that
+do not match <code>output_parameters</code>? Does the runtime raise an
+error or silently pass?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Custom nodes extend the <code>Node</code> base class with
+<code>metadata</code>, <code>input_parameters</code>,
+<code>output_parameters</code>, and <code>process()</code></li>
+<li><code>process()</code> receives inputs as keyword arguments and must
+return a dict of outputs</li>
+<li><code>NodeRegistry.register()</code> makes custom nodes available by
+string name in workflows</li>
+<li>You can pass the class directly to <code>add_node()</code> as an
+alternative to string-based references</li>
+<li>Async nodes implement <code>process_async()</code> instead of
+<code>process()</code> – the runtime handles both transparently</li>
+<li>Custom nodes can be unit-tested directly without a workflow or
+runtime</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="04_connections.md">Chapter 4: Connections and Wiring</a> –
+Deep dive into the connection system: default ports, explicit mappings,
+fan-out patterns, and edge cases.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

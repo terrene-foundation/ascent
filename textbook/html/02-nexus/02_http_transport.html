@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 2: HTTP Transport — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: HTTP Transport &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,142 +24,337 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 2: HTTP Transport</h1>
+<h1 id="chapter-2-http-transport">Chapter 2: HTTP Transport</h1>
+<h2 id="overview">Overview</h2>
+<p>The HTTP transport is the primary channel through which Nexus serves
+workflows as REST API endpoints. Under the hood, Nexus wraps FastAPI via
+the Kailash Core SDK’s enterprise gateway. This chapter covers the
+<code>Transport</code> abstract base class, <code>HTTPTransport</code>
+configuration, middleware queuing, endpoint registration, and how Nexus
+creates the transport internally. Understanding the transport layer is
+essential for customizing API behavior beyond the defaults.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapter 1: Hello Nexus</li>
+<li>Familiarity with HTTP concepts (ports, CORS, middleware)</li>
+<li>Understanding of abstract base classes in Python</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="the-transport-abc">The Transport ABC</h3>
+<p>Every Nexus transport implements the <code>Transport</code> abstract
+base class, which defines a uniform contract across all channel types
+(HTTP, MCP, SSE). The ABC requires:</p>
+<ul>
+<li><strong><code>name</code></strong> property – a unique string
+identifier (e.g., <code>"http"</code>, <code>"mcp"</code>)</li>
+<li><strong><code>start(registry)</code></strong> – called by
+<code>Nexus.start()</code> with the handler registry</li>
+<li><strong><code>stop()</code></strong> – called by
+<code>Nexus.stop()</code> for graceful shutdown</li>
+<li><strong><code>is_running</code></strong> – boolean property
+indicating whether the transport is active</li>
+<li><strong><code>on_handler_registered()</code></strong> – optional
+hook for hot-reloading new handlers</li>
+</ul>
+<p>This architecture mirrors the Rust SDK’s transport system for
+cross-SDK parity.</p>
+<h3 id="middleware-queuing">Middleware Queuing</h3>
+<p>HTTPTransport supports adding middleware and endpoints
+<em>before</em> the underlying FastAPI gateway is created. These are
+queued internally and applied when the gateway initializes during
+<code>start()</code>. This follows the same pattern FastAPI uses:
+configure everything, then run.</p>
+<h3 id="why-does-nexus-create-httptransport-automatically">Why Does
+Nexus Create HTTPTransport Automatically?</h3>
+<p>When you construct
+<code>Nexus(api_port=8080, cors_origins=[...])</code>, the constructor
+parameters are forwarded to an internal <code>HTTPTransport</code>. You
+rarely need to create <code>HTTPTransport</code> directly – Nexus
+handles it. Direct creation is useful only when you need multiple HTTP
+transports or fine-grained control.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 52%" />
+<col style="width: 6%" />
+<col style="width: 14%" />
+<col style="width: 13%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HTTPTransport()</code></td>
+<td><code>port</code>, <code>cors_origins</code>,
+<code>cors_allow_methods</code>, <code>cors_allow_headers</code>,
+<code>cors_allow_credentials</code>, <code>cors_max_age</code>,
+<code>enable_auth</code>, <code>enable_monitoring</code>,
+<code>enable_durability</code>, <code>rate_limit</code></td>
+<td><code>HTTPTransport</code></td>
+<td>Create an HTTP transport</td>
+<td></td>
+</tr>
+<tr>
+<td><code>http.name</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Always returns <code>"http"</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>http.port</code></td>
+<td>–</td>
+<td><code>int</code></td>
+<td>The configured port number</td>
+<td></td>
+</tr>
+<tr>
+<td><code>http.is_running</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>Whether the transport is active</td>
+<td></td>
+</tr>
+<tr>
+<td><code>http.app</code></td>
+<td>–</td>
+<td><code>FastAPI               | None</code></td>
+<td>The underlying FastAPI app (None before start)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>http.add_middleware(cls, **kwargs)</code></td>
+<td>middleware class + config</td>
+<td><code>None</code></td>
+<td>Queue middleware for later application</td>
+<td></td>
+</tr>
+<tr>
+<td><code>http.register_endpoint(path, methods, handler)</code></td>
+<td><code>path: str</code>, <code>methods: list</code>,
+<code>handler: callable</code></td>
+<td><code>None</code></td>
+<td>Queue a custom endpoint</td>
+<td></td>
+</tr>
+<tr>
+<td><code>http.health_check()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Transport health status</td>
+<td></td>
+</tr>
+<tr>
+<td><code>app.fastapi_app</code></td>
+<td>–</td>
+<td><code>FastAPI</code></td>
+<td>Access the underlying FastAPI app via Nexus</td>
+<td></td>
+</tr>
+<tr>
+<td><code>app.add_middleware(cls, **kwargs)</code></td>
+<td>middleware class + config</td>
+<td><code>Nexus</code></td>
+<td>Add middleware via Nexus (delegates to transport)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>app.middleware</code></td>
+<td>–</td>
+<td><code>list[MiddlewareInfo]</code></td>
+<td>Introspect the middleware stack</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-understand-the-transport-abc">Step 1: Understand the
+Transport ABC</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.transports <span class="im">import</span> HTTPTransport, Transport</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(HTTPTransport, Transport)</span></code></pre></div>
+<p>Every transport implements <code>Transport</code>. This ensures all
+transports share a consistent lifecycle contract.</p>
+<h3 id="step-2-create-an-httptransport">Step 2: Create an
+HTTPTransport</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>http <span class="op">=</span> HTTPTransport(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    port<span class="op">=</span><span class="dv">9090</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;http://localhost:3000&quot;</span>],</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    cors_allow_methods<span class="op">=</span>[<span class="st">&quot;GET&quot;</span>, <span class="st">&quot;POST&quot;</span>],</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    cors_allow_headers<span class="op">=</span>[<span class="st">&quot;Authorization&quot;</span>, <span class="st">&quot;Content-Type&quot;</span>],</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    cors_allow_credentials<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    cors_max_age<span class="op">=</span><span class="dv">600</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    enable_auth<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    enable_monitoring<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    enable_durability<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    rate_limit<span class="op">=</span><span class="dv">200</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>The constructor accepts comprehensive CORS configuration. Before
+<code>start()</code> is called, the transport is not running and the
+FastAPI app is <code>None</code>.</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> http.name <span class="op">==</span> <span class="st">&quot;http&quot;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> http.port <span class="op">==</span> <span class="dv">9090</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> http.is_running <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> http.app <span class="kw">is</span> <span class="va">None</span></span></code></pre></div>
+<h3 id="step-3-queue-middleware">Step 3: Queue Middleware</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.middleware.security_headers <span class="im">import</span> (</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    SecurityHeadersConfig,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    SecurityHeadersMiddleware,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>http.add_middleware(SecurityHeadersMiddleware, config<span class="op">=</span>SecurityHeadersConfig())</span></code></pre></div>
+<p>Middleware is queued internally. The queue is applied when the
+gateway is created during <code>start()</code>.</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(http._middleware_queue) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> http._middleware_queue[<span class="dv">0</span>].middleware_class <span class="kw">is</span> SecurityHeadersMiddleware</span></code></pre></div>
+<h3 id="step-4-register-custom-endpoints">Step 4: Register Custom
+Endpoints</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> custom_health(request):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">&quot;status&quot;</span>: <span class="st">&quot;ok&quot;</span>}</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>http.register_endpoint(<span class="st">&quot;/custom-health&quot;</span>, [<span class="st">&quot;GET&quot;</span>], custom_health)</span></code></pre></div>
+<p>Custom endpoints are also queued. They are registered on the FastAPI
+router when the gateway starts.</p>
+<h3 id="step-5-check-health">Step 5: Check Health</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>health <span class="op">=</span> http.health_check()</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;transport&quot;</span>] <span class="op">==</span> <span class="st">&quot;http&quot;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;running&quot;</span>] <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;port&quot;</span>] <span class="op">==</span> <span class="dv">9090</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;gateway&quot;</span>] <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p><code>health_check()</code> returns a dictionary with transport
+status information, useful for monitoring systems.</p>
+<h3 id="step-6-httptransport-inside-nexus">Step 6: HTTPTransport Inside
+Nexus</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    api_port<span class="op">=</span><span class="dv">8080</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;https://app.example.com&quot;</span>],</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    enable_durability<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(app._http_transport, HTTPTransport)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> app._http_transport.port <span class="op">==</span> <span class="dv">8080</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> app.fastapi_app <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>Nexus creates an <code>HTTPTransport</code> internally. The
+<code>fastapi_app</code> property provides access to the underlying
+FastAPI application.</p>
+<h3 id="step-7-add-middleware-via-nexus">Step 7: Add Middleware via
+Nexus</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.middleware.cache <span class="im">import</span> CacheConfig, ResponseCacheMiddleware</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>app.add_middleware(</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    ResponseCacheMiddleware,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    config<span class="op">=</span>CacheConfig(default_ttl<span class="op">=</span><span class="dv">120</span>, max_entries<span class="op">=</span><span class="dv">500</span>),</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(app.middleware) <span class="op">&gt;=</span> <span class="dv">1</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>last_mw <span class="op">=</span> app.middleware[<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> last_mw.name <span class="op">==</span> <span class="st">&quot;ResponseCacheMiddleware&quot;</span></span></code></pre></div>
+<p><code>Nexus.add_middleware()</code> delegates to the HTTP transport
+and also records <code>MiddlewareInfo</code> objects for
+introspection.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 18%" />
+<col style="width: 40%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Creating HTTPTransport directly when Nexus suffices</td>
+<td>Unnecessary complexity</td>
+<td>Use <code>Nexus()</code> constructor parameters instead</td>
+</tr>
+<tr>
+<td>Expecting <code>http.app</code> to be non-None before
+<code>start()</code></td>
+<td>Gateway is created lazily</td>
+<td>Access the app only after <code>start()</code> or via
+<code>Nexus.fastapi_app</code></td>
+</tr>
+<tr>
+<td>Adding middleware after <code>start()</code></td>
+<td>Middleware may not be applied</td>
+<td>Add all middleware before calling <code>start()</code></td>
+</tr>
+<tr>
+<td>Setting <code>cors_allow_credentials=True</code> with
+<code>cors_origins=["*"]</code></td>
+<td>Browser security violation</td>
+<td>Use specific origins with credentials</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Transport Properties</strong>: Create an
+<code>HTTPTransport</code> with custom port and CORS settings. Verify
+all properties via assertions. Call <code>health_check()</code> and
+examine each key in the returned dictionary.</p></li>
+<li><p><strong>Middleware Stack</strong>: Create an
+<code>HTTPTransport</code>, queue three different middleware classes
+(security headers, CSRF, cache), and verify the queue length and order.
+Explain why order matters given the onion model.</p></li>
+<li><p><strong>Nexus Integration</strong>: Create a <code>Nexus</code>
+instance, access the internal <code>HTTPTransport</code>, add middleware
+both via the transport directly and via
+<code>Nexus.add_middleware()</code>. Compare the two
+approaches.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>HTTPTransport</code> implements the <code>Transport</code> ABC
+with the name <code>"http"</code>.</li>
+<li>Middleware, routers, and endpoints are queued before the gateway is
+created.</li>
+<li>Nexus creates <code>HTTPTransport</code> automatically from its
+constructor parameters.</li>
+<li><code>app.fastapi_app</code> provides access to the underlying
+FastAPI application.</li>
+<li><code>health_check()</code> returns transport status for
+monitoring.</li>
+<li>The gateway (and thus the FastAPI app) is created during
+<code>start()</code>.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="03_mcp_transport.md">Chapter 3: MCP Transport</a> –
+Configure the MCP transport for AI agent integration, including tool
+naming conventions and the background thread architecture.</p>
 
-  <h2>Overview</h2>
-  <p>The HTTP transport is the primary channel through which Nexus serves workflows as REST API endpoints. Under the hood, Nexus wraps FastAPI via the Kailash Core SDK's enterprise gateway. This chapter covers the <code>Transport</code> abstract base class, <code>HTTPTransport</code> configuration, middleware queuing, endpoint registration, and how Nexus creates the transport internally.</p>
-
-  <h2>Prerequisites</h2>
-  <ul>
-    <li>Completed Chapter 1: Hello Nexus</li>
-    <li>Familiarity with HTTP concepts (ports, CORS, middleware)</li>
-    <li>Understanding of abstract base classes in Python</li>
-  </ul>
-
-  <h2>Concepts</h2>
-
-  <h3>The Transport ABC</h3>
-  <p>Every Nexus transport implements the <code>Transport</code> abstract base class, which defines a uniform contract: <code>name</code>, <code>start(registry)</code>, <code>stop()</code>, <code>is_running</code>, and an optional <code>on_handler_registered()</code> hook for hot-reloading.</p>
-
-  <h3>Middleware Queuing</h3>
-  <p>HTTPTransport supports adding middleware and endpoints <em>before</em> the underlying FastAPI gateway exists. These are queued internally and applied when the gateway initializes during <code>start()</code>.</p>
-
-  <h2>Key API</h2>
-  <table>
-    <tr><th>Method / Property</th><th>Parameters</th><th>Returns</th><th>Description</th></tr>
-    <tr><td><code>HTTPTransport()</code></td><td><code>port</code>, <code>cors_origins</code>, <code>enable_auth</code>, <code>rate_limit</code>, etc.</td><td><code>HTTPTransport</code></td><td>Create an HTTP transport</td></tr>
-    <tr><td><code>http.name</code></td><td>&mdash;</td><td><code>str</code></td><td>Always <code>"http"</code></td></tr>
-    <tr><td><code>http.port</code></td><td>&mdash;</td><td><code>int</code></td><td>Configured port number</td></tr>
-    <tr><td><code>http.is_running</code></td><td>&mdash;</td><td><code>bool</code></td><td>Whether the transport is active</td></tr>
-    <tr><td><code>http.app</code></td><td>&mdash;</td><td><code>FastAPI | None</code></td><td>Underlying FastAPI app</td></tr>
-    <tr><td><code>http.add_middleware(cls, **kw)</code></td><td>class + config</td><td><code>None</code></td><td>Queue middleware</td></tr>
-    <tr><td><code>http.register_endpoint()</code></td><td><code>path</code>, <code>methods</code>, <code>handler</code></td><td><code>None</code></td><td>Queue a custom endpoint</td></tr>
-    <tr><td><code>http.health_check()</code></td><td>&mdash;</td><td><code>dict</code></td><td>Transport health status</td></tr>
-    <tr><td><code>app.fastapi_app</code></td><td>&mdash;</td><td><code>FastAPI</code></td><td>Access FastAPI via Nexus</td></tr>
-    <tr><td><code>app.add_middleware()</code></td><td>class + config</td><td><code>Nexus</code></td><td>Add middleware via Nexus</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Create an HTTPTransport</h3>
-  <pre><code class="language-python">from nexus.transports import HTTPTransport, Transport
-
-http = HTTPTransport(
-    port=9090,
-    cors_origins=["http://localhost:3000"],
-    cors_allow_methods=["GET", "POST"],
-    cors_allow_headers=["Authorization", "Content-Type"],
-    cors_allow_credentials=False,
-    cors_max_age=600,
-    enable_auth=False,
-    enable_monitoring=False,
-    enable_durability=False,
-    rate_limit=200,
-)
-
-assert http.name == "http"
-assert http.port == 9090
-assert http.is_running is False
-assert http.app is None</code></pre>
-
-  <h3>Step 2: Queue Middleware</h3>
-  <pre><code class="language-python">from nexus.middleware.security_headers import (
-    SecurityHeadersConfig,
-    SecurityHeadersMiddleware,
-)
-
-http.add_middleware(SecurityHeadersMiddleware, config=SecurityHeadersConfig())
-assert len(http._middleware_queue) == 1</code></pre>
-  <p>Middleware is queued internally and applied when the gateway is created during <code>start()</code>.</p>
-
-  <h3>Step 3: Register Custom Endpoints</h3>
-  <pre><code class="language-python">async def custom_health(request):
-    return {"status": "ok"}
-
-http.register_endpoint("/custom-health", ["GET"], custom_health)
-assert len(http._endpoint_queue) == 1</code></pre>
-
-  <h3>Step 4: HTTPTransport Inside Nexus</h3>
-  <pre><code class="language-python">from nexus import Nexus
-
-app = Nexus(
-    api_port=8080,
-    cors_origins=["https://app.example.com"],
-    enable_durability=False,
-)
-
-assert isinstance(app._http_transport, HTTPTransport)
-assert app._http_transport.port == 8080
-assert app.fastapi_app is not None</code></pre>
-
-  <h3>Step 5: Add Middleware via Nexus</h3>
-  <pre><code class="language-python">from nexus.middleware.cache import CacheConfig, ResponseCacheMiddleware
-
-app.add_middleware(
-    ResponseCacheMiddleware,
-    config=CacheConfig(default_ttl=120, max_entries=500),
-)
-
-last_mw = app.middleware[-1]
-assert last_mw.name == "ResponseCacheMiddleware"</code></pre>
-
-  <div class="callout">
-    <strong>Note:</strong> <code>Nexus.add_middleware()</code> delegates to the HTTP transport and records <code>MiddlewareInfo</code> objects for runtime introspection.
-  </div>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Creating HTTPTransport directly</td><td>Unnecessary complexity</td><td>Use <code>Nexus()</code> parameters instead</td></tr>
-    <tr><td>Expecting <code>http.app</code> before <code>start()</code></td><td>Gateway is created lazily</td><td>Access via <code>Nexus.fastapi_app</code></td></tr>
-    <tr><td>Adding middleware after <code>start()</code></td><td>May not be applied</td><td>Add all middleware before <code>start()</code></td></tr>
-    <tr><td><code>credentials=True</code> with <code>origins=["*"]</code></td><td>Browser security violation</td><td>Use specific origins</td></tr>
-  </table>
-
-  <h2>Exercises</h2>
-  <ol>
-    <li><strong>Transport Properties:</strong> Create an HTTPTransport with custom settings, verify all properties, and examine the <code>health_check()</code> output.</li>
-    <li><strong>Middleware Stack:</strong> Queue three middleware classes and verify the order. Explain why order matters in the onion model.</li>
-    <li><strong>Nexus Integration:</strong> Compare adding middleware via the transport directly vs. via <code>Nexus.add_middleware()</code>.</li>
-  </ol>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li><code>HTTPTransport</code> implements the <code>Transport</code> ABC with name <code>"http"</code>.</li>
-    <li>Middleware, routers, and endpoints are queued before the gateway is created.</li>
-    <li>Nexus creates <code>HTTPTransport</code> automatically from constructor parameters.</li>
-    <li><code>app.fastapi_app</code> provides access to the underlying FastAPI application.</li>
-    <li><code>health_check()</code> returns transport status for monitoring.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="01_hello_nexus.html">&larr; Previous: Hello Nexus</a>
-    <a href="03_mcp_transport.html">Next: MCP Transport &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

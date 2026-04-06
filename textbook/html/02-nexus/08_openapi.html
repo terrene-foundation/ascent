@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 8: OpenAPI — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 8: OpenAPI &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,112 +24,313 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 8: OpenAPI</h1>
+<h1 id="chapter-8-openapi">Chapter 8: OpenAPI</h1>
+<h2 id="overview">Overview</h2>
+<p>Nexus can auto-generate OpenAPI 3.0.3 specifications from registered
+handlers and workflows. The <code>OpenApiGenerator</code> derives
+request schemas from function type annotations, maps Python types to
+OpenAPI types, and produces a complete spec with paths, schemas, and
+server information. This chapter covers <code>OpenApiInfo</code>, schema
+generation from handler signatures, workflow documentation, and the type
+mapping system.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-7</li>
+<li>Familiarity with the OpenAPI / Swagger specification format</li>
+<li>Understanding of Python type annotations</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="automatic-schema-derivation">Automatic Schema Derivation</h3>
+<p>When you register a handler function like
+<code>async def predict(model_name: str, features: list, threshold: float = 0.5)</code>,
+the generator inspects the type annotations to produce:</p>
+<ul>
+<li><strong>Required fields</strong>: parameters without defaults
+(<code>model_name</code>, <code>features</code>)</li>
+<li><strong>Optional fields</strong>: parameters with defaults
+(<code>threshold</code>)</li>
+<li><strong>Type mappings</strong>: <code>str</code> -&gt;
+<code>string</code>, <code>int</code> -&gt; <code>integer</code>,
+<code>float</code> -&gt; <code>number</code>, etc.</li>
+</ul>
+<h3 id="handler-vs-workflow-paths">Handler vs Workflow Paths</h3>
+<p>Handlers create a single endpoint:
+<code>POST /workflows/{name}/execute</code>. Workflows create two: an
+execute endpoint and an info endpoint at
+<code>GET /workflows/{name}/workflow/info</code>.</p>
+<h3 id="python-to-openapi-type-mapping">Python-to-OpenAPI Type
+Mapping</h3>
+<table>
+<thead>
+<tr>
+<th>Python Type</th>
+<th>OpenAPI Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>str</code></td>
+<td><code>string</code></td>
+</tr>
+<tr>
+<td><code>int</code></td>
+<td><code>integer</code></td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td><code>number</code></td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td><code>boolean</code></td>
+</tr>
+<tr>
+<td><code>list</code></td>
+<td><code>array</code> (items: string)</td>
+</tr>
+<tr>
+<td><code>dict</code></td>
+<td><code>object</code></td>
+</tr>
+<tr>
+<td><code>bytes</code></td>
+<td><code>string</code> (format: binary)</td>
+</tr>
+<tr>
+<td><code>Optional[X]</code></td>
+<td>unwraps to inner type</td>
+</tr>
+</tbody>
+</table>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 51%" />
+<col style="width: 7%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OpenApiInfo()</code></td>
+<td><code>title</code>, <code>version</code>, <code>description</code>,
+<code>contact_name</code>, <code>contact_email</code>,
+<code>license_name</code>, <code>license_url</code>,
+<code>terms_of_service</code></td>
+<td><code>OpenApiInfo</code></td>
+<td>Spec info section</td>
+</tr>
+<tr>
+<td><code>OpenApiGenerator(info, servers)</code></td>
+<td><code>info: OpenApiInfo</code>,
+<code>servers: list[dict]</code></td>
+<td><code>OpenApiGenerator</code></td>
+<td>Create generator</td>
+</tr>
+<tr>
+<td><code>gen.add_handler(name, handler_func, description, tags)</code></td>
+<td>handler function + metadata</td>
+<td><code>None</code></td>
+<td>Register handler for docs</td>
+</tr>
+<tr>
+<td><code>gen.add_workflow(name, workflow, description, tags)</code></td>
+<td>workflow + metadata</td>
+<td><code>None</code></td>
+<td>Register workflow for docs</td>
+</tr>
+<tr>
+<td><code>gen.generate()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Generate OpenAPI 3.0.3 spec</td>
+</tr>
+<tr>
+<td><code>gen.generate_json(indent)</code></td>
+<td><code>indent: int</code></td>
+<td><code>str</code></td>
+<td>Generate spec as JSON string</td>
+</tr>
+<tr>
+<td><code>_python_type_to_openapi(type)</code></td>
+<td>Python type</td>
+<td><code>dict</code></td>
+<td>Convert Python type to OpenAPI schema</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-configure-openapiinfo">Step 1: Configure OpenApiInfo</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.openapi <span class="im">import</span> OpenApiGenerator, OpenApiInfo</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>info <span class="op">=</span> OpenApiInfo(</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">&quot;My ML Platform API&quot;</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    version<span class="op">=</span><span class="st">&quot;2.0.0&quot;</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Production ML inference endpoints&quot;</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    contact_name<span class="op">=</span><span class="st">&quot;Platform Team&quot;</span>,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    contact_email<span class="op">=</span><span class="st">&quot;platform@example.com&quot;</span>,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    license_name<span class="op">=</span><span class="st">&quot;Apache-2.0&quot;</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    license_url<span class="op">=</span><span class="st">&quot;https://www.apache.org/licenses/LICENSE-2.0&quot;</span>,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>Defaults: <code>title="Kailash Nexus API"</code>,
+<code>version="1.0.0"</code>,
+<code>license_name="Apache-2.0"</code>.</p>
+<h3 id="step-2-create-generator-with-servers">Step 2: Create Generator
+with Servers</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>gen <span class="op">=</span> OpenApiGenerator(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    info<span class="op">=</span>info,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    servers<span class="op">=</span>[</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>        {<span class="st">&quot;url&quot;</span>: <span class="st">&quot;https://api.example.com&quot;</span>, <span class="st">&quot;description&quot;</span>: <span class="st">&quot;Production&quot;</span>},</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        {<span class="st">&quot;url&quot;</span>: <span class="st">&quot;http://localhost:8000&quot;</span>, <span class="st">&quot;description&quot;</span>: <span class="st">&quot;Development&quot;</span>},</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<h3 id="step-3-register-a-handler">Step 3: Register a Handler</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> predict(model_name: <span class="bu">str</span>, features: <span class="bu">list</span>, threshold: <span class="bu">float</span> <span class="op">=</span> <span class="fl">0.5</span>) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Run inference on a trained model.&quot;&quot;&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {<span class="st">&quot;prediction&quot;</span>: <span class="dv">1</span>, <span class="st">&quot;confidence&quot;</span>: <span class="fl">0.95</span>}</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>gen.add_handler(</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;predict&quot;</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    handler_func<span class="op">=</span>predict,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Run model inference&quot;</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    tags<span class="op">=</span>[<span class="st">&quot;inference&quot;</span>],</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>The generator inspects <code>predict</code>’s annotations:
+<code>model_name</code> and <code>features</code> become required
+fields; <code>threshold</code> becomes optional with default
+<code>0.5</code>.</p>
+<h3 id="step-4-register-a-workflow">Step 4: Register a Workflow</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> WorkflowBuilder</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>wb <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>wb.add_node(<span class="st">&quot;PythonCodeNode&quot;</span>, <span class="st">&quot;greet&quot;</span>, {</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;code&quot;</span>: <span class="st">&quot;output = f&#39;Hello, </span><span class="sc">{name}</span><span class="st">!&#39;&quot;</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;inputs&quot;</span>: {<span class="st">&quot;name&quot;</span>: <span class="st">&quot;str&quot;</span>},</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;output_type&quot;</span>: <span class="st">&quot;str&quot;</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>gen.add_workflow(</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;greet&quot;</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    workflow<span class="op">=</span>wb.build(name<span class="op">=</span><span class="st">&quot;greeter&quot;</span>),</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Greet a user by name&quot;</span>,</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    tags<span class="op">=</span>[<span class="st">&quot;greetings&quot;</span>],</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<h3 id="step-5-generate-the-spec">Step 5: Generate the Spec</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>spec <span class="op">=</span> gen.generate()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> spec[<span class="st">&quot;openapi&quot;</span>] <span class="op">==</span> <span class="st">&quot;3.0.3&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> spec[<span class="st">&quot;info&quot;</span>][<span class="st">&quot;title&quot;</span>] <span class="op">==</span> <span class="st">&quot;My ML Platform API&quot;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;/workflows/predict/execute&quot;</span> <span class="kw">in</span> spec[<span class="st">&quot;paths&quot;</span>]</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;/workflows/greet/execute&quot;</span> <span class="kw">in</span> spec[<span class="st">&quot;paths&quot;</span>]</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;/workflows/greet/workflow/info&quot;</span> <span class="kw">in</span> spec[<span class="st">&quot;paths&quot;</span>]</span></code></pre></div>
+<h3 id="step-6-verify-schemas">Step 6: Verify Schemas</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>schemas <span class="op">=</span> spec[<span class="st">&quot;components&quot;</span>][<span class="st">&quot;schemas&quot;</span>]</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>predict_schema <span class="op">=</span> schemas[<span class="st">&quot;predict_input&quot;</span>]</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> predict_schema[<span class="st">&quot;properties&quot;</span>][<span class="st">&quot;model_name&quot;</span>][<span class="st">&quot;type&quot;</span>] <span class="op">==</span> <span class="st">&quot;string&quot;</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> predict_schema[<span class="st">&quot;properties&quot;</span>][<span class="st">&quot;features&quot;</span>][<span class="st">&quot;type&quot;</span>] <span class="op">==</span> <span class="st">&quot;array&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> predict_schema[<span class="st">&quot;properties&quot;</span>][<span class="st">&quot;threshold&quot;</span>][<span class="st">&quot;type&quot;</span>] <span class="op">==</span> <span class="st">&quot;number&quot;</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> predict_schema[<span class="st">&quot;properties&quot;</span>][<span class="st">&quot;threshold&quot;</span>][<span class="st">&quot;default&quot;</span>] <span class="op">==</span> <span class="fl">0.5</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;model_name&quot;</span> <span class="kw">in</span> predict_schema[<span class="st">&quot;required&quot;</span>]</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;threshold&quot;</span> <span class="kw">not</span> <span class="kw">in</span> predict_schema[<span class="st">&quot;required&quot;</span>]</span></code></pre></div>
+<h3 id="step-7-json-output">Step 7: JSON Output</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>json_str <span class="op">=</span> gen.generate_json(indent<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>parsed <span class="op">=</span> json.loads(json_str)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> parsed[<span class="st">&quot;openapi&quot;</span>] <span class="op">==</span> <span class="st">&quot;3.0.3&quot;</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 28%" />
+<col style="width: 38%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Missing type annotations on handler params</td>
+<td>Parameters typed as <code>string</code> by default</td>
+<td>Always annotate function parameters</td>
+</tr>
+<tr>
+<td>Forgetting to add handlers before <code>generate()</code></td>
+<td>Empty paths in spec</td>
+<td>Register all handlers first</td>
+</tr>
+<tr>
+<td>Using complex nested types</td>
+<td>Mapped to <code>string</code> fallback</td>
+<td>Use simple types or document complex schemas manually</td>
+</tr>
+<tr>
+<td>Not setting <code>description</code> on handlers</td>
+<td>Empty operation descriptions</td>
+<td>Always provide descriptions</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Type Mapping</strong>: Write a handler function with
+parameters of every supported type (<code>str</code>, <code>int</code>,
+<code>float</code>, <code>bool</code>, <code>list</code>,
+<code>dict</code>, <code>bytes</code>). Generate the spec and verify
+each parameter’s OpenAPI type mapping.</p></li>
+<li><p><strong>Multi-Handler Spec</strong>: Register five handlers
+across three tag groups. Generate the spec and verify the tag structure
+in the output. Count the total paths.</p></li>
+<li><p><strong>JSON Export</strong>: Generate a complete spec, export it
+as JSON, and validate that it parses back to an identical dictionary.
+Write the JSON to a file for use with Swagger UI.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>OpenApiInfo</code> configures the info section with sensible
+Kailash-branded defaults.</li>
+<li><code>OpenApiGenerator</code> builds OpenAPI 3.0.3 specs from
+handler and workflow registrations.</li>
+<li><code>add_handler()</code> derives request schemas from Python
+function signatures automatically.</li>
+<li>Handlers create <code>POST /workflows/{name}/execute</code>;
+workflows also get <code>GET .../workflow/info</code>.</li>
+<li><code>generate()</code> returns a dict; <code>generate_json()</code>
+returns a formatted JSON string.</li>
+<li>Python types map directly to OpenAPI types; unknown types fall back
+to <code>string</code>.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="09_probes.md">Chapter 9: Probes</a> – Configure health,
+readiness, and startup probes for Kubernetes deployments.</p>
 
-  <h2>Overview</h2>
-  <p>Nexus auto-generates OpenAPI 3.0.3 specifications from registered handlers and workflows. The <code>OpenApiGenerator</code> derives request schemas from function type annotations, maps Python types to OpenAPI types, and produces a complete spec with paths, schemas, and server information.</p>
-
-  <h2>Concepts</h2>
-
-  <h3>Python-to-OpenAPI Type Mapping</h3>
-  <table>
-    <tr><th>Python Type</th><th>OpenAPI Type</th></tr>
-    <tr><td><code>str</code></td><td><code>string</code></td></tr>
-    <tr><td><code>int</code></td><td><code>integer</code></td></tr>
-    <tr><td><code>float</code></td><td><code>number</code></td></tr>
-    <tr><td><code>bool</code></td><td><code>boolean</code></td></tr>
-    <tr><td><code>list</code></td><td><code>array</code></td></tr>
-    <tr><td><code>dict</code></td><td><code>object</code></td></tr>
-    <tr><td><code>bytes</code></td><td><code>string</code> (format: binary)</td></tr>
-  </table>
-
-  <h3>Handler vs Workflow Paths</h3>
-  <p>Handlers create <code>POST /workflows/{name}/execute</code>. Workflows additionally create <code>GET /workflows/{name}/workflow/info</code>.</p>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Configure Info</h3>
-  <pre><code class="language-python">from nexus.openapi import OpenApiGenerator, OpenApiInfo
-
-info = OpenApiInfo(
-    title="My ML Platform API",
-    version="2.0.0",
-    description="Production ML inference endpoints",
-    contact_name="Platform Team",
-    contact_email="platform@example.com",
-    license_name="Apache-2.0",
-)
-
-gen = OpenApiGenerator(
-    info=info,
-    servers=[
-        {"url": "https://api.example.com", "description": "Production"},
-        {"url": "http://localhost:8000", "description": "Development"},
-    ],
-)</code></pre>
-
-  <h3>Step 2: Register a Handler</h3>
-  <pre><code class="language-python">async def predict(model_name: str, features: list, threshold: float = 0.5) -> dict:
-    """Run inference on a trained model."""
-    return {"prediction": 1, "confidence": 0.95}
-
-gen.add_handler(
-    name="predict",
-    handler_func=predict,
-    description="Run model inference",
-    tags=["inference"],
-)</code></pre>
-  <p>The generator inspects <code>predict</code>'s annotations: <code>model_name</code> and <code>features</code> become required; <code>threshold</code> becomes optional with default <code>0.5</code>.</p>
-
-  <h3>Step 3: Generate Spec</h3>
-  <pre><code class="language-python">spec = gen.generate()
-
-assert spec["openapi"] == "3.0.3"
-assert "/workflows/predict/execute" in spec["paths"]
-
-# Verify schema
-schemas = spec["components"]["schemas"]
-predict_schema = schemas["predict_input"]
-assert predict_schema["properties"]["threshold"]["default"] == 0.5
-assert "model_name" in predict_schema["required"]
-assert "threshold" not in predict_schema["required"]</code></pre>
-
-  <h3>Step 4: JSON Output</h3>
-  <pre><code class="language-python">import json
-
-json_str = gen.generate_json(indent=2)
-parsed = json.loads(json_str)
-assert parsed["openapi"] == "3.0.3"</code></pre>
-
-  <div class="callout">
-    <strong>Shorthand:</strong> <code>OpenApiGenerator(title="Simple API", version="0.1.0")</code> works without creating an <code>OpenApiInfo</code> object separately.
-  </div>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Missing type annotations</td><td>Parameters default to <code>string</code></td><td>Always annotate parameters</td></tr>
-    <tr><td>Forgetting to register handlers</td><td>Empty paths in spec</td><td>Register all handlers first</td></tr>
-    <tr><td>Complex nested types</td><td>Mapped to <code>string</code> fallback</td><td>Use simple types</td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li><code>OpenApiGenerator</code> builds OpenAPI 3.0.3 specs automatically.</li>
-    <li><code>add_handler()</code> derives schemas from Python function signatures.</li>
-    <li>Handlers create POST execute paths; workflows also get GET info paths.</li>
-    <li><code>generate()</code> returns a dict; <code>generate_json()</code> returns formatted JSON.</li>
-    <li>Python types map directly to OpenAPI types.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="07_event_bus.html">&larr; Previous: Event Bus</a>
-    <a href="09_probes.html">Next: Probes &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

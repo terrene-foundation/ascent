@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 14: OnnxBridge &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-14-onnxbridge">Chapter 14: OnnxBridge</h1>
+<h2 id="overview">Overview</h2>
+<p><code>OnnxBridge</code> exports trained sklearn models to ONNX format
+for cross-runtime serving – “train in Python, serve anywhere.” It
+provides pre-flight compatibility checks, export with automatic feature
+detection, and post-export numerical validation that compares native
+predictions against ONNX runtime predictions. Export is non-fatal:
+failures return a result object instead of raising exceptions, making
+ONNX support an optional optimization rather than a hard
+requirement.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash ML installed (<code>pip install kailash-ml</code>)</li>
+<li>Optional: <code>skl2onnx</code> and <code>onnxruntime</code> for
+full export and validation</li>
+<li>Completed <a href="13_inference_server.md">Chapter 13:
+InferenceServer</a></li>
+<li>Familiarity with sklearn model training</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-pre-flight-compatibility-check">Concept 1: Pre-Flight
+Compatibility Check</h3>
+<p>Before exporting, <code>check_compatibility()</code> verifies whether
+a model can be converted to ONNX. It returns an
+<code>OnnxCompatibility</code> object with a <code>compatible</code>
+flag, a <code>confidence</code> level (“guaranteed”, “likely”,
+“unsupported”), the framework name, and the model type. This avoids
+wasted export attempts on unsupported models.</p>
+<ul>
+<li><strong>What</strong>: A pre-export check that determines if a model
+can be converted to ONNX</li>
+<li><strong>Why</strong>: Not all model types support ONNX export;
+checking first saves time and provides clear diagnostics</li>
+<li><strong>How</strong>: Maps the model’s class name against a registry
+of known-compatible sklearn types</li>
+<li><strong>When</strong>: Before calling <code>export()</code>,
+especially when handling models of unknown type</li>
+</ul>
+<h3 id="concept-2-non-fatal-export">Concept 2: Non-Fatal Export</h3>
+<p><code>export()</code> returns an <code>OnnxExportResult</code> with
+<code>success</code>, <code>onnx_status</code>, <code>onnx_path</code>,
+<code>model_size_bytes</code>, <code>export_time_seconds</code>, and
+<code>error_message</code>. On failure, <code>success</code> is
+<code>False</code> and <code>error_message</code> explains why. The
+method never raises exceptions – this makes ONNX support a graceful
+optimization path.</p>
+<ul>
+<li><strong>What</strong>: An export method that returns a result object
+rather than raising on failure</li>
+<li><strong>Why</strong>: ONNX export depends on optional libraries
+(<code>skl2onnx</code>); missing dependencies should not crash the
+application</li>
+<li><strong>How</strong>: Internally catches all export errors and wraps
+them in the result object</li>
+<li><strong>When</strong>: Always – even with guaranteed compatibility,
+export can fail due to missing libraries</li>
+</ul>
+<h3 id="concept-3-numerical-validation">Concept 3: Numerical
+Validation</h3>
+<p>After export, <code>validate()</code> compares native sklearn
+predictions against ONNX runtime predictions on the same input data. It
+reports <code>max_diff</code>, <code>mean_diff</code>, and whether the
+differences fall within a specified tolerance. This catches numerical
+precision issues that could affect production predictions.</p>
+<ul>
+<li><strong>What</strong>: A post-export check that verifies ONNX
+predictions match native predictions</li>
+<li><strong>Why</strong>: ONNX conversion can introduce numerical
+differences due to floating-point representation</li>
+<li><strong>How</strong>: Runs the same inputs through both the native
+model and the ONNX model, computing element-wise differences</li>
+<li><strong>When</strong>: After every successful export, before
+deploying the ONNX model</li>
+</ul>
+<h3 id="concept-4-feature-detection">Concept 4: Feature Detection</h3>
+<p>OnnxBridge can determine the number of input features from three
+sources (in priority order): an explicit <code>schema</code> parameter,
+an explicit <code>n_features</code> parameter, or the model’s
+<code>n_features_in_</code> attribute (set by sklearn after fitting). If
+none are available, export fails with a clear error.</p>
+<ul>
+<li><strong>What</strong>: Automatic inference of model input dimensions
+for ONNX graph construction</li>
+<li><strong>Why</strong>: ONNX requires fixed input dimensions at export
+time</li>
+<li><strong>How</strong>: Checks
+<code>schema.input_schema.features</code>, then <code>n_features</code>,
+then <code>model.n_features_in_</code></li>
+<li><strong>When</strong>: During <code>export()</code> – you can omit
+explicit dimensions if the model has been fitted</li>
+</ul>
+<h2 id="key-api">Key API</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 48%" />
+<col style="width: 14%" />
+<col style="width: 22%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnnxBridge()</code></td>
+<td>–</td>
+<td><code>OnnxBridge</code></td>
+<td>Create the bridge</td>
+</tr>
+<tr>
+<td><code>check_compatibility()</code></td>
+<td><code>model</code>, <code>framework: str</code></td>
+<td><code>OnnxCompatibility</code></td>
+<td>Pre-flight compatibility check</td>
+</tr>
+<tr>
+<td><code>export()</code></td>
+<td><code>model</code>, <code>framework</code>,
+<code>schema=None</code>, <code>output_path=None</code>,
+<code>n_features=None</code></td>
+<td><code>OnnxExportResult</code></td>
+<td>Export to ONNX (non-fatal)</td>
+</tr>
+<tr>
+<td><code>validate()</code></td>
+<td><code>model</code>, <code>onnx_path</code>, <code>X_test</code>,
+<code>tolerance=1e-4</code></td>
+<td><code>OnnxValidationResult</code></td>
+<td>Compare native vs ONNX predictions</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.ensemble <span class="im">import</span> GradientBoostingClassifier, RandomForestClassifier</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> sklearn.linear_model <span class="im">import</span> LogisticRegression, Ridge</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml <span class="im">import</span> FeatureField, FeatureSchema, ModelSignature</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml.bridge.onnx_bridge <span class="im">import</span> (</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    OnnxBridge,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    OnnxCompatibility,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    OnnxExportResult,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    OnnxValidationResult,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 1. Instantiate OnnxBridge ───────────────────────────────────────</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>bridge <span class="op">=</span> OnnxBridge()</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 2. Train models for export ──────────────────────────────────────</span></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>X_train <span class="op">=</span> np.array(</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    [</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>        [<span class="fl">1.0</span>, <span class="fl">2.0</span>, <span class="fl">0.5</span>], [<span class="fl">3.0</span>, <span class="fl">4.0</span>, <span class="fl">1.5</span>],</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>        [<span class="fl">5.0</span>, <span class="fl">6.0</span>, <span class="fl">2.5</span>], [<span class="fl">7.0</span>, <span class="fl">8.0</span>, <span class="fl">3.5</span>],</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>        [<span class="fl">2.0</span>, <span class="fl">1.0</span>, <span class="fl">0.2</span>], [<span class="fl">4.0</span>, <span class="fl">3.0</span>, <span class="fl">1.2</span>],</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>        [<span class="fl">6.0</span>, <span class="fl">5.0</span>, <span class="fl">2.2</span>], [<span class="fl">8.0</span>, <span class="fl">7.0</span>, <span class="fl">3.2</span>],</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>y_cls <span class="op">=</span> np.array([<span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">1</span>])</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>y_reg <span class="op">=</span> np.array([<span class="fl">10.0</span>, <span class="fl">20.0</span>, <span class="fl">30.0</span>, <span class="fl">40.0</span>, <span class="fl">15.0</span>, <span class="fl">25.0</span>, <span class="fl">35.0</span>, <span class="fl">45.0</span>])</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>rf <span class="op">=</span> RandomForestClassifier(n_estimators<span class="op">=</span><span class="dv">10</span>, random_state<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>rf.fit(X_train, y_cls)</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>gb <span class="op">=</span> GradientBoostingClassifier(n_estimators<span class="op">=</span><span class="dv">10</span>, random_state<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>gb.fit(X_train, y_cls)</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>lr <span class="op">=</span> LogisticRegression(max_iter<span class="op">=</span><span class="dv">200</span>, random_state<span class="op">=</span><span class="dv">42</span>)</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>lr.fit(X_train, y_cls)</span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>ridge <span class="op">=</span> Ridge(alpha<span class="op">=</span><span class="fl">1.0</span>)</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>ridge.fit(X_train, y_reg)</span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 3. check_compatibility() — pre-flight check ────────────────────</span></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>rf_compat <span class="op">=</span> bridge.check_compatibility(rf, <span class="st">&quot;sklearn&quot;</span>)</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(rf_compat, OnnxCompatibility)</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rf_compat.compatible <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rf_compat.confidence <span class="op">==</span> <span class="st">&quot;guaranteed&quot;</span></span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rf_compat.framework <span class="op">==</span> <span class="st">&quot;sklearn&quot;</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> rf_compat.model_type <span class="op">==</span> <span class="st">&quot;RandomForestClassifier&quot;</span></span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a><span class="co"># Unknown framework</span></span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>unknown_compat <span class="op">=</span> bridge.check_compatibility(rf, <span class="st">&quot;unknown_framework&quot;</span>)</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> unknown_compat.compatible <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> unknown_compat.confidence <span class="op">==</span> <span class="st">&quot;unsupported&quot;</span></span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 4. export() — sklearn RandomForest ──────────────────────────────</span></span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>schema <span class="op">=</span> ModelSignature(</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>    input_schema<span class="op">=</span>FeatureSchema(</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>        name<span class="op">=</span><span class="st">&quot;export_test&quot;</span>,</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>        features<span class="op">=</span>[</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>            FeatureField(name<span class="op">=</span><span class="st">&quot;a&quot;</span>, dtype<span class="op">=</span><span class="st">&quot;float64&quot;</span>),</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>            FeatureField(name<span class="op">=</span><span class="st">&quot;b&quot;</span>, dtype<span class="op">=</span><span class="st">&quot;float64&quot;</span>),</span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>            FeatureField(name<span class="op">=</span><span class="st">&quot;c&quot;</span>, dtype<span class="op">=</span><span class="st">&quot;float64&quot;</span>),</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>        ],</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>        entity_id_column<span class="op">=</span><span class="st">&quot;entity_id&quot;</span>,</span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>    output_columns<span class="op">=</span>[<span class="st">&quot;prediction&quot;</span>],</span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>    output_dtypes<span class="op">=</span>[<span class="st">&quot;float64&quot;</span>],</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>    model_type<span class="op">=</span><span class="st">&quot;classifier&quot;</span>,</span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> tmpdir:</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>    output_path <span class="op">=</span> Path(tmpdir) <span class="op">/</span> <span class="st">&quot;rf_model.onnx&quot;</span></span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>    result <span class="op">=</span> bridge.export(</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>        rf, <span class="st">&quot;sklearn&quot;</span>, schema<span class="op">=</span>schema, output_path<span class="op">=</span>output_path,</span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(result, OnnxExportResult)</span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> result.success:</span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> result.onnx_path <span class="op">==</span> output_path</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> output_path.exists()</span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> result.model_size_bytes <span class="op">&gt;</span> <span class="dv">0</span></span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a>        <span class="co"># ── 5. validate() — numerical correctness ──────────────</span></span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>        validation <span class="op">=</span> bridge.validate(</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>            rf, output_path, X_train, tolerance<span class="op">=</span><span class="fl">1e-4</span>,</span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="bu">isinstance</span>(validation, OnnxValidationResult)</span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> validation.valid:</span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a>            <span class="cf">assert</span> validation.max_diff <span class="op">&lt;=</span> <span class="fl">1e-4</span></span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span>:</span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>        <span class="co"># skl2onnx not installed — export gracefully skipped</span></span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> result.error_message <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 6. export() — infer n_features from model ──────────────────────</span></span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> tmpdir:</span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a>    auto_result <span class="op">=</span> bridge.export(</span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>        rf, <span class="st">&quot;sklearn&quot;</span>, output_path<span class="op">=</span>Path(tmpdir) <span class="op">/</span> <span class="st">&quot;auto.onnx&quot;</span>,</span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(auto_result, OnnxExportResult)</span>
+<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-114"><a href="#cb1-114" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 7. export() — unsupported framework ─────────────────────────────</span></span>
+<span id="cb1-115"><a href="#cb1-115" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-116"><a href="#cb1-116" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> tmpdir:</span>
+<span id="cb1-117"><a href="#cb1-117" aria-hidden="true" tabindex="-1"></a>    unsupported_result <span class="op">=</span> bridge.export(</span>
+<span id="cb1-118"><a href="#cb1-118" aria-hidden="true" tabindex="-1"></a>        rf, <span class="st">&quot;unknown_framework&quot;</span>,</span>
+<span id="cb1-119"><a href="#cb1-119" aria-hidden="true" tabindex="-1"></a>        output_path<span class="op">=</span>Path(tmpdir) <span class="op">/</span> <span class="st">&quot;unsupported.onnx&quot;</span>,</span>
+<span id="cb1-120"><a href="#cb1-120" aria-hidden="true" tabindex="-1"></a>        n_features<span class="op">=</span><span class="dv">3</span>,</span>
+<span id="cb1-121"><a href="#cb1-121" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-122"><a href="#cb1-122" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> unsupported_result.success <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb1-123"><a href="#cb1-123" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> unsupported_result.onnx_status <span class="op">==</span> <span class="st">&quot;skipped&quot;</span></span>
+<span id="cb1-124"><a href="#cb1-124" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-125"><a href="#cb1-125" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 8. export() — cannot determine features ─────────────────────────</span></span>
+<span id="cb1-126"><a href="#cb1-126" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-127"><a href="#cb1-127" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> BareModel:</span>
+<span id="cb1-128"><a href="#cb1-128" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Model without n_features_in_ attribute.&quot;&quot;&quot;</span></span>
+<span id="cb1-129"><a href="#cb1-129" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb1-130"><a href="#cb1-130" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-131"><a href="#cb1-131" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> tmpdir:</span>
+<span id="cb1-132"><a href="#cb1-132" aria-hidden="true" tabindex="-1"></a>    bare_result <span class="op">=</span> bridge.export(</span>
+<span id="cb1-133"><a href="#cb1-133" aria-hidden="true" tabindex="-1"></a>        BareModel(), <span class="st">&quot;sklearn&quot;</span>,</span>
+<span id="cb1-134"><a href="#cb1-134" aria-hidden="true" tabindex="-1"></a>        output_path<span class="op">=</span>Path(tmpdir) <span class="op">/</span> <span class="st">&quot;bare.onnx&quot;</span>,</span>
+<span id="cb1-135"><a href="#cb1-135" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-136"><a href="#cb1-136" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> bare_result.success <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb1-137"><a href="#cb1-137" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;features&quot;</span> <span class="kw">in</span> bare_result.error_message.lower()</span>
+<span id="cb1-138"><a href="#cb1-138" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-139"><a href="#cb1-139" aria-hidden="true" tabindex="-1"></a><span class="co"># ── 9. export() returns result, never raises ─────────────────────────</span></span>
+<span id="cb1-140"><a href="#cb1-140" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-141"><a href="#cb1-141" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> tempfile.TemporaryDirectory() <span class="im">as</span> tmpdir:</span>
+<span id="cb1-142"><a href="#cb1-142" aria-hidden="true" tabindex="-1"></a>    bad_result <span class="op">=</span> bridge.export(</span>
+<span id="cb1-143"><a href="#cb1-143" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;not_a_model&quot;</span>, <span class="st">&quot;sklearn&quot;</span>,</span>
+<span id="cb1-144"><a href="#cb1-144" aria-hidden="true" tabindex="-1"></a>        n_features<span class="op">=</span><span class="dv">3</span>,</span>
+<span id="cb1-145"><a href="#cb1-145" aria-hidden="true" tabindex="-1"></a>        output_path<span class="op">=</span>Path(tmpdir) <span class="op">/</span> <span class="st">&quot;bad.onnx&quot;</span>,</span>
+<span id="cb1-146"><a href="#cb1-146" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-147"><a href="#cb1-147" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(bad_result, OnnxExportResult)</span>
+<span id="cb1-148"><a href="#cb1-148" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> bad_result.success <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb1-149"><a href="#cb1-149" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-150"><a href="#cb1-150" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;PASS: 05-ml/14_onnx_bridge&quot;</span>)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Bridge creation</strong>: <code>OnnxBridge()</code> is
+stateless – it does not hold any model references. Each method call is
+independent.</p></li>
+<li><p><strong>Model training</strong>: Four sklearn models
+(RandomForest, GradientBoosting, LogisticRegression, Ridge) are trained
+on the same data. All are compatible with ONNX export.</p></li>
+<li><p><strong>Compatibility check</strong>:
+<code>check_compatibility(rf, "sklearn")</code> returns
+<code>compatible=True, confidence="guaranteed"</code> for RandomForest.
+Unknown frameworks return
+<code>compatible=False, confidence="unsupported"</code>.</p></li>
+<li><p><strong>Export with schema</strong>: <code>export()</code> takes
+the model, framework name, optional schema (for feature dimensions), and
+output path. The result includes success status, file size, and export
+time. If <code>skl2onnx</code> is not installed, export fails
+gracefully.</p></li>
+<li><p><strong>Numerical validation</strong>: <code>validate()</code>
+runs both native and ONNX predictions on the same data and compares
+them. <code>max_diff</code> and <code>mean_diff</code> quantify the
+precision loss. Validation requires <code>onnxruntime</code>.</p></li>
+<li><p><strong>Automatic feature inference</strong>: Without a schema,
+OnnxBridge reads <code>model.n_features_in_</code> (set by sklearn
+during <code>.fit()</code>).</p></li>
+<li><p><strong>Unsupported framework</strong>: Export for an unknown
+framework returns <code>success=False, onnx_status="skipped"</code> with
+an error message.</p></li>
+<li><p><strong>Missing features</strong>: A model without
+<code>n_features_in_</code> and no schema/n_features parameter fails
+with a clear error about features.</p></li>
+<li><p><strong>Non-fatal guarantee</strong>: Even passing a string
+instead of a model does not raise an exception. <code>export()</code>
+always returns an <code>OnnxExportResult</code>.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 26%" />
+<col style="width: 30%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Expecting <code>export()</code> to raise on failure</td>
+<td>Check <code>result.success</code> and
+<code>result.error_message</code></td>
+<td>Export is non-fatal by design; failures are reported in the result
+object</td>
+</tr>
+<tr>
+<td>Skipping <code>check_compatibility()</code> before export</td>
+<td>Always check first for unknown model types</td>
+<td>Saves time and provides clear diagnostics for unsupported
+models</td>
+</tr>
+<tr>
+<td>Not validating after export</td>
+<td>Always call <code>validate()</code> before deploying ONNX
+models</td>
+<td>ONNX conversion can introduce numerical differences that affect
+predictions</td>
+</tr>
+<tr>
+<td>Passing unfitted models</td>
+<td>Call <code>model.fit()</code> before export</td>
+<td>Unfitted models lack <code>n_features_in_</code> and trained
+parameters</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p>Train a RandomForest and a Ridge model. Export both to ONNX,
+validate both, and compare their <code>max_diff</code> values. Which
+model type has better numerical precision through ONNX
+conversion?</p></li>
+<li><p>Try exporting a model without <code>skl2onnx</code> installed (or
+simulate by checking the error path). Verify the result object contains
+a helpful error message.</p></li>
+<li><p>Create a wrapper function that attempts ONNX export, falls back
+to native serving if export fails, and logs the decision. This is the
+production pattern for optional ONNX acceleration.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>OnnxBridge exports sklearn models to ONNX for cross-runtime
+serving</li>
+<li><code>check_compatibility()</code> verifies export feasibility
+before attempting conversion</li>
+<li><code>export()</code> is non-fatal – failures return a result
+object, never raise exceptions</li>
+<li><code>validate()</code> compares native vs ONNX predictions to catch
+numerical precision issues</li>
+<li>Feature dimensions are inferred from schema, explicit
+<code>n_features</code>, or <code>model.n_features_in_</code></li>
+<li>ONNX support is an optional optimization – applications work without
+<code>skl2onnx</code> or <code>onnxruntime</code></li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="15_ml_agents.md">Chapter 15: ML Agents</a> – Discover the 6
+ML Kaizen agents, the AgentInfusionProtocol double opt-in pattern, and
+the 5 mandatory guardrails.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

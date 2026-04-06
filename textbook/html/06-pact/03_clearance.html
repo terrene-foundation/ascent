@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: Knowledge
+Clearance &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-3-knowledge-clearance">Chapter 3: Knowledge
+Clearance</h1>
+<h2 id="overview">Overview</h2>
+<p>Not every role should access every piece of information. PACT
+implements a <strong>dual-layer clearance system</strong>: each role has
+a maximum clearance level, and each trust posture imposes a ceiling. The
+effective clearance is always the <em>minimum</em> of the two. This
+chapter teaches you how classification levels, trust postures, and
+clearance grants work together.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_addressing.md">Chapter 1: D/T/R Addressing</a></li>
+<li><a href="02_compile_org.md">Chapter 2: Organization
+Compilation</a></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-is-knowledge-clearance">What is Knowledge Clearance?</h3>
+<p>Knowledge clearance determines what classification level of
+information a role can access. It combines two independent
+dimensions:</p>
+<ol type="1">
+<li><strong>Role clearance</strong> – the maximum level granted to a
+specific role (e.g., SECRET)</li>
+<li><strong>Trust posture</strong> – the system-wide operating mode that
+caps all clearances</li>
+</ol>
+<h3 id="why-two-layers">Why Two Layers?</h3>
+<p>A single clearance level would be static. Trust posture adds a
+dynamic dimension: during an incident, you can tighten the posture to
+restrict access system-wide without revoking individual clearances. When
+the incident is resolved, the posture relaxes and access returns to
+normal.</p>
+<h3 id="the-five-classification-levels">The Five Classification
+Levels</h3>
+<p>From least to most sensitive:</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Value</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PUBLIC</td>
+<td><code>"public"</code></td>
+<td>Company handbook</td>
+</tr>
+<tr>
+<td>RESTRICTED</td>
+<td><code>"restricted"</code></td>
+<td>Internal memos</td>
+</tr>
+<tr>
+<td>CONFIDENTIAL</td>
+<td><code>"confidential"</code></td>
+<td>Salary data</td>
+</tr>
+<tr>
+<td>SECRET</td>
+<td><code>"secret"</code></td>
+<td>M&amp;A plans</td>
+</tr>
+<tr>
+<td>TOP_SECRET</td>
+<td><code>"top_secret"</code></td>
+<td>Security keys</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-five-trust-postures">The Five Trust Postures</h3>
+<p>From most restricted to most autonomous:</p>
+<table>
+<thead>
+<tr>
+<th>Posture</th>
+<th>Ceiling</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PSEUDO_AGENT</td>
+<td>PUBLIC</td>
+<td>Agent can only see public data</td>
+</tr>
+<tr>
+<td>SUPERVISED</td>
+<td>RESTRICTED</td>
+<td>Human watching every action</td>
+</tr>
+<tr>
+<td>SHARED_PLANNING</td>
+<td>CONFIDENTIAL</td>
+<td>Human and agent plan together</td>
+</tr>
+<tr>
+<td>CONTINUOUS_INSIGHT</td>
+<td>SECRET</td>
+<td>Agent reports, human reviews</td>
+</tr>
+<tr>
+<td>DELEGATED</td>
+<td>TOP_SECRET</td>
+<td>Full autonomy within envelope</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-clearance-formula">The Clearance Formula</h3>
+<pre><code>effective_clearance = min(role.max_clearance, POSTURE_CEILING[posture])</code></pre>
+<p>This single formula is the core of PACT clearance. Even a
+TOP_SECRET-cleared role cannot access SECRET data at SUPERVISED
+posture.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 65%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Function</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ConfidentialityLevel</code></td>
+<td>Enum: PUBLIC, RESTRICTED, CONFIDENTIAL, SECRET, TOP_SECRET</td>
+</tr>
+<tr>
+<td><code>TrustPosture</code></td>
+<td>Enum: PSEUDO_AGENT, SUPERVISED, SHARED_PLANNING, CONTINUOUS_INSIGHT,
+DELEGATED</td>
+</tr>
+<tr>
+<td><code>POSTURE_CEILING</code></td>
+<td>Dict mapping each posture to its maximum classification level</td>
+</tr>
+<tr>
+<td><code>VettingStatus</code></td>
+<td>Enum: PENDING, ACTIVE, EXPIRED, REVOKED</td>
+</tr>
+<tr>
+<td><code>RoleClearance</code></td>
+<td>Frozen dataclass: role_address, max_clearance, compartments,
+vetting_status</td>
+</tr>
+<tr>
+<td><code>effective_clearance(clearance, posture)</code></td>
+<td>Compute the effective clearance level</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-classification-levels">Step 1: Classification Levels</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust <span class="im">import</span> ConfidentialityLevel</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ConfidentialityLevel.PUBLIC.value <span class="op">==</span> <span class="st">&quot;public&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ConfidentialityLevel.SECRET.value <span class="op">==</span> <span class="st">&quot;secret&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ConfidentialityLevel.TOP_SECRET.value <span class="op">==</span> <span class="st">&quot;top_secret&quot;</span></span></code></pre></div>
+<h3 id="step-2-trust-posture-levels">Step 2: Trust Posture Levels</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust <span class="im">import</span> TrustPosture</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> TrustPosture.PSEUDO_AGENT.value <span class="op">==</span> <span class="st">&quot;pseudo_agent&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> TrustPosture.DELEGATED.value <span class="op">==</span> <span class="st">&quot;delegated&quot;</span></span></code></pre></div>
+<h3 id="step-3-the-posture-ceiling-map">Step 3: The Posture Ceiling
+Map</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> POSTURE_CEILING</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> POSTURE_CEILING[TrustPosture.PSEUDO_AGENT] <span class="op">==</span> ConfidentialityLevel.PUBLIC</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> POSTURE_CEILING[TrustPosture.SUPERVISED] <span class="op">==</span> ConfidentialityLevel.RESTRICTED</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> POSTURE_CEILING[TrustPosture.DELEGATED] <span class="op">==</span> ConfidentialityLevel.TOP_SECRET</span></code></pre></div>
+<h3 id="step-4-create-a-role-clearance">Step 4: Create a Role
+Clearance</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> RoleClearance, VettingStatus</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>clearance <span class="op">=</span> RoleClearance(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1&quot;</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    max_clearance<span class="op">=</span>ConfidentialityLevel.SECRET,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    compartments<span class="op">=</span><span class="bu">frozenset</span>({<span class="st">&quot;aml-investigations&quot;</span>, <span class="st">&quot;sanctions&quot;</span>}),</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    granted_by_role_address<span class="op">=</span><span class="st">&quot;D1-R1&quot;</span>,</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    vetting_status<span class="op">=</span>VettingStatus.ACTIVE,</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    nda_signed<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> clearance.max_clearance <span class="op">==</span> ConfidentialityLevel.SECRET</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;aml-investigations&quot;</span> <span class="kw">in</span> clearance.compartments</span></code></pre></div>
+<p>RoleClearance is frozen – once created, it cannot be modified.</p>
+<h3 id="step-5-compute-effective-clearance">Step 5: Compute Effective
+Clearance</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> effective_clearance</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># SECRET clearance at DELEGATED posture (ceiling=TOP_SECRET): uncapped</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>eff <span class="op">=</span> effective_clearance(clearance, TrustPosture.DELEGATED)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> eff <span class="op">==</span> ConfidentialityLevel.SECRET  <span class="co"># min(SECRET, TOP_SECRET)</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co"># SECRET clearance at SHARED_PLANNING posture (ceiling=CONFIDENTIAL): capped</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>eff <span class="op">=</span> effective_clearance(clearance, TrustPosture.SHARED_PLANNING)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> eff <span class="op">==</span> ConfidentialityLevel.CONFIDENTIAL  <span class="co"># min(SECRET, CONFIDENTIAL)</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co"># SECRET clearance at PSEUDO_AGENT posture (ceiling=PUBLIC): severely capped</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>eff <span class="op">=</span> effective_clearance(clearance, TrustPosture.PSEUDO_AGENT)</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> eff <span class="op">==</span> ConfidentialityLevel.PUBLIC  <span class="co"># min(SECRET, PUBLIC)</span></span></code></pre></div>
+<h3 id="step-6-vetting-status-lifecycle">Step 6: Vetting Status
+Lifecycle</h3>
+<p>Only ACTIVE clearances are valid for access. The vetting status
+tracks the clearance lifecycle:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> VettingStatus.PENDING.value <span class="op">==</span> <span class="st">&quot;pending&quot;</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> VettingStatus.ACTIVE.value <span class="op">==</span> <span class="st">&quot;active&quot;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> VettingStatus.EXPIRED.value <span class="op">==</span> <span class="st">&quot;expired&quot;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> VettingStatus.REVOKED.value <span class="op">==</span> <span class="st">&quot;revoked&quot;</span></span></code></pre></div>
+<p>Note: <code>effective_clearance()</code> does not check vetting
+status – that is done in the 5-step access algorithm (Chapter 5).</p>
+<h3 id="step-7-compartments">Step 7: Compartments</h3>
+<p>Compartments provide need-to-know control for SECRET and TOP_SECRET
+data. A role must hold ALL compartments that an item belongs to:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>compartmented <span class="op">=</span> RoleClearance(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    role_address<span class="op">=</span><span class="st">&quot;D1-R1-T1-R1&quot;</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    max_clearance<span class="op">=</span>ConfidentialityLevel.TOP_SECRET,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    compartments<span class="op">=</span><span class="bu">frozenset</span>({<span class="st">&quot;nuclear&quot;</span>, <span class="st">&quot;cyber&quot;</span>, <span class="st">&quot;humint&quot;</span>}),</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    vetting_status<span class="op">=</span>VettingStatus.ACTIVE,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(compartmented.compartments) <span class="op">==</span> <span class="dv">3</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<ol type="1">
+<li><p><strong>Ignoring posture ceiling</strong> – A SECRET-cleared role
+cannot access SECRET data at SUPERVISED posture. Always check effective
+clearance, not max clearance.</p></li>
+<li><p><strong>Forgetting vetting status</strong> –
+<code>effective_clearance()</code> computes a value even for EXPIRED
+clearances. The access algorithm (Chapter 5) rejects non-ACTIVE
+clearances at Step 1.</p></li>
+<li><p><strong>Assuming clearance equals authority</strong> – Clearance
+is independent of position. A junior analyst can hold higher clearance
+than a senior manager if the knowledge domain requires it.</p></li>
+</ol>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Clearance Table</strong>: Create clearances for five
+roles at different levels. Compute effective clearance for each at all
+five postures. Present the results as a 5x5 table.</p></li>
+<li><p><strong>Posture Simulation</strong>: Write a function that takes
+a list of <code>RoleClearance</code> objects and a target
+<code>ConfidentialityLevel</code>, and returns which posture is the
+minimum required for each role to access data at that level.</p></li>
+<li><p><strong>Compartment Check</strong>: Given a
+<code>RoleClearance</code> with compartments
+<code>{"alpha", "beta"}</code> and a knowledge item requiring
+<code>{"alpha", "gamma"}</code>, explain why access would be denied and
+what compartment is missing.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Effective clearance = min(role max clearance, posture ceiling)</li>
+<li>Trust posture provides a dynamic, system-wide cap on all access</li>
+<li>Compartments enforce need-to-know beyond classification level</li>
+<li>Only ACTIVE vetting status grants access (enforced in the access
+algorithm)</li>
+<li>Clearance is independent of organizational authority</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="04_envelopes.md">Chapter 4: Operating Envelopes</a> – Define
+financial, operational, and data boundaries for roles and tasks.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

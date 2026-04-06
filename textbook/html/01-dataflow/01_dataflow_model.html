@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: DataFlow Model
+Definition &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-1-dataflow-model-definition">Chapter 1: DataFlow Model
+Definition</h1>
+<h2 id="overview">Overview</h2>
+<p>Every DataFlow application starts with <strong>models</strong> –
+Python classes decorated with <code>@db.model</code> that define your
+database schema. The decorator registers the class, maps Python type
+annotations to database column types, and auto-generates CRUD nodes.
+This chapter teaches you how to define models, inspect their fields, and
+initialize the database.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash DataFlow installed
+(<code>pip install kailash-dataflow</code>)</li>
+<li>Completed the Core SDK chapters (workflow basics)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-db.model-decorator">Concept 1: The <span
+class="citation" data-cites="db.model">@db.model</span> Decorator</h3>
+<p>The <code>@db.model</code> decorator transforms a plain Python class
+into a DataFlow model. It registers the class with the DataFlow
+instance, creates corresponding CRUD workflow nodes, and maps type
+annotations to database column types.</p>
+<ul>
+<li><strong>What</strong>: A decorator that converts a Python class into
+a database-backed model with auto-generated CRUD operations</li>
+<li><strong>Why</strong>: Eliminates boilerplate for table creation,
+column mapping, and CRUD node generation – you declare your schema once
+and DataFlow handles the rest</li>
+<li><strong>How</strong>: The decorator reads the class’s type
+annotations and default values, registers the model internally, and
+generates typed nodes (e.g., <code>CreateProduct</code>,
+<code>ReadProduct</code>, <code>ListProduct</code>)</li>
+<li><strong>When</strong>: Use <code>@db.model</code> for every entity
+you want to persist. This is the standard entry point for all DataFlow
+data operations</li>
+</ul>
+<h3 id="concept-2-field-types-and-defaults">Concept 2: Field Types and
+Defaults</h3>
+<p>Model fields use standard Python type annotations: <code>str</code>,
+<code>int</code>, <code>float</code>, <code>bool</code>, and
+<code>datetime</code>. Fields without a default value are
+<strong>required</strong> – they must be provided when creating a
+record. Fields with a default value are <strong>optional</strong> – the
+default is applied automatically if the field is omitted.</p>
+<ul>
+<li><strong>What</strong>: Python type annotations that map to database
+column types, with optional default values</li>
+<li><strong>Why</strong>: Type annotations provide both documentation
+and runtime validation, ensuring data integrity at the model level</li>
+<li><strong>How</strong>: <code>str</code> maps to TEXT,
+<code>int</code> to INTEGER, <code>float</code> to REAL,
+<code>bool</code> to BOOLEAN. Defaults are stored in model metadata and
+applied during record creation</li>
+<li><strong>When</strong>: Always declare types for every field. Use
+defaults for fields that have a sensible fallback (e.g.,
+<code>active: bool = True</code>)</li>
+</ul>
+<h3 id="concept-3-model-registration-and-inspection">Concept 3: Model
+Registration and Inspection</h3>
+<p>After decorating a class, you can inspect registered models and their
+fields using <code>db.get_models()</code> and
+<code>db.get_model_fields("ModelName")</code>. This is useful for
+debugging, documentation generation, and runtime schema
+introspection.</p>
+<h3 id="concept-4-initialization">Concept 4: Initialization</h3>
+<p><code>db.initialize()</code> is an async method that creates database
+tables, runs any pending migrations, and sets up the connection pool.
+You must call it before performing any CRUD operations. After
+initialization, all registered models have corresponding tables in the
+database.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 23%" />
+<col style="width: 19%" />
+<col style="width: 15%" />
+<col style="width: 41%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Decorator</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DataFlow()</code></td>
+<td><code>database_url: str</code></td>
+<td><code>DataFlow</code></td>
+<td>Create a DataFlow instance</td>
+</tr>
+<tr>
+<td><code>@db.model</code></td>
+<td>(class)</td>
+<td>decorated class</td>
+<td>Register a class as a database model</td>
+</tr>
+<tr>
+<td><code>db.get_models()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>All registered model names and metadata</td>
+</tr>
+<tr>
+<td><code>db.get_model_fields()</code></td>
+<td><code>model_name: str</code></td>
+<td><code>dict</code></td>
+<td>Field definitions for a model</td>
+</tr>
+<tr>
+<td><code>db.initialize()</code></td>
+<td>–</td>
+<td><code>bool</code> (async)</td>
+<td>Create tables and set up connection pool</td>
+</tr>
+<tr>
+<td><code>db.stop()</code></td>
+<td>–</td>
+<td><code>None</code> (async)</td>
+<td>Close connections and clean up</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataflow <span class="im">import</span> DataFlow</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co"># -- 1. Create a DataFlow instance ------------------------------------------</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># DataFlow connects to a database. SQLite is simplest for tutorials.</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="co"># In production, use PostgreSQL via DATABASE_URL environment variable.</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>db_path <span class="op">=</span> os.path.join(tempfile.gettempdir(), <span class="st">&quot;textbook_dataflow_01.db&quot;</span>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> DataFlow(database_url<span class="op">=</span><span class="ss">f&quot;sqlite:///</span><span class="sc">{</span>db_path<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="co"># -- 2. Define a model with @db.model ---------------------------------------</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="co"># The decorator registers the class, creates CRUD nodes, and maps</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Python type annotations to database column types.</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Supported types: str, int, float, bool, datetime</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Fields with defaults are optional; fields without are required.</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="at">@db.model</span></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Product:</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    name: <span class="bu">str</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    price: <span class="bu">float</span></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    category: <span class="bu">str</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    in_stock: <span class="bu">bool</span> <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a><span class="co"># Verify the model was registered</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>registered_models <span class="op">=</span> db.get_models()</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;Product&quot;</span> <span class="kw">in</span> registered_models, <span class="st">&quot;Product model should be registered&quot;</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a><span class="co"># Inspect model fields</span></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>fields <span class="op">=</span> db.get_model_fields(<span class="st">&quot;Product&quot;</span>)</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;name&quot;</span> <span class="kw">in</span> fields, <span class="st">&quot;name field registered&quot;</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;price&quot;</span> <span class="kw">in</span> fields, <span class="st">&quot;price field registered&quot;</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;category&quot;</span> <span class="kw">in</span> fields, <span class="st">&quot;category field registered&quot;</span></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;in_stock&quot;</span> <span class="kw">in</span> fields, <span class="st">&quot;in_stock field registered&quot;</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a><span class="co"># Required vs optional: fields with defaults are not required</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> fields[<span class="st">&quot;name&quot;</span>][<span class="st">&quot;required&quot;</span>] <span class="kw">is</span> <span class="va">True</span>, <span class="st">&quot;name has no default -- required&quot;</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> fields[<span class="st">&quot;in_stock&quot;</span>][<span class="st">&quot;required&quot;</span>] <span class="kw">is</span> <span class="va">False</span>, <span class="st">&quot;in_stock has default -- optional&quot;</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> fields[<span class="st">&quot;in_stock&quot;</span>][<span class="st">&quot;default&quot;</span>] <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;Registered models: </span><span class="sc">{</span><span class="bu">list</span>(registered_models.keys())<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f&quot;Product fields: </span><span class="sc">{</span><span class="bu">list</span>(fields.keys())<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a><span class="co"># -- 3. Multiple models -----------------------------------------------------</span></span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a><span class="at">@db.model</span></span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Customer:</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>    email: <span class="bu">str</span></span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>    name: <span class="bu">str</span></span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>    tier: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;free&quot;</span></span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a><span class="at">@db.model</span></span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Order:</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>    customer_email: <span class="bu">str</span></span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>    product_name: <span class="bu">str</span></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    quantity: <span class="bu">int</span></span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    total: <span class="bu">float</span></span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>all_models <span class="op">=</span> db.get_models()</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(all_models) <span class="op">&gt;=</span> <span class="dv">3</span>, <span class="st">&quot;Three models registered&quot;</span></span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;Customer&quot;</span> <span class="kw">in</span> all_models</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;Order&quot;</span> <span class="kw">in</span> all_models</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a><span class="co"># -- 4. Initialize -- create tables in the database -------------------------</span></span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a><span class="co"># initialize() is async -- it creates tables, runs migrations,</span></span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a><span class="co"># and sets up the connection pool.</span></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> main():</span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>    success <span class="op">=</span> <span class="cf">await</span> db.initialize()</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> success, <span class="st">&quot;DataFlow initialization should succeed&quot;</span></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>    <span class="co"># After initialize, tables exist and CRUD is available</span></span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;DataFlow initialized with </span><span class="sc">{</span><span class="bu">len</span>(all_models)<span class="sc">}</span><span class="ss"> models&quot;</span>)</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 5. Table name mapping -----------------------------------------------</span></span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>    <span class="co"># By default, class names are converted to snake_case table names:</span></span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>    <span class="co">#   Product -&gt; products</span></span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>    <span class="co">#   Customer -&gt; customers</span></span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>    <span class="co">#   Order -&gt; orders</span></span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Override with __tablename__ class attribute if needed.</span></span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Cleanup</span></span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> db.stop()</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>asyncio.run(main())</span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a><span class="co"># -- 6. Edge case: custom table name ----------------------------------------</span></span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>db2 <span class="op">=</span> DataFlow(database_url<span class="op">=</span><span class="ss">f&quot;sqlite:///</span><span class="sc">{</span>db_path<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a><span class="at">@db2.model</span></span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> AuditLog:</span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>    __tablename__ <span class="op">=</span> <span class="st">&quot;custom_audit_logs&quot;</span></span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a>    action: <span class="bu">str</span></span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a>    details: <span class="bu">str</span></span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a><span class="co"># The table name override is respected</span></span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>model_info <span class="op">=</span> db2._models.get(<span class="st">&quot;AuditLog&quot;</span>, {})</span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> model_info.get(<span class="st">&quot;table_name&quot;</span>) <span class="op">==</span> <span class="st">&quot;custom_audit_logs&quot;</span></span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a><span class="co"># Cleanup temp file</span></span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a>    os.unlink(db_path)</span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">OSError</span>:</span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;PASS: 01-dataflow/01_dataflow_model&quot;</span>)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Import</strong>: <code>DataFlow</code> is the primary
+import from the <code>dataflow</code> package. It is the central object
+that manages models, connections, and CRUD operations.</p></li>
+<li><p><strong>DataFlow instance</strong>:
+<code>DataFlow(database_url=...)</code> creates a connection manager.
+For tutorials, SQLite is the simplest backend. In production, use
+PostgreSQL via the <code>DATABASE_URL</code> environment
+variable.</p></li>
+<li><p><strong>Defining a model</strong>: The <code>@db.model</code>
+decorator reads the class’s type annotations (<code>name: str</code>,
+<code>price: float</code>, etc.) and registers the class as a database
+model. Fields without defaults (<code>name</code>, <code>price</code>,
+<code>category</code>) are required. Fields with defaults
+(<code>in_stock: bool = True</code>) are optional.</p></li>
+<li><p><strong>Inspecting models</strong>: <code>db.get_models()</code>
+returns a dictionary of all registered model names.
+<code>db.get_model_fields("Product")</code> returns field metadata
+including type, required status, and default values. This is useful for
+debugging and runtime introspection.</p></li>
+<li><p><strong>Multiple models</strong>: You can register as many models
+as you need on the same DataFlow instance. Each one gets its own table
+and CRUD nodes.</p></li>
+<li><p><strong>Initialization</strong>:
+<code>await db.initialize()</code> creates the actual database tables
+for all registered models and sets up the connection pool. This is an
+async operation – wrap it in <code>asyncio.run()</code> for
+scripts.</p></li>
+<li><p><strong>Table name mapping</strong>: By default,
+<code>Product</code> becomes the <code>products</code> table
+(snake_case, pluralized). Override this with
+<code>__tablename__ = "custom_name"</code> on the class.</p></li>
+<li><p><strong>Cleanup</strong>: Always call
+<code>await db.stop()</code> to close database connections
+gracefully.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 22%" />
+<col style="width: 24%" />
+<col style="width: 53%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Using <code>db.express</code> before <code>initialize()</code></td>
+<td>Call <code>await db.initialize()</code> first</td>
+<td>Tables don’t exist yet. CRUD operations will fail with a “table not
+found” error.</td>
+</tr>
+<tr>
+<td>Forgetting <code>await</code> on <code>db.initialize()</code></td>
+<td><code>success = await db.initialize()</code></td>
+<td><code>initialize()</code> is async. Without <code>await</code>, you
+get a coroutine object instead of executing it.</td>
+</tr>
+<tr>
+<td>Using <code>pandas</code> types as field annotations</td>
+<td>Use <code>str</code>, <code>int</code>, <code>float</code>,
+<code>bool</code>, <code>datetime</code></td>
+<td>DataFlow uses standard Python types, not pandas dtypes.
+<code>pd.Int64Dtype</code> is not a valid annotation.</td>
+</tr>
+<tr>
+<td>Hardcoding database paths in production</td>
+<td><code>database_url=os.environ["DATABASE_URL"]</code></td>
+<td>Hardcoded paths break across environments. Use environment variables
+for all connection strings.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Define a <code>BlogPost</code> model with fields
+<code>title: str</code>, <code>content: str</code>,
+<code>author: str</code>, <code>published: bool = False</code>, and
+<code>views: int = 0</code>. Register it, initialize the database, and
+verify that <code>published</code> and <code>views</code> are optional
+with their correct defaults.</li>
+<li>Create two DataFlow instances pointing at different SQLite files.
+Register a <code>User</code> model on each. Verify that models
+registered on one instance are not visible on the other.</li>
+<li>Use <code>__tablename__</code> to map a class named
+<code>HTTPRequestLog</code> to a table named <code>http_logs</code>.
+Verify the mapping is correct by inspecting the internal model
+info.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>DataFlow(database_url=...)</code> is the entry point for all
+database operations</li>
+<li><code>@db.model</code> registers a class as a database model with
+auto-generated CRUD</li>
+<li>Python type annotations (<code>str</code>, <code>int</code>,
+<code>float</code>, <code>bool</code>) map directly to database column
+types</li>
+<li>Fields without defaults are required; fields with defaults are
+optional</li>
+<li><code>db.initialize()</code> must be called (async) before any CRUD
+operations</li>
+<li><code>db.get_models()</code> and <code>db.get_model_fields()</code>
+provide runtime schema introspection</li>
+<li>Override table names with <code>__tablename__</code> when the
+default snake_case convention does not fit</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_express_crud.md">Chapter 2: Express CRUD</a> – Perform
+Create, Read, Update, and Delete operations using the Express API for
+fast single-record operations.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

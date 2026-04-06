@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 7: Transaction
+Management &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-7-transaction-management">Chapter 7: Transaction
+Management</h1>
+<h2 id="overview">Overview</h2>
+<p>When multiple database operations must succeed or fail as a unit, you
+need <strong>transactions</strong>. DataFlow’s
+<code>TransactionManager</code> provides a context-manager API for
+atomic operations: if everything inside the block succeeds, the
+transaction commits; if an exception occurs, it rolls back
+automatically. This chapter teaches you how to create transactions,
+control isolation levels, handle rollbacks, nest transactions, and
+monitor active transaction state.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash DataFlow installed
+(<code>pip install kailash-dataflow</code>)</li>
+<li>Completed Chapters 1-4 (model definition and CRUD)</li>
+<li>Basic understanding of database transaction concepts (ACID)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-transactionmanager">Concept 1: TransactionManager</h3>
+<p>The <code>TransactionManager</code> is accessed via
+<code>db.transactions</code>. It provides a <code>transaction()</code>
+context manager that yields a transaction context dictionary. The
+context tracks the transaction’s ID, isolation level, status, and a list
+of operations performed within it.</p>
+<ul>
+<li><strong>What</strong>: A manager that creates, tracks, and finalizes
+database transactions</li>
+<li><strong>Why</strong>: Without transactions, a failure halfway
+through a multi-step operation (e.g., debiting one account but failing
+to credit another) leaves the database in an inconsistent state</li>
+<li><strong>How</strong>: <code>transaction()</code> returns a context
+manager. On normal exit, the transaction status becomes
+<code>"committed"</code>. On exception, it becomes
+<code>"rolled_back"</code> and the error message is captured</li>
+<li><strong>When</strong>: Use transactions whenever two or more
+operations must succeed or fail together – fund transfers, order
+placement, inventory updates</li>
+</ul>
+<h3 id="concept-2-isolation-levels">Concept 2: Isolation Levels</h3>
+<p>Isolation levels control how concurrent transactions see each other’s
+changes. The default is <code>READ_COMMITTED</code>, which prevents
+dirty reads. For stricter guarantees, use <code>SERIALIZABLE</code>,
+which ensures transactions execute as if they were run one at a
+time.</p>
+<ul>
+<li><strong>What</strong>: A configuration that controls the visibility
+of concurrent changes between transactions</li>
+<li><strong>Why</strong>: Different operations have different
+consistency requirements. A balance check needs
+<code>SERIALIZABLE</code>; a reporting query can tolerate
+<code>READ_COMMITTED</code></li>
+<li><strong>How</strong>: Pass
+<code>isolation_level="SERIALIZABLE"</code> to
+<code>transaction()</code>. The level is recorded in the transaction
+context dict</li>
+<li><strong>When</strong>: Use <code>SERIALIZABLE</code> for financial
+operations and data integrity checks. Use <code>READ_COMMITTED</code>
+(the default) for general-purpose operations</li>
+</ul>
+<h3 id="concept-3-automatic-rollback">Concept 3: Automatic Rollback</h3>
+<p>If an exception is raised inside a <code>transaction()</code> block,
+the context manager catches it, sets the transaction status to
+<code>"rolled_back"</code>, records the error message in the context
+dict, and re-raises the exception. Your code catches the re-raised
+exception normally.</p>
+<h3 id="concept-4-nested-transactions">Concept 4: Nested
+Transactions</h3>
+<p>Transactions created with <code>transaction()</code> are independent.
+A nested <code>with txn_mgr.transaction()</code> inside an outer
+transaction creates a separate transaction context. Rolling back the
+inner transaction does not affect the outer one.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 29%" />
+<col style="width: 14%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>db.transactions</code></td>
+<td>–</td>
+<td><code>TransactionManager</code></td>
+<td>Access the transaction manager</td>
+</tr>
+<tr>
+<td><code>txn_mgr.transaction()</code></td>
+<td><code>isolation_level: str = "READ_COMMITTED"</code></td>
+<td>context manager</td>
+<td>Create a transaction block</td>
+</tr>
+<tr>
+<td><code>txn["id"]</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Unique transaction identifier</td>
+</tr>
+<tr>
+<td><code>txn["status"]</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td><code>"active"</code>, <code>"committed"</code>, or
+<code>"rolled_back"</code></td>
+</tr>
+<tr>
+<td><code>txn["isolation_level"]</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>The isolation level for this transaction</td>
+</tr>
+<tr>
+<td><code>txn["operations"]</code></td>
+<td>–</td>
+<td><code>list</code></td>
+<td>Operations logged within the transaction</td>
+</tr>
+<tr>
+<td><code>txn["error"]</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Error message (only after rollback)</td>
+</tr>
+<tr>
+<td><code>txn_mgr.get_active_transactions()</code></td>
+<td>–</td>
+<td><code>list</code></td>
+<td>Currently active (uncommitted) transactions</td>
+</tr>
+<tr>
+<td><code>txn_mgr.rollback_all()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Emergency rollback of all active transactions</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataflow <span class="im">import</span> DataFlow</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataflow.features.transactions <span class="im">import</span> TransactionManager</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="co"># -- Setup -------------------------------------------------------------------</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>db_path <span class="op">=</span> os.path.join(tempfile.gettempdir(), <span class="st">&quot;textbook_dataflow_07.db&quot;</span>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> DataFlow(database_url<span class="op">=</span><span class="ss">f&quot;sqlite:///</span><span class="sc">{</span>db_path<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="at">@db.model</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> Account:</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    owner: <span class="bu">str</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    balance: <span class="bu">float</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    currency: <span class="bu">str</span> <span class="op">=</span> <span class="st">&quot;SGD&quot;</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> main():</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> db.initialize()</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Seed data</span></span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> db.express.create(</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Account&quot;</span>, {<span class="st">&quot;owner&quot;</span>: <span class="st">&quot;Alice&quot;</span>, <span class="st">&quot;balance&quot;</span>: <span class="fl">1000.0</span>, <span class="st">&quot;currency&quot;</span>: <span class="st">&quot;SGD&quot;</span>}</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> db.express.create(</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Account&quot;</span>, {<span class="st">&quot;owner&quot;</span>: <span class="st">&quot;Bob&quot;</span>, <span class="st">&quot;balance&quot;</span>: <span class="fl">500.0</span>, <span class="st">&quot;currency&quot;</span>: <span class="st">&quot;SGD&quot;</span>}</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 1. ACCESS -- db.transactions property -------------------------------</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    <span class="co"># TransactionManager is accessed via db.transactions.</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    txn_mgr <span class="op">=</span> db.transactions</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(txn_mgr, TransactionManager)</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;TransactionManager accessible via db.transactions&quot;</span>)</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 2. TRANSACTION -- context manager for atomic operations -------------</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    <span class="co"># transaction() yields a transaction context dict with:</span></span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>    <span class="co">#   id, isolation_level, status, operations</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    <span class="co">#</span></span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    <span class="co"># On normal exit: status becomes &quot;committed&quot;</span></span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>    <span class="co"># On exception:   status becomes &quot;rolled_back&quot;</span></span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> txn_mgr.transaction() <span class="im">as</span> txn:</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> txn[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;active&quot;</span></span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> txn[<span class="st">&quot;isolation_level&quot;</span>] <span class="op">==</span> <span class="st">&quot;READ_COMMITTED&quot;</span>, <span class="st">&quot;Default isolation&quot;</span></span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;id&quot;</span> <span class="kw">in</span> txn</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Track operations inside the transaction</span></span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>        txn[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;debit&quot;</span>, <span class="st">&quot;account&quot;</span>: <span class="st">&quot;Alice&quot;</span>, <span class="st">&quot;amount&quot;</span>: <span class="dv">200</span>})</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>        txn[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;credit&quot;</span>, <span class="st">&quot;account&quot;</span>: <span class="st">&quot;Bob&quot;</span>, <span class="st">&quot;amount&quot;</span>: <span class="dv">200</span>})</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f&quot;Transaction </span><span class="sc">{</span>txn[<span class="st">&#39;id&#39;</span>]<span class="sc">}</span><span class="ss">: </span><span class="sc">{</span><span class="bu">len</span>(txn[<span class="st">&#39;operations&#39;</span>])<span class="sc">}</span><span class="ss"> operations&quot;</span>)</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>    <span class="co"># After the context manager exits normally, status is &quot;committed&quot;</span></span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> txn[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;committed&quot;</span></span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Transaction committed successfully&quot;</span>)</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 3. ISOLATION LEVELS -------------------------------------------------</span></span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Specify isolation level when creating a transaction.</span></span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> txn_mgr.transaction(isolation_level<span class="op">=</span><span class="st">&quot;SERIALIZABLE&quot;</span>) <span class="im">as</span> txn:</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> txn[<span class="st">&quot;isolation_level&quot;</span>] <span class="op">==</span> <span class="st">&quot;SERIALIZABLE&quot;</span></span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>        txn[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;audit&quot;</span>, <span class="st">&quot;details&quot;</span>: <span class="st">&quot;balance check&quot;</span>})</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> txn[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;committed&quot;</span></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;SERIALIZABLE transaction committed&quot;</span>)</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 4. ROLLBACK on exception --------------------------------------------</span></span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>    <span class="co"># If an exception occurs inside the context manager, the transaction</span></span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>    <span class="co"># is automatically rolled back.</span></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> txn_mgr.transaction() <span class="im">as</span> txn:</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>            txn[<span class="st">&quot;operations&quot;</span>].append(</span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>                {<span class="st">&quot;type&quot;</span>: <span class="st">&quot;debit&quot;</span>, <span class="st">&quot;account&quot;</span>: <span class="st">&quot;Alice&quot;</span>, <span class="st">&quot;amount&quot;</span>: <span class="dv">9999</span>}</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Simulate a business rule violation</span></span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>            <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="st">&quot;Insufficient funds&quot;</span>)</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>        <span class="cf">pass</span>  <span class="co"># Expected</span></span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> txn[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;rolled_back&quot;</span></span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> txn.get(<span class="st">&quot;error&quot;</span>) <span class="op">==</span> <span class="st">&quot;Insufficient funds&quot;</span></span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Transaction rolled back on exception&quot;</span>)</span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 5. ACTIVE TRANSACTIONS -- monitoring --------------------------------</span></span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>    <span class="co"># get_active_transactions() returns currently active transactions.</span></span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a>    <span class="co"># After a transaction completes (commit or rollback), it is removed.</span></span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a>    active <span class="op">=</span> txn_mgr.get_active_transactions()</span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(active) <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;No active transactions after all completed&quot;</span></span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 6. ROLLBACK ALL -- emergency operation ------------------------------</span></span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a>    <span class="co"># rollback_all() rolls back every active transaction at once.</span></span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Useful for emergency shutdown or cleanup.</span></span>
+<span id="cb1-99"><a href="#cb1-99" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-100"><a href="#cb1-100" aria-hidden="true" tabindex="-1"></a>    result <span class="op">=</span> txn_mgr.rollback_all()</span>
+<span id="cb1-101"><a href="#cb1-101" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> result[<span class="st">&quot;success&quot;</span>] <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb1-102"><a href="#cb1-102" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> result[<span class="st">&quot;count&quot;</span>] <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;No active transactions to roll back&quot;</span></span>
+<span id="cb1-103"><a href="#cb1-103" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(result[<span class="st">&quot;rolled_back_transactions&quot;</span>], <span class="bu">list</span>)</span>
+<span id="cb1-104"><a href="#cb1-104" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;Emergency rollback: </span><span class="sc">{</span>result[<span class="st">&#39;count&#39;</span>]<span class="sc">}</span><span class="ss"> transactions affected&quot;</span>)</span>
+<span id="cb1-105"><a href="#cb1-105" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-106"><a href="#cb1-106" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 7. Nested transaction pattern ---------------------------------------</span></span>
+<span id="cb1-107"><a href="#cb1-107" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Transactions are independent -- nesting creates separate contexts.</span></span>
+<span id="cb1-108"><a href="#cb1-108" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-109"><a href="#cb1-109" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> txn_mgr.transaction() <span class="im">as</span> outer:</span>
+<span id="cb1-110"><a href="#cb1-110" aria-hidden="true" tabindex="-1"></a>        outer[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;outer_op&quot;</span>})</span>
+<span id="cb1-111"><a href="#cb1-111" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-112"><a href="#cb1-112" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> txn_mgr.transaction() <span class="im">as</span> inner:</span>
+<span id="cb1-113"><a href="#cb1-113" aria-hidden="true" tabindex="-1"></a>            inner[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;inner_op&quot;</span>})</span>
+<span id="cb1-114"><a href="#cb1-114" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-115"><a href="#cb1-115" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Inner committed, outer still active</span></span>
+<span id="cb1-116"><a href="#cb1-116" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> inner[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;committed&quot;</span></span>
+<span id="cb1-117"><a href="#cb1-117" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-118"><a href="#cb1-118" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> outer[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;committed&quot;</span></span>
+<span id="cb1-119"><a href="#cb1-119" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Nested transactions: both committed independently&quot;</span>)</span>
+<span id="cb1-120"><a href="#cb1-120" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-121"><a href="#cb1-121" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 8. Edge case: exception in nested transaction -----------------------</span></span>
+<span id="cb1-122"><a href="#cb1-122" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Inner rollback does not affect the outer transaction.</span></span>
+<span id="cb1-123"><a href="#cb1-123" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-124"><a href="#cb1-124" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> txn_mgr.transaction() <span class="im">as</span> outer:</span>
+<span id="cb1-125"><a href="#cb1-125" aria-hidden="true" tabindex="-1"></a>        outer[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;outer_op&quot;</span>})</span>
+<span id="cb1-126"><a href="#cb1-126" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-127"><a href="#cb1-127" aria-hidden="true" tabindex="-1"></a>        <span class="cf">try</span>:</span>
+<span id="cb1-128"><a href="#cb1-128" aria-hidden="true" tabindex="-1"></a>            <span class="cf">with</span> txn_mgr.transaction() <span class="im">as</span> inner:</span>
+<span id="cb1-129"><a href="#cb1-129" aria-hidden="true" tabindex="-1"></a>                inner[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;risky_op&quot;</span>})</span>
+<span id="cb1-130"><a href="#cb1-130" aria-hidden="true" tabindex="-1"></a>                <span class="cf">raise</span> <span class="pp">RuntimeError</span>(<span class="st">&quot;Inner failure&quot;</span>)</span>
+<span id="cb1-131"><a href="#cb1-131" aria-hidden="true" tabindex="-1"></a>        <span class="cf">except</span> <span class="pp">RuntimeError</span>:</span>
+<span id="cb1-132"><a href="#cb1-132" aria-hidden="true" tabindex="-1"></a>            <span class="cf">pass</span>  <span class="co"># Inner rolled back</span></span>
+<span id="cb1-133"><a href="#cb1-133" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-134"><a href="#cb1-134" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> inner[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;rolled_back&quot;</span></span>
+<span id="cb1-135"><a href="#cb1-135" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Outer continues</span></span>
+<span id="cb1-136"><a href="#cb1-136" aria-hidden="true" tabindex="-1"></a>        outer[<span class="st">&quot;operations&quot;</span>].append({<span class="st">&quot;type&quot;</span>: <span class="st">&quot;recovery_op&quot;</span>})</span>
+<span id="cb1-137"><a href="#cb1-137" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-138"><a href="#cb1-138" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> outer[<span class="st">&quot;status&quot;</span>] <span class="op">==</span> <span class="st">&quot;committed&quot;</span></span>
+<span id="cb1-139"><a href="#cb1-139" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Inner rollback did not affect outer transaction&quot;</span>)</span>
+<span id="cb1-140"><a href="#cb1-140" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-141"><a href="#cb1-141" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- 9. Transaction context data -----------------------------------------</span></span>
+<span id="cb1-142"><a href="#cb1-142" aria-hidden="true" tabindex="-1"></a>    <span class="co"># The transaction context dict can carry arbitrary operation logs.</span></span>
+<span id="cb1-143"><a href="#cb1-143" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-144"><a href="#cb1-144" aria-hidden="true" tabindex="-1"></a>    <span class="cf">with</span> txn_mgr.transaction(isolation_level<span class="op">=</span><span class="st">&quot;READ_COMMITTED&quot;</span>) <span class="im">as</span> txn:</span>
+<span id="cb1-145"><a href="#cb1-145" aria-hidden="true" tabindex="-1"></a>        txn[<span class="st">&quot;operations&quot;</span>].append(</span>
+<span id="cb1-146"><a href="#cb1-146" aria-hidden="true" tabindex="-1"></a>            {</span>
+<span id="cb1-147"><a href="#cb1-147" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;type&quot;</span>: <span class="st">&quot;transfer&quot;</span>,</span>
+<span id="cb1-148"><a href="#cb1-148" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;from&quot;</span>: <span class="st">&quot;Alice&quot;</span>,</span>
+<span id="cb1-149"><a href="#cb1-149" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;to&quot;</span>: <span class="st">&quot;Bob&quot;</span>,</span>
+<span id="cb1-150"><a href="#cb1-150" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;amount&quot;</span>: <span class="fl">100.0</span>,</span>
+<span id="cb1-151"><a href="#cb1-151" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;currency&quot;</span>: <span class="st">&quot;SGD&quot;</span>,</span>
+<span id="cb1-152"><a href="#cb1-152" aria-hidden="true" tabindex="-1"></a>            }</span>
+<span id="cb1-153"><a href="#cb1-153" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-154"><a href="#cb1-154" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-155"><a href="#cb1-155" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">len</span>(txn[<span class="st">&quot;operations&quot;</span>]) <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb1-156"><a href="#cb1-156" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> txn[<span class="st">&quot;operations&quot;</span>][<span class="dv">0</span>][<span class="st">&quot;type&quot;</span>] <span class="op">==</span> <span class="st">&quot;transfer&quot;</span></span>
+<span id="cb1-157"><a href="#cb1-157" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> txn[<span class="st">&quot;operations&quot;</span>][<span class="dv">0</span>][<span class="st">&quot;amount&quot;</span>] <span class="op">==</span> <span class="fl">100.0</span></span>
+<span id="cb1-158"><a href="#cb1-158" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">&quot;Transaction carries structured operation metadata&quot;</span>)</span>
+<span id="cb1-159"><a href="#cb1-159" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-160"><a href="#cb1-160" aria-hidden="true" tabindex="-1"></a>    <span class="co"># -- Cleanup -------------------------------------------------------------</span></span>
+<span id="cb1-161"><a href="#cb1-161" aria-hidden="true" tabindex="-1"></a>    <span class="cf">await</span> db.stop()</span>
+<span id="cb1-162"><a href="#cb1-162" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-163"><a href="#cb1-163" aria-hidden="true" tabindex="-1"></a>asyncio.run(main())</span>
+<span id="cb1-164"><a href="#cb1-164" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-165"><a href="#cb1-165" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb1-166"><a href="#cb1-166" aria-hidden="true" tabindex="-1"></a>    os.unlink(db_path)</span>
+<span id="cb1-167"><a href="#cb1-167" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">OSError</span>:</span>
+<span id="cb1-168"><a href="#cb1-168" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb1-169"><a href="#cb1-169" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-170"><a href="#cb1-170" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;PASS: 01-dataflow/07_transactions&quot;</span>)</span></code></pre></div>
+<h3 id="step-by-step-explanation">Step-by-Step Explanation</h3>
+<ol type="1">
+<li><p><strong>Accessing TransactionManager</strong>:
+<code>db.transactions</code> returns the <code>TransactionManager</code>
+instance. This is your entry point for all transaction
+operations.</p></li>
+<li><p><strong>Creating a transaction</strong>:
+<code>with txn_mgr.transaction() as txn:</code> opens a transaction
+block. The yielded <code>txn</code> dict starts with
+<code>status: "active"</code> and an empty <code>operations</code> list.
+You append operation records to track what happens inside the block. On
+normal exit, the status changes to <code>"committed"</code>.</p></li>
+<li><p><strong>Isolation levels</strong>: Pass
+<code>isolation_level="SERIALIZABLE"</code> to
+<code>transaction()</code> for stricter consistency guarantees. The
+default <code>READ_COMMITTED</code> is sufficient for most
+operations.</p></li>
+<li><p><strong>Automatic rollback</strong>: When an exception is raised
+inside the transaction block, the context manager sets
+<code>status</code> to <code>"rolled_back"</code> and stores the error
+message in <code>txn["error"]</code>. The exception is re-raised so your
+surrounding <code>try/except</code> can handle it.</p></li>
+<li><p><strong>Monitoring active transactions</strong>:
+<code>get_active_transactions()</code> returns a list of transactions
+that have not yet committed or rolled back. After all transactions in
+this example complete, the list is empty.</p></li>
+<li><p><strong>Emergency rollback</strong>: <code>rollback_all()</code>
+is a safety mechanism that rolls back every active transaction at once.
+It returns a result dict with <code>success</code>, <code>count</code>,
+and <code>rolled_back_transactions</code>. Useful during application
+shutdown or error recovery.</p></li>
+<li><p><strong>Nested transactions</strong>: Each
+<code>transaction()</code> call creates an independent context. The
+inner transaction can commit or roll back without affecting the outer
+one. This is not SQL savepoint semantics – these are truly independent
+transaction contexts.</p></li>
+<li><p><strong>Inner rollback, outer commit</strong>: When the inner
+transaction raises an exception, only the inner context is rolled back.
+The outer transaction catches the exception and continues to commit
+successfully. This pattern is useful for “best-effort” inner
+operations.</p></li>
+<li><p><strong>Operation metadata</strong>: The <code>operations</code>
+list in the transaction context can hold arbitrary structured data –
+operation types, amounts, account references, timestamps. This data is
+useful for audit logging and debugging.</p></li>
+</ol>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 22%" />
+<col style="width: 26%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Not catching exceptions from failed transactions</td>
+<td>Wrap <code>with txn_mgr.transaction()</code> in
+<code>try/except</code></td>
+<td>The context manager rolls back and re-raises. Uncaught exceptions
+crash the program.</td>
+</tr>
+<tr>
+<td>Assuming nested transactions share state</td>
+<td>Each <code>transaction()</code> creates an independent context</td>
+<td>Inner and outer transactions are separate. Rolling back inner does
+not roll back outer.</td>
+</tr>
+<tr>
+<td>Using transactions for single operations</td>
+<td>Use <code>db.express.create()</code> directly for single-record
+CRUD</td>
+<td>Transactions add overhead. A single Express call is already atomic
+at the database level.</td>
+</tr>
+<tr>
+<td>Checking <code>txn["status"]</code> inside the block</td>
+<td>Check status after the <code>with</code> block exits</td>
+<td>Inside the block, status is always <code>"active"</code>. It changes
+to <code>"committed"</code> or <code>"rolled_back"</code> only on
+exit.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Implement a fund transfer function that debits one account and
+credits another inside a transaction. If the source account has
+insufficient funds, raise an exception and verify the transaction is
+rolled back.</li>
+<li>Create three nested transactions where the middle one fails. Verify
+that the outer and inner transactions are unaffected by the middle one’s
+rollback.</li>
+<li>Start a transaction, add several operations, then call
+<code>get_active_transactions()</code> while still inside the block.
+Verify that the active transaction appears in the list. After the block
+exits, verify it is gone.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>db.transactions</code> provides access to the
+<code>TransactionManager</code></li>
+<li><code>transaction()</code> is a context manager: commit on success,
+rollback on exception</li>
+<li>The default isolation level is <code>READ_COMMITTED</code>; use
+<code>SERIALIZABLE</code> for strict consistency</li>
+<li>Rolled-back transactions capture the error message in
+<code>txn["error"]</code></li>
+<li>Nested transactions are independent – inner rollback does not affect
+outer</li>
+<li><code>get_active_transactions()</code> monitors in-progress
+transactions</li>
+<li><code>rollback_all()</code> is an emergency mechanism for bulk
+rollback</li>
+<li>The transaction context dict carries arbitrary operation metadata
+for audit trails</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="08_multi_tenant.md">Chapter 8: Multi-Tenant Context
+Switching</a> – Isolate data across tenants using sync and async context
+managers with automatic context restoration.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

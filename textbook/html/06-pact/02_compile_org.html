@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: Organization
+Compilation &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-2-organization-compilation">Chapter 2: Organization
+Compilation</h1>
+<h2 id="overview">Overview</h2>
+<p>Raw organization definitions are declarative – they describe
+departments, teams, and roles with human-readable IDs. Before PACT can
+make governance decisions, this definition must be
+<strong>compiled</strong> into an address-indexed structure with O(1)
+lookups. This chapter teaches you how to define organizations, compile
+them, and query the resulting structure.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_addressing.md">Chapter 1: D/T/R Addressing</a></li>
+<li>Understanding of tree data structures</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-is-organization-compilation">What is Organization
+Compilation?</h3>
+<p>Compilation transforms a declarative <code>OrgDefinition</code>
+(departments, teams, roles with string IDs and reporting relationships)
+into a <code>CompiledOrg</code> where every node has a positional D/T/R
+address. This is analogous to compiling source code: the input is
+human-readable, the output is machine-optimized.</p>
+<h3 id="why-compile">Why Compile?</h3>
+<p>Access decisions happen on every request. Walking a tree of
+string-keyed relationships for each decision would be too slow. The
+compiled form provides O(1) address lookups, pre-computed parent chains,
+and immutable node maps that prevent runtime tampering.</p>
+<h3 id="how-compilation-works">How Compilation Works</h3>
+<ol type="1">
+<li>Departments get <code>D1</code>, <code>D2</code>, … in declaration
+order</li>
+<li>Each department’s primary role gets <code>Dn-R1</code></li>
+<li>Teams under a role get <code>Dn-Rm-T1</code>, <code>Dn-Rm-T2</code>,
+…</li>
+<li>Each team’s primary role gets <code>Dn-Rm-Tk-R1</code></li>
+<li>Subordinate roles get appended: <code>Dn-Rm-Tk-Rp-R1</code></li>
+<li>If a department or team has no head role, a vacant one is
+auto-created</li>
+</ol>
+<h3 id="when-to-use">When to Use</h3>
+<p>Use <code>compile_org()</code> at application startup or when the
+organization structure changes. The compiled result is then passed to
+<code>GovernanceEngine</code> or used directly for access checks.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 62%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Function</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OrgDefinition</code></td>
+<td>Declarative input: org_id, name, departments, teams, roles</td>
+</tr>
+<tr>
+<td><code>DepartmentConfig</code></td>
+<td>Department declaration with department_id and name</td>
+</tr>
+<tr>
+<td><code>TeamConfig</code></td>
+<td>Team declaration with id, name, workspace</td>
+</tr>
+<tr>
+<td><code>RoleDefinition</code></td>
+<td>Role with role_id, name, reports_to_role_id,
+is_primary_for_unit</td>
+</tr>
+<tr>
+<td><code>compile_org(org_def)</code></td>
+<td>Transform OrgDefinition into CompiledOrg</td>
+</tr>
+<tr>
+<td><code>CompiledOrg</code></td>
+<td>Address-indexed organization with O(1) lookups</td>
+</tr>
+<tr>
+<td><code>CompiledOrg.get_node(addr)</code></td>
+<td>Look up a node by its D/T/R address</td>
+</tr>
+<tr>
+<td><code>CompiledOrg.get_node_by_role_id(id)</code></td>
+<td>Look up a node by its original role_id</td>
+</tr>
+<tr>
+<td><code>CompiledOrg.query_by_prefix(prefix)</code></td>
+<td>All nodes under a given address prefix</td>
+</tr>
+<tr>
+<td><code>CompiledOrg.get_subtree(addr)</code></td>
+<td>Node and all its descendants</td>
+</tr>
+<tr>
+<td><code>CompiledOrg.root_roles</code></td>
+<td>Top-level nodes with no parent</td>
+</tr>
+<tr>
+<td><code>CompiledOrg.get_vacancy_status(addr)</code></td>
+<td>Check if a role position is filled</td>
+</tr>
+<tr>
+<td><code>CompilationError</code></td>
+<td>Raised for invalid org definitions</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-define-the-organization">Step 1: Define the
+Organization</h3>
+<p>Create an <code>OrgDefinition</code> with departments, teams, and
+roles:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> compile_org, RoleDefinition</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact.config <span class="im">import</span> OrgDefinition, DepartmentConfig, TeamConfig</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>org_def <span class="op">=</span> OrgDefinition(</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    org_id<span class="op">=</span><span class="st">&quot;acme-corp&quot;</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;Acme Corporation&quot;</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    departments<span class="op">=</span>[</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        DepartmentConfig(department_id<span class="op">=</span><span class="st">&quot;engineering&quot;</span>, name<span class="op">=</span><span class="st">&quot;Engineering&quot;</span>),</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    teams<span class="op">=</span>[</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>        TeamConfig(<span class="bu">id</span><span class="op">=</span><span class="st">&quot;backend&quot;</span>, name<span class="op">=</span><span class="st">&quot;Backend Team&quot;</span>, workspace<span class="op">=</span><span class="st">&quot;ws-eng&quot;</span>),</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    roles<span class="op">=</span>[</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>            role_id<span class="op">=</span><span class="st">&quot;cto&quot;</span>, name<span class="op">=</span><span class="st">&quot;CTO&quot;</span>,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>            is_primary_for_unit<span class="op">=</span><span class="st">&quot;engineering&quot;</span>,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>            role_id<span class="op">=</span><span class="st">&quot;backend-lead&quot;</span>, name<span class="op">=</span><span class="st">&quot;Backend Lead&quot;</span>,</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>            reports_to_role_id<span class="op">=</span><span class="st">&quot;cto&quot;</span>,</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>            is_primary_for_unit<span class="op">=</span><span class="st">&quot;backend&quot;</span>,</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>        RoleDefinition(</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>            role_id<span class="op">=</span><span class="st">&quot;dev-1&quot;</span>, name<span class="op">=</span><span class="st">&quot;Developer 1&quot;</span>,</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>            reports_to_role_id<span class="op">=</span><span class="st">&quot;backend-lead&quot;</span>,</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>        ),</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>Key relationships: <code>is_primary_for_unit</code> links a role as
+the head of a department or team. <code>reports_to_role_id</code>
+establishes the reporting chain.</p>
+<h3 id="step-2-compile">Step 2: Compile</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>compiled <span class="op">=</span> compile_org(org_def)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> compiled.org_id <span class="op">==</span> <span class="st">&quot;acme-corp&quot;</span></span></code></pre></div>
+<h3 id="step-3-inspect-compiled-nodes">Step 3: Inspect Compiled
+Nodes</h3>
+<p>The compiler assigns positional addresses automatically:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Engineering department -&gt; D1</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>eng <span class="op">=</span> compiled.get_node(<span class="st">&quot;D1&quot;</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> eng.name <span class="op">==</span> <span class="st">&quot;Engineering&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="co"># CTO heads Engineering -&gt; D1-R1</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>cto <span class="op">=</span> compiled.get_node(<span class="st">&quot;D1-R1&quot;</span>)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> cto.name <span class="op">==</span> <span class="st">&quot;CTO&quot;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Backend Team under CTO -&gt; D1-R1-T1</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>backend <span class="op">=</span> compiled.get_node(<span class="st">&quot;D1-R1-T1&quot;</span>)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> backend.name <span class="op">==</span> <span class="st">&quot;Backend Team&quot;</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Backend Lead heads the team -&gt; D1-R1-T1-R1</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>lead <span class="op">=</span> compiled.get_node(<span class="st">&quot;D1-R1-T1-R1&quot;</span>)</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> lead.name <span class="op">==</span> <span class="st">&quot;Backend Lead&quot;</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="co"># Developer 1 reports to Backend Lead -&gt; D1-R1-T1-R1-R1</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>dev <span class="op">=</span> compiled.get_node(<span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>)</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dev.name <span class="op">==</span> <span class="st">&quot;Developer 1&quot;</span></span></code></pre></div>
+<h3 id="step-4-query-by-prefix-and-subtree">Step 4: Query by Prefix and
+Subtree</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># All nodes under Engineering</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>eng_subtree <span class="op">=</span> compiled.query_by_prefix(<span class="st">&quot;D1&quot;</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(eng_subtree) <span class="op">==</span> <span class="dv">5</span>  <span class="co"># D1, D1-R1, D1-R1-T1, D1-R1-T1-R1, D1-R1-T1-R1-R1</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Subtree from Backend Lead down</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>subtree <span class="op">=</span> compiled.get_subtree(<span class="st">&quot;D1-R1-T1-R1&quot;</span>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(subtree) <span class="op">==</span> <span class="dv">2</span>  <span class="co"># T1-R1 and T1-R1-R1</span></span></code></pre></div>
+<h3 id="step-5-walk-the-parent-chain">Step 5: Walk the Parent Chain</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>leaf <span class="op">=</span> compiled.get_node(<span class="st">&quot;D1-R1-T1-R1-R1&quot;</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>chain <span class="op">=</span> []</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>current <span class="op">=</span> leaf.parent_address</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> current <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    node <span class="op">=</span> compiled.get_node(current)</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    chain.append(node.address)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    current <span class="op">=</span> node.parent_address</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> chain <span class="op">==</span> [<span class="st">&quot;D1-R1-T1-R1&quot;</span>, <span class="st">&quot;D1-R1-T1&quot;</span>, <span class="st">&quot;D1-R1&quot;</span>, <span class="st">&quot;D1&quot;</span>]</span></code></pre></div>
+<h3 id="step-6-auto-created-vacant-roles">Step 6: Auto-Created Vacant
+Roles</h3>
+<p>If a department has no head role defined, PACT auto-creates a vacant
+one:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>headless_org <span class="op">=</span> OrgDefinition(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    org_id<span class="op">=</span><span class="st">&quot;headless&quot;</span>, name<span class="op">=</span><span class="st">&quot;Headless Org&quot;</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    departments<span class="op">=</span>[DepartmentConfig(department_id<span class="op">=</span><span class="st">&quot;sales&quot;</span>, name<span class="op">=</span><span class="st">&quot;Sales&quot;</span>)],</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    roles<span class="op">=</span>[],</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>headless <span class="op">=</span> compile_org(headless_org)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>sales_head <span class="op">=</span> headless.get_node(<span class="st">&quot;D1-R1&quot;</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sales_head.is_vacant <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<h3 id="step-7-immutability">Step 7: Immutability</h3>
+<p>The compiled structure is wrapped in <code>MappingProxyType</code> to
+prevent mutation:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    compiled.nodes[<span class="st">&quot;INJECTED&quot;</span>] <span class="op">=</span> some_node</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span>:</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Read-only: prevents runtime tampering</span></span></code></pre></div>
+<h3 id="step-8-compilation-errors">Step 8: Compilation Errors</h3>
+<p>Invalid definitions are caught at compile time:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> CompilationError</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Duplicate role IDs</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    compile_org(OrgDefinition(</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        org_id<span class="op">=</span><span class="st">&quot;bad&quot;</span>, name<span class="op">=</span><span class="st">&quot;Bad&quot;</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>        departments<span class="op">=</span>[], roles<span class="op">=</span>[</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>            RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;dup&quot;</span>, name<span class="op">=</span><span class="st">&quot;First&quot;</span>),</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>            RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;dup&quot;</span>, name<span class="op">=</span><span class="st">&quot;Second&quot;</span>),</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        ],</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    ))</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> CompilationError:</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Duplicate role IDs</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Dangling reports_to reference</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    compile_org(OrgDefinition(</span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>        org_id<span class="op">=</span><span class="st">&quot;bad2&quot;</span>, name<span class="op">=</span><span class="st">&quot;Bad2&quot;</span>,</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>        departments<span class="op">=</span>[], roles<span class="op">=</span>[</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>            RoleDefinition(role_id<span class="op">=</span><span class="st">&quot;orphan&quot;</span>, name<span class="op">=</span><span class="st">&quot;Orphan&quot;</span>,</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>                           reports_to_role_id<span class="op">=</span><span class="st">&quot;nonexistent&quot;</span>),</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>        ],</span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    ))</span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> CompilationError:</span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Dangling reference</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<ol type="1">
+<li><p><strong>Forgetting <code>is_primary_for_unit</code></strong> –
+Without it, the role will not be assigned as the head of the
+department/team, resulting in an auto-created vacant head
+instead.</p></li>
+<li><p><strong>Circular <code>reports_to_role_id</code></strong> – Role
+A reports to B, B reports to A. This will cause a
+<code>CompilationError</code>.</p></li>
+<li><p><strong>Assuming mutable nodes</strong> –
+<code>CompiledOrg.nodes</code> is read-only. If you need to change the
+org, recompile from a modified <code>OrgDefinition</code>.</p></li>
+</ol>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Two-Department Org</strong>: Define an organization with
+Engineering and Finance departments, each with a head role and one
+subordinate. Compile it and verify all addresses.</p></li>
+<li><p><strong>Vacancy Detection</strong>: Create an org where one
+department has no roles defined. After compilation, use
+<code>get_vacancy_status()</code> to find the auto-created vacant
+role.</p></li>
+<li><p><strong>Subtree Query</strong>: Build a 3-level org and use
+<code>query_by_prefix()</code> to extract just the nodes under a
+specific team.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>compile_org()</code> transforms declarative definitions into
+address-indexed structures</li>
+<li>Address assignment follows declaration order and reporting
+relationships</li>
+<li>Headless departments/teams get auto-created vacant roles</li>
+<li>Compiled orgs are immutable – no runtime tampering</li>
+<li>Compilation catches errors early: duplicate IDs, dangling
+references</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="03_clearance.md">Chapter 3: Knowledge Clearance</a> – Define
+classification levels and role clearance for controlling access to
+sensitive data.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

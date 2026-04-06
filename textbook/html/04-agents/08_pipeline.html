@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 8: Pipeline
+Composition &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-8-pipeline-composition">Chapter 8: Pipeline
+Composition</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>Pipeline</strong> abstraction composes multiple agents
+into coordinated multi-agent workflows. Instead of building monolithic
+agents, you wire smaller specialized agents together using composition
+patterns: sequential chains, intelligent routers, parallel execution,
+ensemble synthesis, and more. This chapter teaches you the Pipeline base
+class, the <code>SequentialPipeline</code>, the <code>to_agent()</code>
+bridge, and the nine factory methods that create specific coordination
+patterns.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapters 1-7 (all individual agent types and
+GovernedSupervisor)</li>
+<li>Understanding of <code>BaseAgent</code> and the agent lifecycle</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-pipeline-as-composable-abstraction">Concept 1:
+Pipeline as Composable Abstraction</h3>
+<p><code>Pipeline</code> is the abstract base class for all multi-agent
+coordination patterns. It provides two methods:
+<code>.run(**inputs)</code> to execute the pipeline, and
+<code>.to_agent()</code> to convert the pipeline into a
+<code>BaseAgent</code> for nested composition. This means pipelines can
+contain other pipelines.</p>
+<ul>
+<li><strong>What</strong>: An abstract base class with
+<code>run()</code> for execution and <code>to_agent()</code> for
+composition</li>
+<li><strong>Why</strong>: A single abstraction for all coordination
+patterns enables uniform composition – any pipeline can be used anywhere
+an agent is expected</li>
+<li><strong>How</strong>: Subclass <code>Pipeline</code>, implement
+<code>run()</code>, use <code>to_agent()</code> to nest inside larger
+orchestrations</li>
+<li><strong>When</strong>: Whenever a task requires multiple agents
+working together in a defined coordination pattern</li>
+</ul>
+<h3 id="concept-2-sequentialpipeline">Concept 2: SequentialPipeline</h3>
+<p><code>SequentialPipeline</code> executes agents in order, passing
+each agent’s output as input to the next. It is the simplest multi-agent
+pattern:
+<code>Input -&gt; [Agent 1] -&gt; [Agent 2] -&gt; [Agent 3] -&gt; Output</code>.
+Created via <code>Pipeline.sequential(agents=[...])</code>.</p>
+<ul>
+<li><strong>What</strong>: A linear chain where each agent processes the
+previous agent’s output</li>
+<li><strong>Why</strong>: Many workflows are naturally sequential – ETL
+(extract, transform, load), analysis pipelines, document processing</li>
+<li><strong>How</strong>:
+<code>Pipeline.sequential(agents=[a, b, c])</code> creates a chain;
+<code>run(data="input")</code> executes it</li>
+<li><strong>When</strong>: When each step depends on the previous step’s
+output and order matters</li>
+</ul>
+<h3 id="concept-3-pipeline-to-agent-bridge">Concept 3: Pipeline-to-Agent
+Bridge</h3>
+<p><code>pipeline.to_agent(name, description)</code> converts any
+pipeline into a <code>BaseAgent</code>. This enables recursive
+composition: a sequential pipeline can be wrapped as an agent and used
+inside a parallel pipeline, which itself can be wrapped and used in a
+supervisor pattern.</p>
+<ul>
+<li><strong>What</strong>: A method that wraps a pipeline’s
+<code>run()</code> in a <code>BaseAgent</code> interface</li>
+<li><strong>Why</strong>: Pipelines and agents should be interchangeable
+– this bridge makes all coordination patterns composable at any
+level</li>
+<li><strong>How</strong>:
+<code>agent = pipeline.to_agent(name="etl", description="ETL pipeline")</code>;
+the agent delegates <code>run()</code> to the pipeline</li>
+<li><strong>When</strong>: When you need to use a pipeline as a
+component in a larger orchestration</li>
+</ul>
+<h3 id="concept-4-factory-methods-for-coordination-patterns">Concept 4:
+Factory Methods for Coordination Patterns</h3>
+<p><code>Pipeline</code> provides nine static factory methods, each
+creating a different coordination pattern. These patterns cover the full
+spectrum of multi-agent coordination, from simple chains to adversarial
+reasoning.</p>
+<ul>
+<li><strong>What</strong>: Static methods like
+<code>Pipeline.sequential()</code>, <code>Pipeline.router()</code>,
+<code>Pipeline.parallel()</code>, etc.</li>
+<li><strong>Why</strong>: Factory methods encode proven coordination
+patterns – you select the pattern, not the implementation</li>
+<li><strong>How</strong>: Call the factory with a list of agents and
+pattern-specific parameters</li>
+<li><strong>When</strong>: Choose the pattern that matches your
+coordination need (see the pattern summary table below)</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 34%" />
+<col style="width: 14%" />
+<col style="width: 29%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Pipeline</code> (abstract)</td>
+<td>–</td>
+<td><code>Pipeline</code></td>
+<td>Base class for all patterns</td>
+</tr>
+<tr>
+<td><code>pipeline.run()</code></td>
+<td><code>**inputs</code></td>
+<td><code>dict</code></td>
+<td>Execute the pipeline</td>
+</tr>
+<tr>
+<td><code>pipeline.to_agent()</code></td>
+<td><code>name: str</code>, <code>description: str</code></td>
+<td><code>BaseAgent</code></td>
+<td>Convert pipeline to agent for composition</td>
+</tr>
+<tr>
+<td><code>Pipeline.sequential()</code></td>
+<td><code>agents: list[BaseAgent]</code></td>
+<td><code>SequentialPipeline</code></td>
+<td>Linear agent chain</td>
+</tr>
+<tr>
+<td><code>Pipeline.router()</code></td>
+<td><code>agents: list</code>, <code>routing_strategy: str</code></td>
+<td><code>Pipeline</code></td>
+<td>Intelligent request routing</td>
+</tr>
+<tr>
+<td><code>Pipeline.parallel()</code></td>
+<td><code>agents: list</code>, <code>aggregator</code>,
+<code>max_workers</code>, …</td>
+<td><code>Pipeline</code></td>
+<td>Concurrent execution</td>
+</tr>
+<tr>
+<td><code>Pipeline.ensemble()</code></td>
+<td><code>agents: list</code>, <code>synthesizer</code>,
+<code>top_k</code>, …</td>
+<td><code>Pipeline</code></td>
+<td>Multi-perspective synthesis</td>
+</tr>
+<tr>
+<td><code>Pipeline.supervisor_worker()</code></td>
+<td><code>supervisor</code>, <code>workers</code>,
+<code>selection_mode</code></td>
+<td><code>Pipeline</code></td>
+<td>Delegated task execution</td>
+</tr>
+<tr>
+<td><code>Pipeline.blackboard()</code></td>
+<td><code>specialists</code>, <code>controller</code>,
+<code>max_iterations</code></td>
+<td><code>Pipeline</code></td>
+<td>Iterative specialist collaboration</td>
+</tr>
+<tr>
+<td><code>Pipeline.consensus()</code></td>
+<td><code>agents: list</code></td>
+<td><code>Pipeline</code></td>
+<td>Democratic voting</td>
+</tr>
+<tr>
+<td><code>Pipeline.debate()</code></td>
+<td><code>agents: list</code></td>
+<td><code>Pipeline</code></td>
+<td>Adversarial reasoning</td>
+</tr>
+<tr>
+<td><code>Pipeline.handoff()</code></td>
+<td><code>agents: list</code></td>
+<td><code>Pipeline</code></td>
+<td>Tier escalation</td>
+</tr>
+<tr>
+<td><code>SequentialPipeline</code></td>
+<td>–</td>
+<td><code>SequentialPipeline</code></td>
+<td>Concrete linear chain implementation</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.patterns.pipeline <span class="im">import</span> Pipeline, SequentialPipeline</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.core.base_agent <span class="im">import</span> BaseAgent, BaseAgentConfig</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.signatures <span class="im">import</span> InputField, OutputField, Signature</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<p>The Pipeline module provides the base class and
+<code>SequentialPipeline</code>. <code>BaseAgent</code>,
+<code>BaseAgentConfig</code>, and <code>Signature</code> are needed to
+create agents that participate in pipelines.</p>
+<h3 id="custom-pipeline-subclass">Custom Pipeline Subclass</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DataProcessingPipeline(Pipeline):</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Example: a three-step data processing pipeline.&quot;&quot;&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> run(<span class="va">self</span>, <span class="op">**</span>inputs):</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        data <span class="op">=</span> inputs.get(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;&quot;</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Step 1: Clean</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        cleaned <span class="op">=</span> data.strip().lower()</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Step 2: Transform</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        transformed <span class="op">=</span> cleaned.replace(<span class="st">&quot; &quot;</span>, <span class="st">&quot;_&quot;</span>)</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Step 3: Validate</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        is_valid <span class="op">=</span> <span class="bu">len</span>(transformed) <span class="op">&gt;</span> <span class="dv">0</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> {</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;original&quot;</span>: data,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;cleaned&quot;</span>: cleaned,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;transformed&quot;</span>: transformed,</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;valid&quot;</span>: is_valid,</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>        }</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>pipeline <span class="op">=</span> DataProcessingPipeline()</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> pipeline.run(data<span class="op">=</span><span class="st">&quot;  Hello World  &quot;</span>)</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result[<span class="st">&quot;original&quot;</span>] <span class="op">==</span> <span class="st">&quot;  Hello World  &quot;</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result[<span class="st">&quot;cleaned&quot;</span>] <span class="op">==</span> <span class="st">&quot;hello world&quot;</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result[<span class="st">&quot;transformed&quot;</span>] <span class="op">==</span> <span class="st">&quot;hello_world&quot;</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> result[<span class="st">&quot;valid&quot;</span>] <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>Subclassing <code>Pipeline</code> and implementing <code>run()</code>
+is the simplest way to create a multi-step pipeline. The
+<code>run()</code> method receives keyword arguments and returns a dict.
+In this example, three processing steps are encoded directly – in
+practice, these would delegate to agents.</p>
+<h3 id="pipeline-to-agent-bridge">Pipeline-to-Agent Bridge</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> pipeline.to_agent(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;data_processor&quot;</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Cleans and transforms data&quot;</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, BaseAgent)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent.agent_id <span class="op">==</span> <span class="st">&quot;data_processor&quot;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="co"># The agent delegates to the pipeline&#39;s run()</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>agent_result <span class="op">=</span> agent.run(data<span class="op">=</span><span class="st">&quot;  Test Input  &quot;</span>)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent_result[<span class="st">&quot;transformed&quot;</span>] <span class="op">==</span> <span class="st">&quot;test_input&quot;</span></span></code></pre></div>
+<p><code>to_agent()</code> wraps the pipeline in a
+<code>BaseAgent</code> shell. The resulting agent has an
+<code>agent_id</code> and delegates its <code>run()</code> to the
+pipeline. This agent can now be used in any orchestration that accepts
+<code>BaseAgent</code> instances.</p>
+<h3 id="sequentialpipeline-linear-agent-chain">SequentialPipeline –
+Linear Agent Chain</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> StepAgent(BaseAgent):</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Minimal agent that adds a step marker to input.&quot;&quot;&quot;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, step_name: <span class="bu">str</span>):</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        config <span class="op">=</span> BaseAgentConfig(llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>, model<span class="op">=</span><span class="st">&quot;mock&quot;</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>        <span class="kw">class</span> StepSig(Signature):</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>            <span class="co">&quot;&quot;&quot;Process a pipeline step.&quot;&quot;&quot;</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>            data: <span class="bu">str</span> <span class="op">=</span> InputField(description<span class="op">=</span><span class="st">&quot;Input data&quot;</span>)</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>            result: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Step output&quot;</span>)</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>(config<span class="op">=</span>config, signature<span class="op">=</span>StepSig())</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.step_name <span class="op">=</span> step_name</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> run(<span class="va">self</span>, <span class="op">**</span>inputs):</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>        data <span class="op">=</span> inputs.get(<span class="st">&quot;data&quot;</span>, inputs.get(<span class="st">&quot;result&quot;</span>, <span class="st">&quot;start&quot;</span>))</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> {</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;result&quot;</span>: <span class="ss">f&quot;</span><span class="sc">{</span>data<span class="sc">}</span><span class="ss"> -&gt; </span><span class="sc">{</span><span class="va">self</span><span class="sc">.</span>step_name<span class="sc">}</span><span class="ss">&quot;</span>,</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;data&quot;</span>: <span class="ss">f&quot;</span><span class="sc">{</span>data<span class="sc">}</span><span class="ss"> -&gt; </span><span class="sc">{</span><span class="va">self</span><span class="sc">.</span>step_name<span class="sc">}</span><span class="ss">&quot;</span>,</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>        }</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>agent_a <span class="op">=</span> StepAgent(<span class="st">&quot;extract&quot;</span>)</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>agent_b <span class="op">=</span> StepAgent(<span class="st">&quot;transform&quot;</span>)</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>agent_c <span class="op">=</span> StepAgent(<span class="st">&quot;load&quot;</span>)</span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a><span class="co"># Create sequential pipeline via factory method</span></span>
+<span id="cb4-29"><a href="#cb4-29" aria-hidden="true" tabindex="-1"></a>seq_pipeline <span class="op">=</span> Pipeline.sequential(agents<span class="op">=</span>[agent_a, agent_b, agent_c])</span>
+<span id="cb4-30"><a href="#cb4-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-31"><a href="#cb4-31" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(seq_pipeline, SequentialPipeline)</span>
+<span id="cb4-32"><a href="#cb4-32" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(seq_pipeline.agents) <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb4-33"><a href="#cb4-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-34"><a href="#cb4-34" aria-hidden="true" tabindex="-1"></a><span class="co"># Execute the sequential pipeline</span></span>
+<span id="cb4-35"><a href="#cb4-35" aria-hidden="true" tabindex="-1"></a>seq_result <span class="op">=</span> seq_pipeline.run(data<span class="op">=</span><span class="st">&quot;raw_data&quot;</span>)</span>
+<span id="cb4-36"><a href="#cb4-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-37"><a href="#cb4-37" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;final_output&quot;</span> <span class="kw">in</span> seq_result</span>
+<span id="cb4-38"><a href="#cb4-38" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;intermediate_results&quot;</span> <span class="kw">in</span> seq_result</span>
+<span id="cb4-39"><a href="#cb4-39" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(seq_result[<span class="st">&quot;intermediate_results&quot;</span>]) <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb4-40"><a href="#cb4-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-41"><a href="#cb4-41" aria-hidden="true" tabindex="-1"></a><span class="co"># Each step is recorded</span></span>
+<span id="cb4-42"><a href="#cb4-42" aria-hidden="true" tabindex="-1"></a>steps <span class="op">=</span> seq_result[<span class="st">&quot;intermediate_results&quot;</span>]</span>
+<span id="cb4-43"><a href="#cb4-43" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> steps[<span class="dv">0</span>][<span class="st">&quot;step&quot;</span>] <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb4-44"><a href="#cb4-44" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> steps[<span class="dv">0</span>][<span class="st">&quot;agent&quot;</span>] <span class="op">==</span> <span class="st">&quot;StepAgent&quot;</span></span>
+<span id="cb4-45"><a href="#cb4-45" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> steps[<span class="dv">1</span>][<span class="st">&quot;step&quot;</span>] <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb4-46"><a href="#cb4-46" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> steps[<span class="dv">2</span>][<span class="st">&quot;step&quot;</span>] <span class="op">==</span> <span class="dv">3</span></span></code></pre></div>
+<p><code>Pipeline.sequential()</code> creates a
+<code>SequentialPipeline</code> from a list of agents. Each agent’s
+output flows to the next. The result includes <code>final_output</code>
+(the last agent’s output) and <code>intermediate_results</code> (a list
+of step records with step number, agent name, and output).</p>
+<h3 id="sequentialpipeline-as-agent">SequentialPipeline as Agent</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>seq_agent <span class="op">=</span> seq_pipeline.to_agent(name<span class="op">=</span><span class="st">&quot;etl_pipeline&quot;</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(seq_agent, BaseAgent)</span></code></pre></div>
+<p>Sequential pipelines can also be converted to agents for nested
+composition.</p>
+<h3 id="pipeline-factory-methods-documentation-patterns">Pipeline
+Factory Methods (Documentation Patterns)</h3>
+<p>The remaining factory methods create advanced coordination
+patterns:</p>
+<p><strong>Pipeline.router()</strong> – Routes requests to the best
+agent based on A2A capability matching. Strategies include
+<code>"semantic"</code> (A2A-based, recommended),
+<code>"round-robin"</code>, and <code>"random"</code>.</p>
+<p><strong>Pipeline.parallel()</strong> – Executes all agents
+concurrently with optional custom aggregator, max workers, and
+timeout.</p>
+<p><strong>Pipeline.ensemble()</strong> – Selects top-k agents with best
+capability matches, executes them, then synthesizes perspectives into a
+unified result via a synthesizer agent.</p>
+<p><strong>Pipeline.supervisor_worker()</strong> – Supervisor delegates
+tasks to workers with A2A semantic matching. Workers execute
+independently and results are aggregated.</p>
+<p><strong>Pipeline.blackboard()</strong> – Maintains shared state,
+iteratively selects specialists based on evolving needs, and uses a
+controller to determine completion.</p>
+<p><strong>Pipeline.consensus()</strong> – Democratic voting where
+multiple agents propose and vote.</p>
+<p><strong>Pipeline.debate()</strong> – Adversarial reasoning with
+proponent, opponent, and judge.</p>
+<p><strong>Pipeline.handoff()</strong> – Tier-based escalation where
+each agent handles one phase then hands off.</p>
+<h3 id="pattern-summary">Pattern Summary</h3>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Use Case</th>
+<th>Agent Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sequential</code></td>
+<td>Linear processing chain</td>
+<td>N</td>
+</tr>
+<tr>
+<td><code>router</code></td>
+<td>Best-agent selection</td>
+<td>N</td>
+</tr>
+<tr>
+<td><code>parallel</code></td>
+<td>Concurrent independent tasks</td>
+<td>N</td>
+</tr>
+<tr>
+<td><code>ensemble</code></td>
+<td>Multi-perspective synthesis</td>
+<td>N + 1</td>
+</tr>
+<tr>
+<td><code>supervisor_worker</code></td>
+<td>Delegated task management</td>
+<td>1 + N</td>
+</tr>
+<tr>
+<td><code>blackboard</code></td>
+<td>Iterative specialist refinement</td>
+<td>N + 1</td>
+</tr>
+<tr>
+<td><code>consensus</code></td>
+<td>Democratic voting</td>
+<td>N</td>
+</tr>
+<tr>
+<td><code>debate</code></td>
+<td>Adversarial argument evaluation</td>
+<td>2+</td>
+</tr>
+<tr>
+<td><code>handoff</code></td>
+<td>Tier-based escalation</td>
+<td>N tiers</td>
+</tr>
+</tbody>
+</table>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 29%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Using <code>sequential</code> when agents are independent</td>
+<td>Use <code>Pipeline.parallel()</code> for concurrent tasks</td>
+<td>Sequential execution wastes time when agents do not depend on each
+other</td>
+</tr>
+<tr>
+<td>Not using <code>to_agent()</code> for nested composition</td>
+<td>Wrap pipelines with <code>to_agent()</code> before nesting</td>
+<td>Pipelines and agents have different interfaces – the bridge makes
+them interchangeable</td>
+</tr>
+<tr>
+<td>Hardcoding agent order in sequential pipelines</td>
+<td>Consider <code>router</code> for dynamic selection</td>
+<td>Fixed order breaks when the task does not follow the expected
+pattern</td>
+</tr>
+<tr>
+<td>Building monolithic agents instead of composing</td>
+<td>Split into specialized agents and compose with Pipeline</td>
+<td>Smaller agents are easier to test, reuse, and replace</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create three <code>StepAgent</code> instances (research, analyze,
+recommend) and compose them into a <code>SequentialPipeline</code>.
+Execute with <code>run(data="market opportunity")</code> and verify that
+<code>intermediate_results</code> has three entries with the correct
+step numbers.</li>
+<li>Create a custom <code>Pipeline</code> subclass that takes two
+agents, runs both, and returns whichever result has a longer
+<code>"result"</code> string. Test it with two <code>StepAgent</code>
+instances that produce different-length outputs.</li>
+<li>Create a <code>SequentialPipeline</code>, convert it to an agent
+with <code>to_agent()</code>, then create a second
+<code>SequentialPipeline</code> that includes the converted agent as one
+of its steps. Execute the nested pipeline and verify the output traces
+through all steps.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>Pipeline</code> is the composable abstraction for all
+multi-agent coordination patterns</li>
+<li><code>to_agent()</code> converts any pipeline into a
+<code>BaseAgent</code> for recursive composition</li>
+<li><code>Pipeline.sequential()</code> creates a linear chain where each
+agent’s output feeds the next</li>
+<li>Nine factory methods cover the full spectrum: sequential, router,
+parallel, ensemble, supervisor-worker, blackboard, consensus, debate,
+handoff</li>
+<li><code>intermediate_results</code> in <code>SequentialPipeline</code>
+provides full step-by-step traceability</li>
+<li>Pipelines within pipelines enable arbitrarily complex
+orchestrations</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="09_tree_of_thoughts.md">Chapter 9: Tree-of-Thoughts
+Agent</a> – Explore multiple reasoning paths in parallel, evaluate them
+independently, and select the best one for complex decision-making.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

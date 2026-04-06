@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 9: Serving
+Configuration &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-9-serving-configuration">Chapter 9: Serving
+Configuration</h1>
+<h2 id="overview">Overview</h2>
+<p>The final step in the alignment lifecycle is <strong>serving</strong>
+– making your fine-tuned model available for inference. Kailash Align
+supports two deployment targets: <strong>Ollama</strong> (local
+inference with GGUF) and <strong>vLLM</strong> (high-throughput GPU
+serving). This chapter teaches you how to configure serving, understand
+quantization options, set up generation backends, and deploy through the
+AlignmentServing interface.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="07_merge.md">Chapter 7: Adapter Merge</a></li>
+<li><a href="08_evaluation.md">Chapter 8: Evaluation</a></li>
+<li>Familiarity with GGUF format and quantization concepts
+(helpful)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-servingconfig">Concept 1: ServingConfig</h3>
+<p>ServingConfig specifies the deployment target (<code>"ollama"</code>
+or <code>"vllm"</code>), quantization level, system prompt, and
+validation settings. It is the main configuration object for the
+<code>AlignmentServing</code> class.</p>
+<ul>
+<li><strong>What</strong>: A frozen dataclass controlling how and where
+to deploy a fine-tuned model</li>
+<li><strong>Why</strong>: Deployment configuration must be explicit and
+reproducible – the same config produces the same deployment</li>
+<li><strong>How</strong>:
+<code>ServingConfig(target="ollama", quantization="q4_k_m")</code> for
+local Ollama deployment</li>
+<li><strong>When</strong>: After merging and evaluating, when you are
+ready to serve the model</li>
+</ul>
+<h3 id="concept-2-quantization-types">Concept 2: Quantization Types</h3>
+<p>Quantization reduces model size and inference cost by lowering
+numerical precision. Kailash Align supports three quantization
+levels:</p>
+<table>
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 44%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th>Description</th>
+<th>Size Reduction</th>
+<th>Quality Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>f16</code></td>
+<td>No quantization (float16)</td>
+<td>2x vs float32</td>
+<td>None</td>
+</tr>
+<tr>
+<td><code>q4_k_m</code></td>
+<td>4-bit K-quant mixed (default)</td>
+<td>~4x vs float16</td>
+<td>Minimal</td>
+</tr>
+<tr>
+<td><code>q8_0</code></td>
+<td>8-bit quantization</td>
+<td>~2x vs float16</td>
+<td>Very small</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>What</strong>: Numerical precision reduction for
+inference</li>
+<li><strong>Why</strong>: 4-bit quantization makes 8B models run on
+consumer GPUs (8GB VRAM)</li>
+<li><strong>How</strong>:
+<code>ServingConfig(quantization="q4_k_m")</code> – the default</li>
+<li><strong>When</strong>: Use q4_k_m for most deployments; f16 when
+quality is critical; q8_0 as a middle ground</li>
+</ul>
+<h3 id="concept-3-generation-backends">Concept 3: Generation
+Backends</h3>
+<p>For online alignment methods (GRPO, RLOO, OnlineDPO), Kailash Align
+provides two generation backends:</p>
+<table>
+<thead>
+<tr>
+<th>Backend</th>
+<th>Use Case</th>
+<th>Speed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VLLMBackend</code></td>
+<td>Multi-GPU, high-throughput</td>
+<td>Fast</td>
+</tr>
+<tr>
+<td><code>HFGenerationBackend</code></td>
+<td>Single GPU, simple setup</td>
+<td>Moderate</td>
+</tr>
+</tbody>
+</table>
+<p>Both implement the <code>GenerationBackend</code> abstract base class
+and use lazy model loading.</p>
+<h3 id="concept-4-supported-architectures">Concept 4: Supported
+Architectures</h3>
+<p>Not all model architectures support GGUF conversion. The
+<code>SUPPORTED_ARCHITECTURES</code> dictionary maps architecture names
+to their support level. Llama, Mistral, Phi-3, and Qwen2 are fully
+supported.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 43%" />
+<col style="width: 12%" />
+<col style="width: 24%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Field</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ServingConfig()</code></td>
+<td><code>target</code>, <code>quantization</code>,
+<code>system_prompt</code>, …</td>
+<td><code>ServingConfig</code></td>
+<td>Configure deployment</td>
+</tr>
+<tr>
+<td><code>VLLMConfig()</code></td>
+<td><code>tensor_parallel_size</code>,
+<code>gpu_memory_utilization</code>, …</td>
+<td><code>VLLMConfig</code></td>
+<td>vLLM-specific settings</td>
+</tr>
+<tr>
+<td><code>AlignmentServing()</code></td>
+<td><code>adapter_registry</code>, <code>config</code></td>
+<td><code>Serving</code></td>
+<td>Main serving interface</td>
+</tr>
+<tr>
+<td><code>VLLMBackend()</code></td>
+<td><code>model_id</code>, <code>config</code></td>
+<td><code>VLLMBackend</code></td>
+<td>vLLM generation backend</td>
+</tr>
+<tr>
+<td><code>HFGenerationBackend()</code></td>
+<td><code>model_id</code>, <code>device</code></td>
+<td><code>HFBackend</code></td>
+<td>HuggingFace generation backend</td>
+</tr>
+<tr>
+<td><code>SUPPORTED_ARCHITECTURES</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Architecture -&gt; support level</td>
+</tr>
+<tr>
+<td><code>QUANTIZATION_TYPES</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Quantization name -&gt; config</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    AdapterRegistry,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    AlignmentServing,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    GenerationBackend,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    HFGenerationBackend,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    ServingConfig,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    VLLMBackend,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    VLLMConfig,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align.exceptions <span class="im">import</span> ServingError</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align.serving <span class="im">import</span> QUANTIZATION_TYPES, SUPPORTED_ARCHITECTURES</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;meta-llama/Llama-3.1-8B&quot;</span>)</span></code></pre></div>
+<h3 id="servingconfig-defaults">ServingConfig Defaults</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>default_serving <span class="op">=</span> ServingConfig()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_serving.target <span class="op">==</span> <span class="st">&quot;ollama&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_serving.quantization <span class="op">==</span> <span class="st">&quot;q4_k_m&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_serving.system_prompt <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_serving.ollama_host <span class="op">==</span> <span class="st">&quot;http://localhost:11434&quot;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_serving.validate_gguf <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default_serving.validation_timeout <span class="op">==</span> <span class="dv">120</span></span></code></pre></div>
+<p>The default targets Ollama with 4-bit quantization and GGUF
+validation enabled. The validation timeout gives Ollama 120 seconds to
+load and validate the model.</p>
+<h3 id="target-validation">Target Validation</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> valid_target <span class="kw">in</span> (<span class="st">&quot;ollama&quot;</span>, <span class="st">&quot;vllm&quot;</span>):</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    cfg <span class="op">=</span> ServingConfig(target<span class="op">=</span>valid_target)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> cfg.target <span class="op">==</span> valid_target</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    ServingConfig(target<span class="op">=</span><span class="st">&quot;invalid&quot;</span>)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;target&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span></code></pre></div>
+<p>Only <code>"ollama"</code> and <code>"vllm"</code> are valid
+targets.</p>
+<h3 id="quantization-validation">Quantization Validation</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> valid_quant <span class="kw">in</span> (<span class="st">&quot;f16&quot;</span>, <span class="st">&quot;q4_k_m&quot;</span>, <span class="st">&quot;q8_0&quot;</span>):</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    cfg <span class="op">=</span> ServingConfig(quantization<span class="op">=</span>valid_quant)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> cfg.quantization <span class="op">==</span> valid_quant</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    ServingConfig(quantization<span class="op">=</span><span class="st">&quot;q2_k&quot;</span>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;quantization&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span></code></pre></div>
+<p>Only three quantization types are supported. Unsupported types like
+<code>"q2_k"</code> are rejected.</p>
+<h3 id="custom-serving-configs">Custom Serving Configs</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>vllm_serving <span class="op">=</span> ServingConfig(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    target<span class="op">=</span><span class="st">&quot;vllm&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    quantization<span class="op">=</span><span class="st">&quot;f16&quot;</span>,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    system_prompt<span class="op">=</span><span class="st">&quot;You are a helpful assistant.&quot;</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    validate_gguf<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_serving.target <span class="op">==</span> <span class="st">&quot;vllm&quot;</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_serving.quantization <span class="op">==</span> <span class="st">&quot;f16&quot;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_serving.system_prompt <span class="op">==</span> <span class="st">&quot;You are a helpful assistant.&quot;</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>ollama_serving <span class="op">=</span> ServingConfig(</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>    target<span class="op">=</span><span class="st">&quot;ollama&quot;</span>,</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    quantization<span class="op">=</span><span class="st">&quot;q8_0&quot;</span>,</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    ollama_host<span class="op">=</span><span class="st">&quot;http://my-server:11434&quot;</span>,</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    validation_timeout<span class="op">=</span><span class="dv">300</span>,</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ollama_serving.ollama_host <span class="op">==</span> <span class="st">&quot;http://my-server:11434&quot;</span></span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ollama_serving.validation_timeout <span class="op">==</span> <span class="dv">300</span></span></code></pre></div>
+<p>For vLLM, you typically use f16 (no quantization) since vLLM manages
+GPU memory efficiently. For Ollama, you can point to a remote host and
+extend the validation timeout for large models.</p>
+<h3 id="supported-architectures">Supported Architectures</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;LlamaForCausalLM&quot;</span> <span class="kw">in</span> SUPPORTED_ARCHITECTURES</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;MistralForCausalLM&quot;</span> <span class="kw">in</span> SUPPORTED_ARCHITECTURES</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;Phi3ForCausalLM&quot;</span> <span class="kw">in</span> SUPPORTED_ARCHITECTURES</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;Qwen2ForCausalLM&quot;</span> <span class="kw">in</span> SUPPORTED_ARCHITECTURES</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> SUPPORTED_ARCHITECTURES[<span class="st">&quot;LlamaForCausalLM&quot;</span>] <span class="op">==</span> <span class="st">&quot;fully_supported&quot;</span></span></code></pre></div>
+<p>Check this dictionary before attempting GGUF conversion to ensure
+your model architecture is supported.</p>
+<h3 id="quantization-types">Quantization Types</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;f16&quot;</span> <span class="kw">in</span> QUANTIZATION_TYPES</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;q4_k_m&quot;</span> <span class="kw">in</span> QUANTIZATION_TYPES</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;q8_0&quot;</span> <span class="kw">in</span> QUANTIZATION_TYPES</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> QUANTIZATION_TYPES[<span class="st">&quot;f16&quot;</span>] <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;f16 means no quantization step&quot;</span></span></code></pre></div>
+<p><code>f16</code> maps to <code>None</code> because it skips the
+quantization step entirely – the GGUF file contains float16 weights.</p>
+<h3 id="alignmentserving">AlignmentServing</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>serving <span class="op">=</span> AlignmentServing()</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> serving._registry <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(serving._config, ServingConfig)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>registry <span class="op">=</span> AdapterRegistry()</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>serving_with_registry <span class="op">=</span> AlignmentServing(</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    adapter_registry<span class="op">=</span>registry,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    config<span class="op">=</span>ServingConfig(target<span class="op">=</span><span class="st">&quot;ollama&quot;</span>, quantization<span class="op">=</span><span class="st">&quot;q4_k_m&quot;</span>),</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> serving_with_registry._registry <span class="kw">is</span> registry</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> serving_with_registry._config.target <span class="op">==</span> <span class="st">&quot;ollama&quot;</span></span></code></pre></div>
+<p>AlignmentServing is the main interface for deploying adapters. It
+requires an AdapterRegistry for operations that look up adapter
+metadata.</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> test_serving_requires_registry() <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    no_registry <span class="op">=</span> AlignmentServing(config<span class="op">=</span>ServingConfig(target<span class="op">=</span><span class="st">&quot;vllm&quot;</span>))</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> no_registry.deploy(<span class="st">&quot;any-adapter&quot;</span>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ServingError&quot;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> ServingError <span class="im">as</span> e:</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">assert</span> <span class="st">&quot;AdapterRegistry&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>asyncio.run(test_serving_requires_registry())</span></code></pre></div>
+<p>Attempting to deploy without a registry raises
+<code>ServingError</code>.</p>
+<h3 id="vllmconfig">VLLMConfig</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>vllm_config <span class="op">=</span> VLLMConfig()</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_config.tensor_parallel_size <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_config.gpu_memory_utilization <span class="op">==</span> <span class="fl">0.9</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_config.max_model_len <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_config.dtype <span class="op">==</span> <span class="st">&quot;auto&quot;</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_config.seed <span class="op">==</span> <span class="dv">42</span></span></code></pre></div>
+<p>VLLMConfig controls vLLM-specific settings.
+<code>tensor_parallel_size</code> sets multi-GPU parallelism.
+<code>gpu_memory_utilization</code> controls how much GPU memory vLLM
+reserves (0.9 = 90%).</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># gpu_memory_utilization must be in (0, 1]</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    VLLMConfig(gpu_memory_utilization<span class="op">=</span><span class="fl">0.0</span>)</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>full_util <span class="op">=</span> VLLMConfig(gpu_memory_utilization<span class="op">=</span><span class="fl">1.0</span>)</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> full_util.gpu_memory_utilization <span class="op">==</span> <span class="fl">1.0</span>, <span class="st">&quot;1.0 is valid (use all GPU memory)&quot;</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="co"># tensor_parallel_size must be &gt;= 1</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>multi_gpu <span class="op">=</span> VLLMConfig(tensor_parallel_size<span class="op">=</span><span class="dv">4</span>)</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> multi_gpu.tensor_parallel_size <span class="op">==</span> <span class="dv">4</span></span></code></pre></div>
+<h3 id="generation-backends">Generation Backends</h3>
+<div class="sourceCode" id="cb12"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(VLLMBackend, GenerationBackend)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(HFGenerationBackend, GenerationBackend)</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="co"># VLLMBackend with lazy loading</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>vllm_backend <span class="op">=</span> VLLMBackend(model_id<span class="op">=</span>model_id)</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_backend._model_id <span class="op">==</span> model_id</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_backend._llm <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;Model not loaded yet (lazy)&quot;</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="co"># HFGenerationBackend with lazy loading</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>hf_backend <span class="op">=</span> HFGenerationBackend(model_id<span class="op">=</span>model_id)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> hf_backend._model_id <span class="op">==</span> model_id</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> hf_backend._model <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;Model not loaded yet (lazy)&quot;</span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom VLLMBackend</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>custom_backend <span class="op">=</span> VLLMBackend(</span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>    model_id<span class="op">=</span>model_id,</span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>    config<span class="op">=</span>VLLMConfig(tensor_parallel_size<span class="op">=</span><span class="dv">2</span>, gpu_memory_utilization<span class="op">=</span><span class="fl">0.8</span>),</span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_backend._config.tensor_parallel_size <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb12-20"><a href="#cb12-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-21"><a href="#cb12-21" aria-hidden="true" tabindex="-1"></a><span class="co"># HFGenerationBackend with device override</span></span>
+<span id="cb12-22"><a href="#cb12-22" aria-hidden="true" tabindex="-1"></a>hf_cpu <span class="op">=</span> HFGenerationBackend(model_id<span class="op">=</span>model_id, device<span class="op">=</span><span class="st">&quot;cpu&quot;</span>)</span>
+<span id="cb12-23"><a href="#cb12-23" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> hf_cpu._device <span class="op">==</span> <span class="st">&quot;cpu&quot;</span></span></code></pre></div>
+<p>Both backends use lazy loading – the model is not loaded until the
+first generation call. This means instantiation is fast and does not
+require GPU memory.</p>
+<h3 id="safe-shutdown">Safe Shutdown</h3>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>vllm_backend.shutdown()  <span class="co"># No-op: model not loaded</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> vllm_backend._llm <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>hf_backend.shutdown()  <span class="co"># No-op: model not loaded</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> hf_backend._model <span class="kw">is</span> <span class="va">None</span></span></code></pre></div>
+<p><code>shutdown()</code> is safe to call even when the model has not
+been loaded yet – it is a no-op in that case.</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a ServingConfig for deploying to a remote Ollama instance at
+<code>http://gpu-server:11434</code> with q8_0 quantization and a
+5-minute validation timeout. Which parameters do you change from the
+defaults?</li>
+<li>Create a VLLMConfig for a 2-GPU setup that reserves 85% of GPU
+memory. What is the <code>tensor_parallel_size</code> and
+<code>gpu_memory_utilization</code>?</li>
+<li>Write the complete deployment path: create an AdapterRegistry,
+register an adapter, set up AlignmentServing with an Ollama config, and
+call deploy. What error do you get if the adapter has not been merged
+first?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>ServingConfig targets either Ollama (GGUF + local) or vLLM (GPU +
+high-throughput)</li>
+<li>Three quantization levels: f16 (no quant), q4_k_m (4-bit, default),
+q8_0 (8-bit)</li>
+<li>AlignmentServing requires an AdapterRegistry to look up adapter
+metadata</li>
+<li>VLLMConfig controls multi-GPU parallelism and memory
+utilization</li>
+<li>Generation backends (VLLMBackend, HFGenerationBackend) use lazy
+model loading</li>
+<li>Check SUPPORTED_ARCHITECTURES before GGUF conversion</li>
+</ul>
+<h2 id="next-section">Next Section</h2>
+<p>Continue to <a href="../08-integration/01_ml_to_registry.md">Section
+8: Integration</a> – Learn how Kailash packages work together in
+production pipelines.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: Delegate with Tools &amp;
+Events &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-1-delegate-with-tools-events">Chapter 1: Delegate with
+Tools &amp; Events</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>Delegate</strong> is the primary entry point for building
+autonomous AI agents in Kailash Kaizen. This chapter teaches you how to
+register tools that the Delegate can call during its
+Think-Act-Observe-Decide (TAOD) loop, and how to consume the typed event
+stream it produces. You will learn the ToolRegistry, ToolDef, and the
+complete event hierarchy.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>A <code>.env</code> file with <code>DEFAULT_LLM_MODEL</code>
+configured (see <code>rules/env-models.md</code>)</li>
+<li>Familiarity with async/await in Python</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-toolregistry">Concept 1: ToolRegistry</h3>
+<p>ToolRegistry holds the tools a Delegate can call during execution.
+Each tool has a unique name, a human-readable description (for the
+model), a JSON Schema defining its parameters, and an async executor
+function that performs the action.</p>
+<ul>
+<li><strong>What</strong>: A mutable container that collects tool
+definitions and converts them to the OpenAI function-calling wire
+format</li>
+<li><strong>Why</strong>: The Delegate needs a structured way to
+discover and invoke tools – the registry provides this with type safety
+and format conversion</li>
+<li><strong>How</strong>: Call
+<code>registry.register(name, description, parameters, executor)</code>
+for each tool, then pass the registry to the Delegate constructor</li>
+<li><strong>When</strong>: Use ToolRegistry whenever your Delegate needs
+to interact with external systems (file I/O, search, APIs,
+databases)</li>
+</ul>
+<h3 id="concept-2-tooldef">Concept 2: ToolDef</h3>
+<p>ToolDef is the dataclass that holds a single tool’s metadata (name,
+description, parameters). It can convert itself to the OpenAI
+function-calling format via <code>.to_openai_format()</code>. While
+ToolRegistry manages collections of tools, ToolDef represents one
+individual tool definition.</p>
+<ul>
+<li><strong>What</strong>: A frozen dataclass representing a single
+tool’s schema</li>
+<li><strong>Why</strong>: Separates tool metadata from execution,
+allowing introspection and serialization</li>
+<li><strong>How</strong>: Create with
+<code>ToolDef(name=..., description=..., parameters=...)</code> and call
+<code>.to_openai_format()</code></li>
+<li><strong>When</strong>: Use ToolDef when you need to inspect or
+serialize individual tool definitions outside of a registry</li>
+</ul>
+<h3 id="concept-3-delegate-event-stream">Concept 3: Delegate Event
+Stream</h3>
+<p>When the Delegate runs, it yields a stream of typed events. Consumers
+match on event type using Python’s structural pattern matching
+(<code>match</code>/<code>case</code>). This provides a clean, type-safe
+way to handle streaming text, tool calls, completions, errors, and
+budget exhaustion.</p>
+<ul>
+<li><strong>What</strong>: An async iterator of
+<code>DelegateEvent</code> subclasses yielded by
+<code>delegate.run()</code></li>
+<li><strong>Why</strong>: Typed events replace fragile string parsing –
+each event type has specific fields, and the compiler can check
+exhaustiveness</li>
+<li><strong>How</strong>:
+<code>async for event in delegate.run("prompt"): match event: case TextDelta(text=t): ...</code></li>
+<li><strong>When</strong>: Always – this is the standard pattern for
+consuming Delegate output</li>
+</ul>
+<h3 id="concept-4-budget-tracking">Concept 4: Budget Tracking</h3>
+<p>The Delegate tracks LLM token costs against a configurable USD
+budget. Each LLM turn (not each tool call) incurs token cost. When the
+budget is exhausted, a <code>BudgetExhausted</code> event is emitted and
+execution stops gracefully.</p>
+<ul>
+<li><strong>What</strong>: Per-session financial constraint on LLM
+usage</li>
+<li><strong>Why</strong>: Prevents runaway costs from autonomous agents
+that make many LLM calls</li>
+<li><strong>How</strong>: Set <code>budget_usd=5.0</code> in the
+Delegate constructor; check <code>consumed_usd</code> and
+<code>budget_remaining</code> at any time</li>
+<li><strong>When</strong>: Always set a budget for autonomous agents –
+it is the primary safety guard against infinite loops</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 43%" />
+<col style="width: 16%" />
+<col style="width: 23%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ToolRegistry()</code></td>
+<td>–</td>
+<td><code>ToolRegistry</code></td>
+<td>Create an empty tool registry</td>
+</tr>
+<tr>
+<td><code>registry.register()</code></td>
+<td><code>name: str</code>, <code>description: str</code>,
+<code>parameters: dict</code>, <code>executor: Callable</code></td>
+<td><code>None</code></td>
+<td>Register a tool with its executor</td>
+</tr>
+<tr>
+<td><code>registry.has_tool()</code></td>
+<td><code>name: str</code></td>
+<td><code>bool</code></td>
+<td>Check if a tool is registered</td>
+</tr>
+<tr>
+<td><code>registry.tool_names</code></td>
+<td>–</td>
+<td><code>list[str]</code></td>
+<td>List of registered tool names</td>
+</tr>
+<tr>
+<td><code>registry.get_openai_tools()</code></td>
+<td>–</td>
+<td><code>list[dict]</code></td>
+<td>Convert all tools to OpenAI wire format</td>
+</tr>
+<tr>
+<td><code>ToolDef()</code></td>
+<td><code>name: str</code>, <code>description: str</code>,
+<code>parameters: dict</code></td>
+<td><code>ToolDef</code></td>
+<td>Create a single tool definition</td>
+</tr>
+<tr>
+<td><code>ToolDef.to_openai_format()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Convert to OpenAI function-calling format</td>
+</tr>
+<tr>
+<td><code>Delegate()</code></td>
+<td><code>model: str</code>, <code>tools: ToolRegistry</code>,
+<code>system_prompt: str</code>, <code>budget_usd: float</code></td>
+<td><code>Delegate</code></td>
+<td>Create a Delegate with tools and budget</td>
+</tr>
+<tr>
+<td><code>delegate.run()</code></td>
+<td><code>prompt: str</code></td>
+<td><code>AsyncIterator[DelegateEvent]</code></td>
+<td>Execute and stream events</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="setting-up-the-environment">Setting Up the Environment</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents <span class="im">import</span> Delegate</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.delegate.loop <span class="im">import</span> ToolRegistry, ToolDef</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.delegate.events <span class="im">import</span> (</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    DelegateEvent,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    TextDelta,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    ToolCallStart,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    ToolCallEnd,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    TurnComplete,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    BudgetExhausted,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    ErrorEvent,</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<p>The imports pull in the Delegate itself, the tool registration
+system, and the complete event hierarchy. The model is read from
+environment variables – never hardcoded.</p>
+<h3 id="creating-and-registering-tools">Creating and Registering
+Tools</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>registry <span class="op">=</span> ToolRegistry()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(registry, ToolRegistry)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(registry.tool_names) <span class="op">==</span> <span class="dv">0</span>, <span class="st">&quot;Fresh registry is empty&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Define an async executor function (tools are always async)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> read_file_executor(path: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Read a file and return its contents.&quot;&quot;&quot;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ss">f&quot;Contents of </span><span class="sc">{</span>path<span class="sc">}</span><span class="ss">&quot;</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Register the tool with name, description, schema, and executor</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>registry.register(</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;read_file&quot;</span>,</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Read a file from the filesystem&quot;</span>,</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    parameters<span class="op">=</span>{</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;type&quot;</span>: <span class="st">&quot;object&quot;</span>,</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;properties&quot;</span>: {</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;path&quot;</span>: {<span class="st">&quot;type&quot;</span>: <span class="st">&quot;string&quot;</span>, <span class="st">&quot;description&quot;</span>: <span class="st">&quot;Path to the file&quot;</span>},</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;required&quot;</span>: [<span class="st">&quot;path&quot;</span>],</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    executor<span class="op">=</span>read_file_executor,</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> registry.has_tool(<span class="st">&quot;read_file&quot;</span>), <span class="st">&quot;Tool was registered&quot;</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="kw">not</span> registry.has_tool(<span class="st">&quot;nonexistent&quot;</span>), <span class="st">&quot;Unknown tool not found&quot;</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> registry.tool_names <span class="op">==</span> [<span class="st">&quot;read_file&quot;</span>]</span></code></pre></div>
+<p>A fresh <code>ToolRegistry</code> starts empty. Each tool
+registration requires four things: a unique name, a human-readable
+description (the LLM reads this to decide when to call the tool), a JSON
+Schema for the parameters, and an async callable that executes the
+action. Tool executors are always async because they typically involve
+I/O (file reads, API calls, database queries).</p>
+<h3 id="multiple-tool-registration">Multiple Tool Registration</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> search_executor(query: <span class="bu">str</span>, max_results: <span class="bu">int</span> <span class="op">=</span> <span class="dv">5</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Search for information.&quot;&quot;&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="ss">f&quot;Results for &#39;</span><span class="sc">{</span>query<span class="sc">}</span><span class="ss">&#39; (max </span><span class="sc">{</span>max_results<span class="sc">}</span><span class="ss">)&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>registry.register(</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;search&quot;</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Search for information in the codebase&quot;</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    parameters<span class="op">=</span>{</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;type&quot;</span>: <span class="st">&quot;object&quot;</span>,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;properties&quot;</span>: {</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;query&quot;</span>: {<span class="st">&quot;type&quot;</span>: <span class="st">&quot;string&quot;</span>, <span class="st">&quot;description&quot;</span>: <span class="st">&quot;Search query&quot;</span>},</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;max_results&quot;</span>: {</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;type&quot;</span>: <span class="st">&quot;integer&quot;</span>,</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;description&quot;</span>: <span class="st">&quot;Max results&quot;</span>,</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>                <span class="st">&quot;default&quot;</span>: <span class="dv">5</span>,</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>            },</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;required&quot;</span>: [<span class="st">&quot;query&quot;</span>],</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>    executor<span class="op">=</span>search_executor,</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(registry.tool_names) <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;search&quot;</span> <span class="kw">in</span> registry.tool_names</span></code></pre></div>
+<p>Real agents typically have many tools. Each follows the same
+registration pattern. The JSON Schema <code>"required"</code> array
+distinguishes mandatory from optional parameters.</p>
+<h3 id="openai-function-calling-format">OpenAI Function-Calling
+Format</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>openai_tools <span class="op">=</span> registry.get_openai_tools()</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(openai_tools) <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>first_tool <span class="op">=</span> openai_tools[<span class="dv">0</span>]</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> first_tool[<span class="st">&quot;type&quot;</span>] <span class="op">==</span> <span class="st">&quot;function&quot;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;function&quot;</span> <span class="kw">in</span> first_tool</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> first_tool[<span class="st">&quot;function&quot;</span>][<span class="st">&quot;name&quot;</span>] <span class="op">==</span> <span class="st">&quot;read_file&quot;</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;parameters&quot;</span> <span class="kw">in</span> first_tool[<span class="st">&quot;function&quot;</span>]</span></code></pre></div>
+<p><code>get_openai_tools()</code> converts all registered tools to the
+OpenAI function-calling wire format that LLM APIs expect. This is the
+format the model sees when deciding which tool to call.</p>
+<h3 id="tooldef-individual-tool-definitions">ToolDef – Individual Tool
+Definitions</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>tool_def <span class="op">=</span> ToolDef(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;write_file&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Write content to a file&quot;</span>,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    parameters<span class="op">=</span>{</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;type&quot;</span>: <span class="st">&quot;object&quot;</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;properties&quot;</span>: {</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;path&quot;</span>: {<span class="st">&quot;type&quot;</span>: <span class="st">&quot;string&quot;</span>},</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>            <span class="st">&quot;content&quot;</span>: {<span class="st">&quot;type&quot;</span>: <span class="st">&quot;string&quot;</span>},</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        },</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;required&quot;</span>: [<span class="st">&quot;path&quot;</span>, <span class="st">&quot;content&quot;</span>],</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tool_def.name <span class="op">==</span> <span class="st">&quot;write_file&quot;</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>openai_format <span class="op">=</span> tool_def.to_openai_format()</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> openai_format[<span class="st">&quot;type&quot;</span>] <span class="op">==</span> <span class="st">&quot;function&quot;</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> openai_format[<span class="st">&quot;function&quot;</span>][<span class="st">&quot;name&quot;</span>] <span class="op">==</span> <span class="st">&quot;write_file&quot;</span></span></code></pre></div>
+<p><code>ToolDef</code> is the standalone dataclass for a single tool’s
+metadata. It can convert itself to OpenAI format independently of a
+registry – useful for introspection and serialization.</p>
+<h3 id="delegate-with-tool-registry">Delegate with Tool Registry</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>delegate_with_tools <span class="op">=</span> Delegate(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    tools<span class="op">=</span>registry,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    system_prompt<span class="op">=</span><span class="st">&quot;You are a code reviewer. Use the available tools.&quot;</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    budget_usd<span class="op">=</span><span class="fl">5.0</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> delegate_with_tools.tool_registry <span class="kw">is</span> registry</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> delegate_with_tools.tool_registry.has_tool(<span class="st">&quot;read_file&quot;</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> delegate_with_tools.tool_registry.has_tool(<span class="st">&quot;search&quot;</span>)</span></code></pre></div>
+<p>Pass a pre-built <code>ToolRegistry</code> to the Delegate
+constructor. The Delegate’s AgentLoop uses these tools during its TAOD
+(Think-Act-Observe-Decide) loop: the model decides which tool to call,
+the loop executes it, and the result is fed back to the model.</p>
+<h3 id="event-type-system">Event Type System</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>td <span class="op">=</span> TextDelta(text<span class="op">=</span><span class="st">&quot;Hello&quot;</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> td.event_type <span class="op">==</span> <span class="st">&quot;text_delta&quot;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> td.text <span class="op">==</span> <span class="st">&quot;Hello&quot;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> td.timestamp <span class="op">&gt;</span> <span class="dv">0</span>, <span class="st">&quot;Monotonic timestamp is always positive&quot;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>tcs <span class="op">=</span> ToolCallStart(call_id<span class="op">=</span><span class="st">&quot;call_001&quot;</span>, name<span class="op">=</span><span class="st">&quot;read_file&quot;</span>)</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tcs.event_type <span class="op">==</span> <span class="st">&quot;tool_call_start&quot;</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tcs.call_id <span class="op">==</span> <span class="st">&quot;call_001&quot;</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tcs.name <span class="op">==</span> <span class="st">&quot;read_file&quot;</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>tce <span class="op">=</span> ToolCallEnd(call_id<span class="op">=</span><span class="st">&quot;call_001&quot;</span>, name<span class="op">=</span><span class="st">&quot;read_file&quot;</span>, result<span class="op">=</span><span class="st">&quot;file contents&quot;</span>)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tce.event_type <span class="op">==</span> <span class="st">&quot;tool_call_end&quot;</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tce.result <span class="op">==</span> <span class="st">&quot;file contents&quot;</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tce.error <span class="op">==</span> <span class="st">&quot;&quot;</span>, <span class="st">&quot;No error by default&quot;</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>tc <span class="op">=</span> TurnComplete(</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    text<span class="op">=</span><span class="st">&quot;Analysis complete&quot;</span>, usage<span class="op">=</span>{<span class="st">&quot;prompt_tokens&quot;</span>: <span class="dv">100</span>, <span class="st">&quot;completion_tokens&quot;</span>: <span class="dv">50</span>}</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tc.event_type <span class="op">==</span> <span class="st">&quot;turn_complete&quot;</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tc.usage[<span class="st">&quot;prompt_tokens&quot;</span>] <span class="op">==</span> <span class="dv">100</span></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>be <span class="op">=</span> BudgetExhausted(budget_usd<span class="op">=</span><span class="fl">5.0</span>, consumed_usd<span class="op">=</span><span class="fl">5.01</span>)</span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> be.event_type <span class="op">==</span> <span class="st">&quot;budget_exhausted&quot;</span></span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> be.consumed_usd <span class="op">&gt;</span> be.budget_usd</span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a>err <span class="op">=</span> ErrorEvent(error<span class="op">=</span><span class="st">&quot;Connection timeout&quot;</span>, details<span class="op">=</span>{<span class="st">&quot;exception_type&quot;</span>: <span class="st">&quot;TimeoutError&quot;</span>})</span>
+<span id="cb7-27"><a href="#cb7-27" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> err.event_type <span class="op">==</span> <span class="st">&quot;error&quot;</span></span>
+<span id="cb7-28"><a href="#cb7-28" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> err.details[<span class="st">&quot;exception_type&quot;</span>] <span class="op">==</span> <span class="st">&quot;TimeoutError&quot;</span></span></code></pre></div>
+<p>The complete event hierarchy consists of six types, all inheriting
+from <code>DelegateEvent</code>:</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 36%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>Event</th>
+<th>Purpose</th>
+<th>Key Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TextDelta</code></td>
+<td>Streaming text from the model</td>
+<td><code>text</code></td>
+</tr>
+<tr>
+<td><code>ToolCallStart</code></td>
+<td>A tool invocation has begun</td>
+<td><code>call_id</code>, <code>name</code></td>
+</tr>
+<tr>
+<td><code>ToolCallEnd</code></td>
+<td>A tool invocation has completed</td>
+<td><code>call_id</code>, <code>name</code>, <code>result</code>,
+<code>error</code></td>
+</tr>
+<tr>
+<td><code>TurnComplete</code></td>
+<td>The model finished responding</td>
+<td><code>text</code>, <code>usage</code></td>
+</tr>
+<tr>
+<td><code>BudgetExhausted</code></td>
+<td>Budget cap exceeded</td>
+<td><code>budget_usd</code>, <code>consumed_usd</code></td>
+</tr>
+<tr>
+<td><code>ErrorEvent</code></td>
+<td>An error occurred</td>
+<td><code>error</code>, <code>details</code></td>
+</tr>
+</tbody>
+</table>
+<p>All events carry an <code>event_type</code> discriminator and a
+monotonic <code>timestamp</code>.</p>
+<h3 id="event-stream-consumption-pattern">Event Stream Consumption
+Pattern</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The standard pattern for consuming Delegate events:</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="co">#   async for event in delegate.run(&quot;prompt&quot;):</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="co">#       match event:</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co">#           case TextDelta(text=t):</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="co">#               print(t, end=&quot;&quot;)</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="co">#           case ToolCallStart(name=n):</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="co">#               show_spinner(n)</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="co">#           case ToolCallEnd(name=n, result=r):</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="co">#               hide_spinner(n)</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="co">#           case TurnComplete(text=t, usage=u):</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="co">#               print(f&quot;\nTokens: {u}&quot;)</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="co">#           case BudgetExhausted():</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="co">#               print(&quot;Budget exceeded&quot;)</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="co">#           case ErrorEvent(error=e):</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a><span class="co">#               print(f&quot;Error: {e}&quot;)</span></span></code></pre></div>
+<p>This is the canonical pattern for consuming Delegate output. Python’s
+structural pattern matching provides exhaustive, type-safe event
+handling.</p>
+<h3 id="tool-execution-error-handling">Tool Execution Error
+Handling</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>tce_err <span class="op">=</span> ToolCallEnd(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    call_id<span class="op">=</span><span class="st">&quot;call_002&quot;</span>,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;read_file&quot;</span>,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    result<span class="op">=</span><span class="st">&quot;&quot;</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    error<span class="op">=</span><span class="st">&quot;FileNotFoundError: /nonexistent.py&quot;</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tce_err.error <span class="op">!=</span> <span class="st">&quot;&quot;</span>, <span class="st">&quot;Error field populated on failure&quot;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tce_err.result <span class="op">==</span> <span class="st">&quot;&quot;</span>, <span class="st">&quot;No result on failure&quot;</span></span></code></pre></div>
+<p>When a tool call fails, <code>ToolCallEnd</code> carries the error
+message in its <code>error</code> field. The <code>result</code> field
+is empty on failure. The model receives this error and can decide to
+retry, try a different approach, or report the failure.</p>
+<h3 id="budget-tracking">Budget Tracking</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> delegate_with_tools.budget_usd <span class="op">==</span> <span class="fl">5.0</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> delegate_with_tools.consumed_usd <span class="op">==</span> <span class="fl">0.0</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> delegate_with_tools.budget_remaining <span class="op">==</span> <span class="fl">5.0</span></span></code></pre></div>
+<p>Budget tracking applies to the full session including tool calls.
+Each LLM turn (not each tool call) incurs token cost. Before any
+execution, <code>consumed_usd</code> is zero and
+<code>budget_remaining</code> equals the full budget.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 27%" />
+<col style="width: 51%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Synchronous tool executor</td>
+<td><code>async def executor(...):</code></td>
+<td>All tool executors must be async because they typically involve I/O
+operations</td>
+</tr>
+<tr>
+<td>Missing JSON Schema <code>required</code> array</td>
+<td><code>"required": ["path"]</code> in parameters</td>
+<td>Without <code>required</code>, the model may omit mandatory
+parameters, causing runtime errors</td>
+</tr>
+<tr>
+<td>Ignoring <code>ToolCallEnd.error</code></td>
+<td>Check <code>if tce.error:</code> before using
+<code>tce.result</code></td>
+<td>Failed tool calls have empty results – using them silently produces
+wrong answers</td>
+</tr>
+<tr>
+<td>No budget set on autonomous agents</td>
+<td><code>Delegate(model=model, budget_usd=5.0)</code></td>
+<td>Without a budget, a reasoning loop can make unlimited LLM calls and
+incur unbounded costs</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a <code>ToolRegistry</code> with three tools:
+<code>list_files</code> (lists directory contents),
+<code>read_file</code> (reads a file), and <code>write_file</code>
+(writes content to a file). Convert the registry to OpenAI format and
+verify each tool has the correct parameter schema.</li>
+<li>Write an event consumer function that counts how many tool calls a
+Delegate makes during a run. Use pattern matching to count
+<code>ToolCallStart</code> events and print a summary when
+<code>TurnComplete</code> arrives.</li>
+<li>Create two <code>ToolDef</code> instances with different parameter
+schemas (one with required-only params, one with required + optional).
+Convert both to OpenAI format and compare the resulting JSON
+structures.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>ToolRegistry</code> is the container for all tools a Delegate
+can call during its TAOD loop</li>
+<li>Each tool requires a name, description, JSON Schema parameters, and
+an async executor</li>
+<li><code>get_openai_tools()</code> converts registered tools to the LLM
+wire format</li>
+<li><code>Delegate.run()</code> yields typed events – use pattern
+matching for clean consumption</li>
+<li>Six event types cover the full lifecycle: text streaming, tool
+calls, completion, budget, and errors</li>
+<li>Always set <code>budget_usd</code> on autonomous agents to prevent
+runaway costs</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_simple_qa.md">Chapter 2: SimpleQA Agent</a> – Build a
+zero-config question-answering agent with structured inputs and outputs
+using Kaizen’s signature system.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

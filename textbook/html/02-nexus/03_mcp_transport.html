@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 3: MCP Transport — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: MCP Transport &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,112 +24,295 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 3: MCP Transport</h1>
+<h1 id="chapter-3-mcp-transport">Chapter 3: MCP Transport</h1>
+<h2 id="overview">Overview</h2>
+<p>The MCP (Model Context Protocol) transport enables AI agents to
+interact with Nexus handlers as MCP tools. When registered, each handler
+becomes an MCP tool that agents like Claude can invoke directly. This
+chapter covers <code>MCPTransport</code> configuration, the tool naming
+convention, the background thread architecture, and how to add MCP
+support to a Nexus application. MCP is the bridge between your workflows
+and the AI agent ecosystem.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-2 (Nexus basics, HTTP transport)</li>
+<li>Understanding of the Transport ABC</li>
+<li>Conceptual familiarity with MCP (Model Context Protocol)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-is-mcp-transport">What Is MCP Transport?</h3>
+<p>MCPTransport registers Nexus handlers as MCP tools via FastMCP. AI
+agents (Claude, GPT, etc.) can call these tools over the MCP protocol,
+enabling them to use your workflows as capabilities.</p>
+<h3 id="tool-naming-convention">Tool Naming Convention</h3>
+<p>When a handler named <code>"greet"</code> is registered, MCPTransport
+creates an MCP tool named <code>"{namespace}_{handler_name}"</code>.
+With the default namespace <code>"nexus"</code>, the tool becomes
+<code>"nexus_greet"</code>. This namespace prevents collisions when
+multiple Nexus instances serve tools through the same MCP platform.</p>
+<h3 id="background-thread-architecture">Background Thread
+Architecture</h3>
+<p>MCPTransport runs the FastMCP server in a <strong>daemon
+thread</strong> with its own asyncio event loop. This is necessary
+because the main thread is blocked by uvicorn (HTTP), so MCP needs its
+own loop. The lifecycle is:</p>
+<ol type="1">
+<li><code>start()</code> – creates FastMCP, registers tools, spawns
+daemon thread</li>
+<li><code>stop()</code> – signals the loop to stop, joins the thread (5s
+timeout)</li>
+</ol>
+<p>The daemon flag ensures the thread dies with the process.</p>
+<h3 id="why-is-mcp-opt-in">Why Is MCP Opt-In?</h3>
+<p>Unlike HTTP (always present), MCP is opt-in via
+<code>app.add_transport(MCPTransport(...))</code>. This is because MCP
+requires FastMCP as a dependency and adds a background thread – overhead
+that not every application needs.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 37%" />
+<col style="width: 6%" />
+<col style="width: 21%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MCPTransport()</code></td>
+<td><code>port: int = 3001</code>,
+<code>namespace: str = "nexus"</code>,
+<code>server_name: str = "kailash-nexus"</code></td>
+<td><code>MCPTransport</code></td>
+<td>Create an MCP transport</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp.name</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Always returns <code>"mcp"</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp.port</code></td>
+<td>–</td>
+<td><code>int</code></td>
+<td>WebSocket port for MCP server</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp.is_running</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>Whether the transport is active</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp._namespace</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Tool name prefix</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp._server</code></td>
+<td>–</td>
+<td><code>FastMCP       | None</code></td>
+<td>The underlying FastMCP server</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp._thread</code></td>
+<td>–</td>
+<td><code>Thread        | None</code></td>
+<td>The daemon thread (None before start)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp.health_check()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Transport health status</td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcp.on_handler_registered(handler_def)</code></td>
+<td><code>handler_def: HandlerDef</code></td>
+<td><code>None</code></td>
+<td>Hot-register a new MCP tool at runtime</td>
+<td></td>
+</tr>
+<tr>
+<td><code>app.add_transport(transport)</code></td>
+<td><code>transport: Transport</code></td>
+<td><code>None</code></td>
+<td>Add a transport to Nexus for lifecycle management</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-create-an-mcptransport">Step 1: Create an
+MCPTransport</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.transports <span class="im">import</span> MCPTransport, Transport</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>mcp <span class="op">=</span> MCPTransport(</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    port<span class="op">=</span><span class="dv">4001</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    namespace<span class="op">=</span><span class="st">&quot;myapp&quot;</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    server_name<span class="op">=</span><span class="st">&quot;my-nexus-service&quot;</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(mcp, MCPTransport)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(mcp, Transport)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp.name <span class="op">==</span> <span class="st">&quot;mcp&quot;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp.port <span class="op">==</span> <span class="dv">4001</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp.is_running <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp._server <span class="kw">is</span> <span class="va">None</span></span></code></pre></div>
+<p>Key parameters: <code>port</code> sets the WebSocket port (default
+3001), <code>namespace</code> sets the tool name prefix, and
+<code>server_name</code> sets the FastMCP server identity.</p>
+<h3 id="step-2-understand-tool-naming">Step 2: Understand Tool
+Naming</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp._namespace <span class="op">==</span> <span class="st">&quot;myapp&quot;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Handler &quot;greet&quot; becomes MCP tool &quot;myapp_greet&quot;</span></span></code></pre></div>
+<p>The namespace prevents tool name collisions. If two Nexus instances
+both register a <code>"greet"</code> handler, namespaces
+<code>"app1"</code> and <code>"app2"</code> produce distinct tools
+<code>"app1_greet"</code> and <code>"app2_greet"</code>.</p>
+<h3 id="step-3-default-configuration">Step 3: Default Configuration</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>mcp_default <span class="op">=</span> MCPTransport()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp_default.port <span class="op">==</span> <span class="dv">3001</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp_default._namespace <span class="op">==</span> <span class="st">&quot;nexus&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> mcp_default._server_name <span class="op">==</span> <span class="st">&quot;kailash-nexus&quot;</span></span></code></pre></div>
+<p>The defaults produce MCP tools like
+<code>"nexus_handler_name"</code>.</p>
+<h3 id="step-4-add-to-nexus">Step 4: Add to Nexus</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(api_port<span class="op">=</span><span class="dv">8000</span>, enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>custom_mcp <span class="op">=</span> MCPTransport(port<span class="op">=</span><span class="dv">5001</span>, namespace<span class="op">=</span><span class="st">&quot;tutorial&quot;</span>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>app.add_transport(custom_mcp)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_mcp <span class="kw">in</span> app._transports</span></code></pre></div>
+<p><code>add_transport()</code> registers the MCP transport for
+lifecycle management. When <code>Nexus.start()</code> is called, it
+calls <code>transport.start(registry)</code> on all transports,
+including MCP.</p>
+<h3 id="step-5-hot-registration">Step 5: Hot-Registration</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.registry <span class="im">import</span> HandlerDef</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>example_def <span class="op">=</span> HandlerDef(name<span class="op">=</span><span class="st">&quot;example&quot;</span>, description<span class="op">=</span><span class="st">&quot;An example handler&quot;</span>)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>custom_mcp.on_handler_registered(example_def)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_mcp._server <span class="kw">is</span> <span class="va">None</span>  <span class="co"># No-op before start()</span></span></code></pre></div>
+<p><code>on_handler_registered()</code> is called automatically when new
+handlers are added. If the server is already running, it hot-registers
+the new tool. Before <code>start()</code>, it is a safe no-op.</p>
+<h3 id="step-6-health-check">Step 6: Health Check</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>health <span class="op">=</span> mcp.health_check()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;transport&quot;</span>] <span class="op">==</span> <span class="st">&quot;mcp&quot;</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;running&quot;</span>] <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;port&quot;</span>] <span class="op">==</span> <span class="dv">4001</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> health[<span class="st">&quot;server&quot;</span>] <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 40%" />
+<col style="width: 18%" />
+<col style="width: 40%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Expecting Nexus to include MCP by default</td>
+<td>MCP is opt-in</td>
+<td>Explicitly call
+<code>app.add_transport(MCPTransport(...))</code></td>
+</tr>
+<tr>
+<td>Using the same namespace for multiple instances</td>
+<td>Tool name collisions</td>
+<td>Use unique namespaces per Nexus instance</td>
+</tr>
+<tr>
+<td>Forgetting the daemon thread runs a separate event loop</td>
+<td>Shared async state issues</td>
+<td>Keep MCP handler logic self-contained</td>
+</tr>
+<tr>
+<td>Using the same port for HTTP and MCP</td>
+<td>Port conflict</td>
+<td>Use different ports (e.g., 8000 for HTTP, 3001 for MCP)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Namespace Design</strong>: Create three
+<code>MCPTransport</code> instances with namespaces
+<code>"analytics"</code>, <code>"auth"</code>, and
+<code>"payments"</code>. For each, write out what the MCP tool name
+would be for a handler called <code>"process"</code>.</p></li>
+<li><p><strong>Health Check Comparison</strong>: Create both an
+<code>HTTPTransport</code> and an <code>MCPTransport</code>. Call
+<code>health_check()</code> on each and compare the returned
+dictionaries. What keys are shared? What keys are unique to each
+transport type?</p></li>
+<li><p><strong>Multi-Transport Nexus</strong>: Create a Nexus instance
+and add two MCPTransport instances with different ports and namespaces.
+Verify both are in <code>app._transports</code>. Discuss when you would
+use multiple MCP transports.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>MCPTransport registers handlers as MCP tools for AI agents.</li>
+<li>Tool names follow the pattern
+<code>"{namespace}_{handler_name}"</code> to avoid collisions.</li>
+<li>The transport runs in a background daemon thread with its own event
+loop.</li>
+<li>MCP is added to Nexus via
+<code>app.add_transport(MCPTransport(...))</code> – it is opt-in.</li>
+<li><code>health_check()</code> reports transport status for
+monitoring.</li>
+<li>Hot-registration via <code>on_handler_registered()</code> supports
+adding tools at runtime.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="04_sse_transport.md">Chapter 4: SSE Transport</a> –
+Configure Server-Sent Events for real-time event streaming from the
+Nexus EventBus.</p>
 
-  <h2>Overview</h2>
-  <p>The MCP (Model Context Protocol) transport enables AI agents to interact with Nexus handlers as MCP tools. When registered, each handler becomes a tool that agents like Claude can invoke. This chapter covers <code>MCPTransport</code> configuration, tool naming conventions, the background thread architecture, and integration with Nexus.</p>
-
-  <h2>Prerequisites</h2>
-  <ul>
-    <li>Completed Chapters 1&ndash;2 (Nexus basics, HTTP transport)</li>
-    <li>Understanding of the Transport ABC</li>
-    <li>Conceptual familiarity with MCP (Model Context Protocol)</li>
-  </ul>
-
-  <h2>Concepts</h2>
-
-  <h3>Tool Naming Convention</h3>
-  <p>When a handler named <code>"greet"</code> is registered, MCPTransport creates an MCP tool named <code>"{namespace}_{handler_name}"</code>. With the default namespace <code>"nexus"</code>, the tool becomes <code>"nexus_greet"</code>. This prevents collisions when multiple Nexus instances share the same MCP platform.</p>
-
-  <h3>Background Thread Architecture</h3>
-  <p>MCPTransport runs the FastMCP server in a <strong>daemon thread</strong> with its own asyncio event loop, because the main thread is blocked by uvicorn (HTTP). The daemon flag ensures the thread dies with the process.</p>
-
-  <div class="callout">
-    <strong>Note:</strong> MCP is opt-in. Unlike HTTP (always present), MCP must be explicitly added via <code>app.add_transport(MCPTransport(...))</code>.
-  </div>
-
-  <h2>Key API</h2>
-  <table>
-    <tr><th>Method / Property</th><th>Parameters</th><th>Returns</th><th>Description</th></tr>
-    <tr><td><code>MCPTransport()</code></td><td><code>port=3001</code>, <code>namespace="nexus"</code>, <code>server_name="kailash-nexus"</code></td><td><code>MCPTransport</code></td><td>Create an MCP transport</td></tr>
-    <tr><td><code>mcp.name</code></td><td>&mdash;</td><td><code>str</code></td><td>Always <code>"mcp"</code></td></tr>
-    <tr><td><code>mcp.port</code></td><td>&mdash;</td><td><code>int</code></td><td>WebSocket port</td></tr>
-    <tr><td><code>mcp.health_check()</code></td><td>&mdash;</td><td><code>dict</code></td><td>Transport health status</td></tr>
-    <tr><td><code>mcp.on_handler_registered()</code></td><td><code>handler_def</code></td><td><code>None</code></td><td>Hot-register a new MCP tool</td></tr>
-    <tr><td><code>app.add_transport()</code></td><td><code>transport</code></td><td><code>None</code></td><td>Add transport to Nexus</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Create an MCPTransport</h3>
-  <pre><code class="language-python">from nexus.transports import MCPTransport, Transport
-
-mcp = MCPTransport(
-    port=4001,
-    namespace="myapp",
-    server_name="my-nexus-service",
-)
-
-assert mcp.name == "mcp"
-assert mcp.port == 4001
-assert mcp._namespace == "myapp"
-assert mcp.is_running is False</code></pre>
-
-  <h3>Step 2: Default Configuration</h3>
-  <pre><code class="language-python">mcp_default = MCPTransport()
-
-assert mcp_default.port == 3001
-assert mcp_default._namespace == "nexus"
-assert mcp_default._server_name == "kailash-nexus"</code></pre>
-
-  <h3>Step 3: Add to Nexus</h3>
-  <pre><code class="language-python">from nexus import Nexus
-
-app = Nexus(api_port=8000, enable_durability=False)
-custom_mcp = MCPTransport(port=5001, namespace="tutorial")
-app.add_transport(custom_mcp)
-
-assert custom_mcp in app._transports</code></pre>
-
-  <h3>Step 4: Health Check</h3>
-  <pre><code class="language-python">health = mcp.health_check()
-assert health["transport"] == "mcp"
-assert health["running"] is False
-assert health["port"] == 4001
-assert health["server"] is False</code></pre>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Expecting MCP by default</td><td>MCP is opt-in</td><td>Call <code>app.add_transport(MCPTransport(...))</code></td></tr>
-    <tr><td>Same namespace for multiple instances</td><td>Tool name collisions</td><td>Use unique namespaces</td></tr>
-    <tr><td>Same port for HTTP and MCP</td><td>Port conflict</td><td>Use different ports</td></tr>
-  </table>
-
-  <h2>Exercises</h2>
-  <ol>
-    <li><strong>Namespace Design:</strong> Create three MCPTransport instances with different namespaces. Write out the MCP tool name for a handler called <code>"process"</code> in each.</li>
-    <li><strong>Health Check Comparison:</strong> Compare <code>health_check()</code> output between HTTPTransport and MCPTransport.</li>
-    <li><strong>Multi-Transport Nexus:</strong> Add two MCPTransport instances with different ports to one Nexus app.</li>
-  </ol>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li>MCPTransport registers handlers as MCP tools for AI agents.</li>
-    <li>Tool names follow <code>"{namespace}_{handler_name}"</code> to avoid collisions.</li>
-    <li>Runs in a background daemon thread with its own event loop.</li>
-    <li>Added to Nexus via <code>app.add_transport()</code> &mdash; opt-in.</li>
-    <li>Hot-registration supports adding tools at runtime.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="02_http_transport.html">&larr; Previous: HTTP Transport</a>
-    <a href="04_sse_transport.html">Next: SSE Transport &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

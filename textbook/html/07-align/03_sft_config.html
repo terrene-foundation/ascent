@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: SFT
+Configuration &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-3-sft-configuration">Chapter 3: SFT Configuration</h1>
+<h2 id="overview">Overview</h2>
+<p>Supervised Fine-Tuning (SFT) is the most common alignment method –
+you show the model examples of desired behavior and train it to
+reproduce them. <code>SFTConfig</code> controls the training
+hyperparameters: learning rate, batch size, sequence length, precision,
+and gradient management. This chapter teaches you how to configure SFT
+runs and understand the tradeoffs between memory, speed, and
+quality.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_alignment_config.md">Chapter 1: AlignmentConfig
+Basics</a></li>
+<li><a href="02_lora_config.md">Chapter 2: LoRA Configuration</a></li>
+<li>Basic understanding of gradient descent and batch training</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-effective-batch-size">Concept 1: Effective Batch
+Size</h3>
+<p>The actual number of examples the optimizer sees per step is
+<code>per_device_train_batch_size * gradient_accumulation_steps * num_gpus</code>.
+Gradient accumulation lets you simulate large batches on
+memory-constrained hardware by accumulating gradients over multiple
+forward passes before updating weights.</p>
+<ul>
+<li><strong>What</strong>: The product of per-device batch size,
+gradient accumulation steps, and GPU count</li>
+<li><strong>Why</strong>: Larger effective batch sizes produce more
+stable gradients but require more memory (or more accumulation
+steps)</li>
+<li><strong>How</strong>:
+<code>SFTConfig(per_device_train_batch_size=4, gradient_accumulation_steps=8)</code>
+gives an effective batch of 32 on one GPU</li>
+<li><strong>When</strong>: Start with the default (4 * 4 = 16), increase
+accumulation if you need larger batches without more memory</li>
+</ul>
+<h3 id="concept-2-precision-bf16-vs-fp16">Concept 2: Precision (bf16 vs
+fp16)</h3>
+<p><code>bf16=True</code> uses BFloat16 precision (broader dynamic
+range, less precision), while <code>fp16=True</code> uses Float16
+(narrower range, higher precision). They are <strong>mutually
+exclusive</strong> – enabling both raises <code>ValueError</code>.
+Disabling both trains in Float32 (2x memory, more stable).</p>
+<ul>
+<li><strong>What</strong>: The numerical precision used for training
+computations</li>
+<li><strong>Why</strong>: Half-precision halves memory usage and speeds
+up training on modern GPUs</li>
+<li><strong>How</strong>: <code>bf16=True</code> is the default (best
+for A100/H100). Use <code>fp16=True</code> for older GPUs (V100,
+T4)</li>
+<li><strong>When</strong>: bf16 for Ampere+ GPUs; fp16 for pre-Ampere;
+float32 only when debugging numerical issues</li>
+</ul>
+<h3 id="concept-3-gradient-checkpointing">Concept 3: Gradient
+Checkpointing</h3>
+<p>When <code>gradient_checkpointing=True</code>, the model discards
+intermediate activations during the forward pass and recomputes them
+during backpropagation. This trades compute time (~20% slower) for
+significant memory savings.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 31%" />
+<col style="width: 7%" />
+<col style="width: 8%" />
+<col style="width: 52%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>num_train_epochs</code></td>
+<td><code>int</code></td>
+<td><code>3</code></td>
+<td>Number of full passes through the dataset</td>
+</tr>
+<tr>
+<td><code>per_device_train_batch_size</code></td>
+<td><code>int</code></td>
+<td><code>4</code></td>
+<td>Samples per GPU per forward pass</td>
+</tr>
+<tr>
+<td><code>gradient_accumulation_steps</code></td>
+<td><code>int</code></td>
+<td><code>4</code></td>
+<td>Steps before optimizer update</td>
+</tr>
+<tr>
+<td><code>learning_rate</code></td>
+<td><code>float</code></td>
+<td><code>2e-4</code></td>
+<td>Peak learning rate (must be positive, finite)</td>
+</tr>
+<tr>
+<td><code>warmup_ratio</code></td>
+<td><code>float</code></td>
+<td><code>0.03</code></td>
+<td>Fraction of training for LR warmup [0, 1)</td>
+</tr>
+<tr>
+<td><code>max_seq_length</code></td>
+<td><code>int</code></td>
+<td><code>2048</code></td>
+<td>Maximum token sequence length</td>
+</tr>
+<tr>
+<td><code>gradient_checkpointing</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>Trade compute for memory</td>
+</tr>
+<tr>
+<td><code>bf16</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>BFloat16 precision (mutually exclusive with fp16)</td>
+</tr>
+<tr>
+<td><code>fp16</code></td>
+<td><code>bool</code></td>
+<td><code>False</code></td>
+<td>Float16 precision (mutually exclusive with bf16)</td>
+</tr>
+<tr>
+<td><code>dataset_text_field</code></td>
+<td><code>str</code></td>
+<td><code>"text"</code></td>
+<td>Column name containing training text</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> SFTConfig</span></code></pre></div>
+<h3 id="default-configuration">Default Configuration</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>default <span class="op">=</span> SFTConfig()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.num_train_epochs <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.per_device_train_batch_size <span class="op">==</span> <span class="dv">4</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.gradient_accumulation_steps <span class="op">==</span> <span class="dv">4</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.learning_rate <span class="op">==</span> <span class="fl">2e-4</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.warmup_ratio <span class="op">==</span> <span class="fl">0.03</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.max_seq_length <span class="op">==</span> <span class="dv">2048</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.logging_steps <span class="op">==</span> <span class="dv">10</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.save_steps <span class="op">==</span> <span class="dv">100</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.gradient_checkpointing <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.bf16 <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.fp16 <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.dataset_text_field <span class="op">==</span> <span class="st">&quot;text&quot;</span></span></code></pre></div>
+<p>The defaults target a single-GPU setup with moderate memory: bf16
+precision, gradient checkpointing enabled, effective batch size of 16 (4
+* 4).</p>
+<h3 id="custom-configuration">Custom Configuration</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>custom <span class="op">=</span> SFTConfig(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    num_train_epochs<span class="op">=</span><span class="dv">5</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    per_device_train_batch_size<span class="op">=</span><span class="dv">8</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    gradient_accumulation_steps<span class="op">=</span><span class="dv">2</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    learning_rate<span class="op">=</span><span class="fl">1e-4</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    warmup_ratio<span class="op">=</span><span class="fl">0.1</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    max_seq_length<span class="op">=</span><span class="dv">4096</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    logging_steps<span class="op">=</span><span class="dv">5</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    save_steps<span class="op">=</span><span class="dv">200</span>,</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    gradient_checkpointing<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    bf16<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    fp16<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    dataset_text_field<span class="op">=</span><span class="st">&quot;content&quot;</span>,</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.num_train_epochs <span class="op">==</span> <span class="dv">5</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.per_device_train_batch_size <span class="op">==</span> <span class="dv">8</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.learning_rate <span class="op">==</span> <span class="fl">1e-4</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.max_seq_length <span class="op">==</span> <span class="dv">4096</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.fp16 <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.bf16 <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom.dataset_text_field <span class="op">==</span> <span class="st">&quot;content&quot;</span></span></code></pre></div>
+<p>This config targets a V100 GPU (fp16 instead of bf16), with a larger
+batch size and longer sequences. The dataset uses a
+<code>"content"</code> column instead of the default
+<code>"text"</code>.</p>
+<h3 id="immutability">Immutability</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    default.learning_rate <span class="op">=</span> <span class="fl">1e-3</span>  <span class="co"># type: ignore[misc]</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised FrozenInstanceError&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">AttributeError</span>:</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: frozen dataclass</span></span></code></pre></div>
+<p>Like all Align config classes, SFTConfig is frozen after
+creation.</p>
+<h3 id="learning-rate-validation">Learning Rate Validation</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    SFTConfig(learning_rate<span class="op">=</span><span class="fl">0.0</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: learning_rate must be positive</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    SFTConfig(learning_rate<span class="op">=-</span><span class="fl">1e-4</span>)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: learning_rate must be positive</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>    SFTConfig(learning_rate<span class="op">=</span><span class="bu">float</span>(<span class="st">&quot;nan&quot;</span>))</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: NaN rejected</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>    SFTConfig(learning_rate<span class="op">=</span><span class="bu">float</span>(<span class="st">&quot;inf&quot;</span>))</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: Inf rejected</span></span></code></pre></div>
+<p>Learning rate must be positive and finite. Zero, negative, NaN, and
+infinity are all rejected.</p>
+<h3 id="bf16fp16-mutual-exclusion">bf16/fp16 Mutual Exclusion</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    SFTConfig(bf16<span class="op">=</span><span class="va">True</span>, fp16<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;bf16&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e) <span class="kw">and</span> <span class="st">&quot;fp16&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Both False is valid (uses float32)</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>both_off <span class="op">=</span> SFTConfig(bf16<span class="op">=</span><span class="va">False</span>, fp16<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> both_off.bf16 <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> both_off.fp16 <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>You cannot enable both precision modes simultaneously. Disabling both
+is valid – the model trains in float32.</p>
+<h3 id="effective-batch-size-calculation">Effective Batch Size
+Calculation</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>cfg <span class="op">=</span> SFTConfig(per_device_train_batch_size<span class="op">=</span><span class="dv">4</span>, gradient_accumulation_steps<span class="op">=</span><span class="dv">8</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>effective_single_gpu <span class="op">=</span> cfg.per_device_train_batch_size <span class="op">*</span> cfg.gradient_accumulation_steps</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> effective_single_gpu <span class="op">==</span> <span class="dv">32</span>, <span class="st">&quot;4 * 8 = 32 effective batch size on one GPU&quot;</span></span></code></pre></div>
+<p>On a single GPU, effective batch size = per_device *
+gradient_accumulation. On multi-GPU setups, multiply by the number of
+GPUs.</p>
+<h3 id="common-configurations">Common Configurations</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Memory-constrained: small batch, high accumulation</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>constrained <span class="op">=</span> SFTConfig(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    per_device_train_batch_size<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    gradient_accumulation_steps<span class="op">=</span><span class="dv">16</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    gradient_checkpointing<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    max_seq_length<span class="op">=</span><span class="dv">1024</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> constrained.per_device_train_batch_size <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> constrained.gradient_checkpointing <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Speed-focused: large batch, less accumulation</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>fast <span class="op">=</span> SFTConfig(</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    per_device_train_batch_size<span class="op">=</span><span class="dv">16</span>,</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    gradient_accumulation_steps<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    gradient_checkpointing<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> fast.per_device_train_batch_size <span class="op">==</span> <span class="dv">16</span></span></code></pre></div>
+<p>Memory-constrained setups use batch size 1 with high accumulation and
+gradient checkpointing. Speed-focused setups on large GPUs maximize
+batch size and disable checkpointing.</p>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Calculate the effective batch size for
+<code>SFTConfig(per_device_train_batch_size=2, gradient_accumulation_steps=16)</code>
+on a 4-GPU setup. What is the total effective batch size?</li>
+<li>Create two SFTConfig instances: one for a T4 GPU (16GB) and one for
+an A100 (80GB). Which fields would you change and why?</li>
+<li>What happens if you set <code>warmup_ratio=1.0</code>? Why is this
+value rejected? What would it mean mathematically if it were
+allowed?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>SFTConfig controls all hyperparameters for supervised
+fine-tuning</li>
+<li>Effective batch size = per_device _ gradient_accumulation _
+num_gpus</li>
+<li>bf16 and fp16 are mutually exclusive; both off means float32</li>
+<li>Gradient checkpointing trades ~20% speed for significant memory
+savings</li>
+<li>Learning rate must be positive and finite; warmup_ratio must be in
+[0, 1)</li>
+<li>All configs are frozen (immutable) for reproducibility</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="04_dpo_config.md">Chapter 4: DPO Configuration</a> –
+Configure Direct Preference Optimization with beta control,
+prompt/completion length budgets, and loss type variants.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

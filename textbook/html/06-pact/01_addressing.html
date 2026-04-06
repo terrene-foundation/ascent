@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: D/T/R
+Addressing &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-1-dtr-addressing">Chapter 1: D/T/R Addressing</h1>
+<h2 id="overview">Overview</h2>
+<p>Every governance decision in PACT starts with a question: <em>who is
+asking?</em> The D/T/R addressing system answers this by assigning a
+unique positional address to every node in the organization –
+departments, teams, and roles. This chapter teaches you how to parse,
+construct, and navigate these addresses using the Kailash SDK.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python fundamentals (dataclasses, enums, string parsing)</li>
+<li>Kailash SDK installed (<code>pip install kailash</code>)</li>
+<li>Familiarity with organizational hierarchies</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-is-dtr-addressing">What is D/T/R Addressing?</h3>
+<p>D/T/R stands for <strong>Department / Team / Role</strong> – the
+three building blocks of organizational structure in PACT. Every entity
+in an organization gets a positional address built from these three node
+types:</p>
+<ul>
+<li><strong>D</strong> (Department) – a top-level organizational
+unit</li>
+<li><strong>T</strong> (Team) – a functional group within a
+department</li>
+<li><strong>R</strong> (Role) – a person or agent within a department or
+team</li>
+</ul>
+<h3 id="why-positional-addresses">Why Positional Addresses?</h3>
+<p>Positional addresses encode <em>where</em> a role sits in the
+hierarchy, not <em>who</em> fills it. This separation is critical:
+governance rules attach to positions, not people. When someone leaves
+and a replacement fills the role, all access rights, clearance levels,
+and operating envelopes transfer automatically.</p>
+<h3 id="how-addresses-work">How Addresses Work</h3>
+<p>Addresses are hyphen-separated segments like
+<code>D1-R1-D2-R1-T1-R1</code>. Each segment has a type character
+(<code>D</code>, <code>T</code>, or <code>R</code>) and a 1-based
+sequence number. The grammar enforces one rule: <strong>every D or T
+must be immediately followed by exactly one R</strong>. This ensures
+every structural unit has an accountable head.</p>
+<h3 id="when-to-use-addressing">When to Use Addressing</h3>
+<p>Use D/T/R addressing whenever you need to:</p>
+<ul>
+<li>Identify who is requesting access to knowledge</li>
+<li>Build an accountability chain from leaf role to root</li>
+<li>Determine containment (which department/team owns a resource)</li>
+<li>Check ancestor/descendant relationships between roles</li>
+</ul>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 44%" />
+<col style="width: 55%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Function</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NodeType</code></td>
+<td>Enum with values <code>DEPARTMENT</code>, <code>TEAM</code>,
+<code>ROLE</code></td>
+</tr>
+<tr>
+<td><code>AddressSegment</code></td>
+<td>A single segment like <code>D1</code> or <code>R3</code></td>
+</tr>
+<tr>
+<td><code>AddressSegment.parse(s)</code></td>
+<td>Parse a string into a segment (case-insensitive)</td>
+</tr>
+<tr>
+<td><code>Address.parse(s)</code></td>
+<td>Parse a full hyphenated address string</td>
+</tr>
+<tr>
+<td><code>Address.from_segments(*segs)</code></td>
+<td>Construct an address from segment objects</td>
+</tr>
+<tr>
+<td><code>Address.depth</code></td>
+<td>Number of segments in the address</td>
+</tr>
+<tr>
+<td><code>Address.parent</code></td>
+<td>The address with the last segment removed</td>
+</tr>
+<tr>
+<td><code>Address.last_segment</code></td>
+<td>The final segment of the address</td>
+</tr>
+<tr>
+<td><code>Address.containment_unit</code></td>
+<td>Nearest D or T ancestor</td>
+</tr>
+<tr>
+<td><code>Address.accountability_chain</code></td>
+<td>All R-type addresses from root to leaf</td>
+</tr>
+<tr>
+<td><code>Address.ancestors()</code></td>
+<td>All proper prefixes of the address</td>
+</tr>
+<tr>
+<td><code>Address.is_prefix_of(other)</code></td>
+<td>Strict prefix check</td>
+</tr>
+<tr>
+<td><code>Address.is_ancestor_of(other)</code></td>
+<td>Reflexive prefix check (includes self)</td>
+</tr>
+<tr>
+<td><code>Address.lowest_common_ancestor(a, b)</code></td>
+<td>Deepest shared prefix of two addresses</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-understanding-nodetype">Step 1: Understanding
+NodeType</h3>
+<p>The <code>NodeType</code> enum defines the three fundamental node
+types:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> NodeType</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NodeType.DEPARTMENT.value <span class="op">==</span> <span class="st">&quot;D&quot;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NodeType.TEAM.value <span class="op">==</span> <span class="st">&quot;T&quot;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> NodeType.ROLE.value <span class="op">==</span> <span class="st">&quot;R&quot;</span></span></code></pre></div>
+<p>These single-character values appear in address strings and are used
+throughout the PACT system.</p>
+<h3 id="step-2-parsing-address-segments">Step 2: Parsing Address
+Segments</h3>
+<p>An <code>AddressSegment</code> represents one piece of an address.
+Parse it from a string like <code>"D1"</code>:</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> AddressSegment</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>seg <span class="op">=</span> AddressSegment.parse(<span class="st">&quot;D1&quot;</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> seg.node_type <span class="op">==</span> NodeType.DEPARTMENT</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> seg.sequence <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(seg) <span class="op">==</span> <span class="st">&quot;D1&quot;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Case-insensitive: &quot;t2&quot; works the same as &quot;T2&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>seg_lower <span class="op">=</span> AddressSegment.parse(<span class="st">&quot;t2&quot;</span>)</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> seg_lower.node_type <span class="op">==</span> NodeType.TEAM</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> seg_lower.sequence <span class="op">==</span> <span class="dv">2</span></span></code></pre></div>
+<p>Segments are frozen dataclasses – once created, they cannot be
+mutated.</p>
+<h3 id="step-3-parsing-full-addresses">Step 3: Parsing Full
+Addresses</h3>
+<p>A full <code>Address</code> is a hyphen-separated chain of segments.
+The grammar rule is strict: every D or T must be immediately followed by
+exactly one R.</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> Address</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>addr <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1-D2-R1-T1-R1&quot;</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(addr.segments) <span class="op">==</span> <span class="dv">6</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> addr.depth <span class="op">==</span> <span class="dv">6</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(addr) <span class="op">==</span> <span class="st">&quot;D1-R1-D2-R1-T1-R1&quot;</span></span></code></pre></div>
+<h3 id="step-4-navigating-the-hierarchy">Step 4: Navigating the
+Hierarchy</h3>
+<p>Addresses support rich navigation for walking the organizational
+tree:</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Parent: remove the last segment</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>parent <span class="op">=</span> addr.parent</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(parent) <span class="op">==</span> <span class="st">&quot;D1-R1-D2-R1-T1&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Last segment</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> addr.last_segment.node_type <span class="op">==</span> NodeType.ROLE</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Containment unit: nearest D or T ancestor</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>cu <span class="op">=</span> addr.containment_unit</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(cu) <span class="op">==</span> <span class="st">&quot;D1-R1-D2-R1-T1&quot;</span></span></code></pre></div>
+<h3 id="step-5-accountability-chains">Step 5: Accountability Chains</h3>
+<p>The accountability chain extracts all R-type addresses, giving you
+the chain of responsible people from root to leaf:</p>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>chain <span class="op">=</span> addr.accountability_chain</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(chain) <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(chain[<span class="dv">0</span>]) <span class="op">==</span> <span class="st">&quot;D1-R1&quot;</span>        <span class="co"># Department head</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(chain[<span class="dv">1</span>]) <span class="op">==</span> <span class="st">&quot;D1-R1-D2-R1&quot;</span>  <span class="co"># Sub-department head</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(chain[<span class="dv">2</span>]) <span class="op">==</span> <span class="st">&quot;D1-R1-D2-R1-T1-R1&quot;</span>  <span class="co"># Team lead</span></span></code></pre></div>
+<h3 id="step-6-prefix-and-ancestor-checks">Step 6: Prefix and Ancestor
+Checks</h3>
+<p>Two related but distinct operations:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>prefix <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1&quot;</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>full <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1-D2-R1&quot;</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># is_prefix_of is strict (not reflexive)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> prefix.is_prefix_of(full)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="kw">not</span> prefix.is_prefix_of(prefix)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co"># is_ancestor_of includes self</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> prefix.is_ancestor_of(full)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> prefix.is_ancestor_of(prefix)</span></code></pre></div>
+<h3 id="step-7-lowest-common-ancestor">Step 7: Lowest Common
+Ancestor</h3>
+<p>Find the deepest shared prefix between two addresses:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>addr_a <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1-D2-R1-T1-R1&quot;</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>addr_b <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1-D2-R1-T2-R1&quot;</span>)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>lca <span class="op">=</span> Address.lowest_common_ancestor(addr_a, addr_b)</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(lca) <span class="op">==</span> <span class="st">&quot;D1-R1-D2-R1&quot;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Disjoint trees return None</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>disjoint_a <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1&quot;</span>)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>disjoint_b <span class="op">=</span> Address.parse(<span class="st">&quot;D2-R1&quot;</span>)</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> Address.lowest_common_ancestor(disjoint_a, disjoint_b) <span class="kw">is</span> <span class="va">None</span></span></code></pre></div>
+<h3 id="step-8-constructing-addresses-programmatically">Step 8:
+Constructing Addresses Programmatically</h3>
+<p>Instead of parsing strings, you can build addresses from segment
+objects:</p>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>constructed <span class="op">=</span> Address.from_segments(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    AddressSegment(NodeType.DEPARTMENT, <span class="dv">1</span>),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    AddressSegment(NodeType.ROLE, <span class="dv">1</span>),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">str</span>(constructed) <span class="op">==</span> <span class="st">&quot;D1-R1&quot;</span></span></code></pre></div>
+<h3 id="step-9-grammar-violations">Step 9: Grammar Violations</h3>
+<p>The parser enforces that every D or T is immediately followed by
+R:</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> GrammarError, AddressError</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co"># D without trailing R</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    Address.parse(<span class="st">&quot;D1&quot;</span>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> GrammarError:</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># D1 has no trailing Role</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Two departments in a row</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    Address.parse(<span class="st">&quot;D1-D2-R1&quot;</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> GrammarError:</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># D1 not followed by R</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Invalid type character</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>    AddressSegment.parse(<span class="st">&quot;X1&quot;</span>)</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> AddressError:</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># &#39;X&#39; is not D, T, or R</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<ol type="1">
+<li><p><strong>Forgetting the trailing R</strong> – <code>D1-T1</code>
+is invalid because T1 has no role. Every structural unit needs a head:
+<code>D1-R1-T1-R1</code>.</p></li>
+<li><p><strong>Using 0-based sequences</strong> – Sequences are 1-based.
+<code>D0</code> raises <code>AddressError</code>.</p></li>
+<li><p><strong>Confusing <code>is_prefix_of</code> and
+<code>is_ancestor_of</code></strong> – <code>is_prefix_of</code> is
+strict (does not include self), while <code>is_ancestor_of</code> is
+reflexive (includes self). Use <code>is_ancestor_of</code> when you mean
+“is this address the same as or above the other?”</p></li>
+</ol>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Parse and Navigate</strong>: Given the address
+<code>D1-R1-T1-R1-R1</code>, find its parent, containment unit, and
+accountability chain. Verify each programmatically.</p></li>
+<li><p><strong>Build from Scratch</strong>: Construct the address
+<code>D1-R1-D2-R1-T1-R1</code> using
+<code>Address.from_segments()</code> and verify it equals
+<code>Address.parse("D1-R1-D2-R1-T1-R1")</code>.</p></li>
+<li><p><strong>Error Handling</strong>: Write a function that takes a
+string, attempts to parse it as an <code>Address</code>, and returns
+either the valid address or a descriptive error message explaining why
+it failed.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>D/T/R addresses encode organizational position, not identity</li>
+<li>The grammar rule “every D or T must be followed by R” ensures
+accountability</li>
+<li>Addresses support rich navigation: parent, ancestors, containment
+unit, accountability chain</li>
+<li><code>lowest_common_ancestor</code> finds the deepest shared
+reporting line between two roles</li>
+<li>All address types are immutable (frozen dataclasses)</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_compile_org.md">Chapter 2: Organization Compilation</a> –
+Transform a declarative organization definition into an address-indexed
+compiled structure with O(1) lookups.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 4: DPO
+Configuration &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-4-dpo-configuration">Chapter 4: DPO Configuration</h1>
+<h2 id="overview">Overview</h2>
+<p>Direct Preference Optimization (DPO) aligns models using pairs of
+preferred and rejected responses. Instead of training a separate reward
+model, DPO directly optimizes the policy using a closed-form loss
+derived from the Bradley-Terry preference model. The
+<strong>beta</strong> parameter controls how much the fine-tuned model
+is allowed to deviate from the reference policy. This chapter teaches
+you how to configure DPO training, understand beta’s role, manage
+prompt/completion length budgets, and use loss type variants.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="01_alignment_config.md">Chapter 1: AlignmentConfig
+Basics</a></li>
+<li><a href="03_sft_config.md">Chapter 3: SFT Configuration</a></li>
+<li>Understanding of preference data format (prompt, chosen,
+rejected)</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-beta-the-kl-divergence-penalty">Concept 1: Beta – The
+KL Divergence Penalty</h3>
+<p>Beta controls how far the trained model can deviate from the
+reference (base) model. Lower beta (e.g., 0.01) allows more aggressive
+optimization – the model can diverge significantly from its starting
+behavior. Higher beta (e.g., 0.5) keeps the model closer to the
+reference, producing more conservative changes.</p>
+<ul>
+<li><strong>What</strong>: A positive float that scales the KL
+divergence penalty in the DPO loss</li>
+<li><strong>Why</strong>: Without beta, the model could overfit to the
+preference data and lose its general capabilities</li>
+<li><strong>How</strong>: <code>DPOConfig(beta=0.1)</code> is the
+default. Lower for stronger alignment, higher for safety</li>
+<li><strong>When</strong>: Start with 0.1; decrease if the model is not
+learning preferences, increase if it degrades on general tasks</li>
+</ul>
+<h3 id="concept-2-prompt-and-completion-length-budgets">Concept 2:
+Prompt and Completion Length Budgets</h3>
+<p><code>max_length</code> is the total token budget for the entire
+sequence (prompt + completion). <code>max_prompt_length</code> caps the
+prompt portion. The difference
+(<code>max_length - max_prompt_length</code>) is the completion budget –
+the space available for the chosen and rejected completions.</p>
+<ul>
+<li><strong>What</strong>: Two integers that partition the sequence
+length budget between prompt and completion</li>
+<li><strong>Why</strong>: Prompts that consume the entire budget leave
+no room for completions, making training useless</li>
+<li><strong>How</strong>:
+<code>DPOConfig(max_length=2048, max_prompt_length=512)</code> gives
+1536 tokens for completions</li>
+<li><strong>When</strong>: Set based on your dataset’s prompt and
+completion length distributions</li>
+</ul>
+<h3 id="concept-3-loss-type-variants">Concept 3: Loss Type Variants</h3>
+<p>Kailash Align supports DPO loss variants through the
+<code>loss_type</code> field on AlignmentConfig. Standard DPO uses the
+original loss. IPO (Identity Preference Optimization) and SimPO are
+alternative formulations with different theoretical properties.</p>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 7%" />
+<col style="width: 7%" />
+<col style="width: 56%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>beta</code></td>
+<td><code>float</code></td>
+<td><code>0.1</code></td>
+<td>KL penalty strength (must be positive, finite)</td>
+</tr>
+<tr>
+<td><code>num_train_epochs</code></td>
+<td><code>int</code></td>
+<td><code>1</code></td>
+<td>Epochs (DPO typically needs fewer than SFT)</td>
+</tr>
+<tr>
+<td><code>learning_rate</code></td>
+<td><code>float</code></td>
+<td><code>5e-5</code></td>
+<td>Lower than SFT default (preference signal is weak)</td>
+</tr>
+<tr>
+<td><code>max_length</code></td>
+<td><code>int</code></td>
+<td><code>2048</code></td>
+<td>Total sequence length budget</td>
+</tr>
+<tr>
+<td><code>max_prompt_length</code></td>
+<td><code>int</code></td>
+<td><code>512</code></td>
+<td>Maximum prompt tokens</td>
+</tr>
+<tr>
+<td><code>warmup_ratio</code></td>
+<td><code>float</code></td>
+<td><code>0.1</code></td>
+<td>Higher warmup than SFT (preference stability)</td>
+</tr>
+<tr>
+<td><code>gradient_checkpointing</code></td>
+<td><code>bool</code></td>
+<td><code>True</code></td>
+<td>DPO holds two models in memory, so this helps</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> AlignmentConfig, DPOConfig</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align.method_registry <span class="im">import</span> METHOD_REGISTRY</span></code></pre></div>
+<h3 id="default-dpo-configuration">Default DPO Configuration</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>default <span class="op">=</span> DPOConfig()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.num_train_epochs <span class="op">==</span> <span class="dv">1</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.per_device_train_batch_size <span class="op">==</span> <span class="dv">4</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.gradient_accumulation_steps <span class="op">==</span> <span class="dv">4</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.learning_rate <span class="op">==</span> <span class="fl">5e-5</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.warmup_ratio <span class="op">==</span> <span class="fl">0.1</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.max_length <span class="op">==</span> <span class="dv">2048</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.max_prompt_length <span class="op">==</span> <span class="dv">512</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.beta <span class="op">==</span> <span class="fl">0.1</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.gradient_checkpointing <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.bf16 <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> default.fp16 <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>Notice the differences from SFTConfig: DPO defaults to 1 epoch (not
+3), lower learning rate (5e-5 vs 2e-4), and higher warmup ratio (0.1 vs
+0.03). These reflect the fact that DPO’s preference signal is weaker and
+more sensitive to hyperparameters.</p>
+<h3 id="beta-conservative-vs-aggressive">Beta: Conservative vs
+Aggressive</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>conservative <span class="op">=</span> DPOConfig(beta<span class="op">=</span><span class="fl">0.5</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> conservative.beta <span class="op">==</span> <span class="fl">0.5</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>aggressive <span class="op">=</span> DPOConfig(beta<span class="op">=</span><span class="fl">0.01</span>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> aggressive.beta <span class="op">==</span> <span class="fl">0.01</span></span></code></pre></div>
+<p>Conservative beta (0.5) keeps the model close to its starting
+behavior – good when you want subtle adjustments. Aggressive beta (0.01)
+allows large behavioral changes – use when you have high-quality
+preference data and want strong alignment.</p>
+<h3 id="beta-validation">Beta Validation</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    DPOConfig(beta<span class="op">=</span><span class="fl">0.0</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: beta must be positive</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    DPOConfig(beta<span class="op">=-</span><span class="fl">0.1</span>)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: beta must be positive</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    DPOConfig(beta<span class="op">=</span><span class="bu">float</span>(<span class="st">&quot;nan&quot;</span>))</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="va">False</span>, <span class="st">&quot;Should have raised ValueError&quot;</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span>  <span class="co"># Expected: NaN rejected</span></span></code></pre></div>
+<p>Beta must be positive and finite. Zero beta would eliminate the KL
+penalty entirely, and negative beta would invert the optimization
+objective.</p>
+<h3 id="prompt-and-completion-length-budget">Prompt and Completion
+Length Budget</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>cfg <span class="op">=</span> DPOConfig(max_length<span class="op">=</span><span class="dv">2048</span>, max_prompt_length<span class="op">=</span><span class="dv">512</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> cfg.max_prompt_length <span class="op">&lt;</span> cfg.max_length, <span class="st">&quot;Prompt length should be less than total max length&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>completion_budget <span class="op">=</span> cfg.max_length <span class="op">-</span> cfg.max_prompt_length</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> completion_budget <span class="op">==</span> <span class="dv">1536</span>, <span class="st">&quot;Completion budget = max_length - max_prompt_length&quot;</span></span></code></pre></div>
+<p>With max_length=2048 and max_prompt_length=512, you have 1536 tokens
+for completions. If your preference pairs have long completions,
+increase max_length or decrease max_prompt_length.</p>
+<h3 id="dpo-loss-type-variants">DPO Loss Type Variants</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;meta-llama/Llama-3.1-8B&quot;</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Standard DPO</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>standard_dpo <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;dpo&quot;</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    dpo<span class="op">=</span>DPOConfig(beta<span class="op">=</span><span class="fl">0.1</span>),</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> standard_dpo.loss_type <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;Default: standard DPO loss&quot;</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="co"># IPO variant (Identity Preference Optimization)</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>ipo_config <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;dpo&quot;</span>,</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    dpo<span class="op">=</span>DPOConfig(beta<span class="op">=</span><span class="fl">0.1</span>),</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    loss_type<span class="op">=</span><span class="st">&quot;ipo&quot;</span>,</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ipo_config.loss_type <span class="op">==</span> <span class="st">&quot;ipo&quot;</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="co"># SimPO variant</span></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>simpo_config <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;dpo&quot;</span>,</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    loss_type<span class="op">=</span><span class="st">&quot;simpo&quot;</span>,</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> simpo_config.loss_type <span class="op">==</span> <span class="st">&quot;simpo&quot;</span></span></code></pre></div>
+<p>Loss type variants are set on AlignmentConfig (not DPOConfig) because
+they affect how the DPO trainer computes the loss. <code>None</code>
+means standard DPO.</p>
+<h3 id="dpo-method-registry-metadata">DPO Method Registry Metadata</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>dpo_method <span class="op">=</span> METHOD_REGISTRY[<span class="st">&quot;dpo&quot;</span>]</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dpo_method.requires_preference_data <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dpo_method.supports_loss_type <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dpo_method.requires_reward_func <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> dpo_method.category <span class="op">==</span> <span class="st">&quot;offline&quot;</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;prompt&quot;</span> <span class="kw">in</span> dpo_method.dataset_required_columns</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;chosen&quot;</span> <span class="kw">in</span> dpo_method.dataset_required_columns</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;rejected&quot;</span> <span class="kw">in</span> dpo_method.dataset_required_columns</span></code></pre></div>
+<p>DPO is an offline method – it uses pre-collected preference data
+(prompt, chosen, rejected) rather than generating completions online. It
+does not require a reward function.</p>
+<h3 id="the-sft_then_dpo-combo">The sft_then_dpo Combo</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> SFTConfig</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>combo <span class="op">=</span> AlignmentConfig(</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    method<span class="op">=</span><span class="st">&quot;sft_then_dpo&quot;</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    base_model_id<span class="op">=</span>model_id,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    sft<span class="op">=</span>SFTConfig(num_train_epochs<span class="op">=</span><span class="dv">2</span>, learning_rate<span class="op">=</span><span class="fl">2e-4</span>),</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    dpo<span class="op">=</span>DPOConfig(num_train_epochs<span class="op">=</span><span class="dv">1</span>, beta<span class="op">=</span><span class="fl">0.1</span>),</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> combo.sft.num_train_epochs <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> combo.dpo.beta <span class="op">==</span> <span class="fl">0.1</span></span></code></pre></div>
+<p>The <code>sft_then_dpo</code> method runs SFT first to teach the
+model the task format, then DPO to align its preferences. This is the
+most common two-stage alignment pipeline.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 25%" />
+<col style="width: 54%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Beta too low (&lt; 0.01)</td>
+<td>Start with <code>beta=0.1</code></td>
+<td>Very low beta causes reward hacking – the model exploits the
+preference signal</td>
+</tr>
+<tr>
+<td>max_prompt_length &gt;= max_length</td>
+<td>Ensure <code>max_prompt_length &lt; max_length</code></td>
+<td>No room for completions means the model cannot learn from the
+chosen/rejected pairs</td>
+</tr>
+<tr>
+<td>DPO learning rate same as SFT</td>
+<td>Use lower LR for DPO (5e-5 default)</td>
+<td>DPO’s preference signal is weaker; high LR causes training
+instability</td>
+</tr>
+<tr>
+<td>Skipping SFT before DPO</td>
+<td>Use <code>sft_then_dpo</code> for best results</td>
+<td>DPO works best when the model already understands the task format
+from SFT</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a DPOConfig with <code>max_length=4096</code> and
+<code>max_prompt_length=1024</code>. What is the completion budget? When
+would you need this configuration?</li>
+<li>The default DPO learning rate (5e-5) is 4x lower than SFT’s default
+(2e-4). Create both configs and verify this ratio. Why is DPO more
+sensitive to learning rate?</li>
+<li>Create an <code>sft_then_dpo</code> AlignmentConfig where SFT trains
+for 3 epochs with learning rate 2e-4, and DPO trains for 1 epoch with
+beta 0.2. Use <code>get_method_config()</code> to retrieve each
+sub-config.</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>DPO aligns models using preference pairs (prompt, chosen, rejected)
+without a separate reward model</li>
+<li>Beta controls KL divergence penalty: lower = more aggressive, higher
+= more conservative</li>
+<li><code>max_length - max_prompt_length</code> defines the completion
+budget</li>
+<li>DPO defaults to lower learning rate and fewer epochs than SFT</li>
+<li>Loss type variants (IPO, SimPO) are set on AlignmentConfig, not
+DPOConfig</li>
+<li><code>sft_then_dpo</code> is the recommended two-stage alignment
+pipeline</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="05_advanced_methods.md">Chapter 5: Advanced Alignment
+Methods</a> – Explore KTO, ORPO, GRPO, RLOO, and OnlineDPO for
+specialized alignment scenarios.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

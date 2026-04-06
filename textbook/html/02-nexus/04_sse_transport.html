@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 4: SSE Transport — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 4: SSE Transport &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,110 +24,290 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 4: SSE Transport</h1>
+<h1 id="chapter-4-sse-transport">Chapter 4: SSE Transport</h1>
+<h2 id="overview">Overview</h2>
+<p>Server-Sent Events (SSE) provide one-way real-time streaming from
+server to client over HTTP. Nexus uses SSE to stream EventBus events to
+browser dashboards, monitoring tools, and other clients. This chapter
+covers the <code>register_sse_endpoint()</code> function, the
+<code>EventBus</code> class, event publishing and subscription, and how
+SSE filtering works. SSE is the bridge between Nexus’s internal event
+system and external consumers.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-3 (Nexus basics, HTTP/MCP transports)</li>
+<li>Understanding of HTTP streaming concepts</li>
+<li>Familiarity with async generators in Python</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-are-server-sent-events">What Are Server-Sent Events?</h3>
+<p>SSE is a W3C standard for one-way streaming from server to client
+over HTTP. Unlike WebSockets (bidirectional), SSE is server-to-client
+only, making it simpler and sufficient for monitoring dashboards and
+event feeds. The format is plain text:</p>
+<pre><code>data: {&quot;event_type&quot;: &quot;handler.called&quot;, &quot;timestamp&quot;: &quot;...&quot;, ...}\n\n</code></pre>
+<h3 id="the-eventbus">The EventBus</h3>
+<p>Nexus’s <code>EventBus</code> is the source of all events. It uses a
+<code>janus.Queue</code> to bridge synchronous publishers (any thread)
+and asynchronous consumers (SSE endpoint, subscribers). The bus
+maintains a bounded history (default 256 events) and supports filtered
+subscriptions.</p>
+<h3 id="why-is-sse-opt-in">Why Is SSE Opt-In?</h3>
+<p>SSE requires an active EventBus dispatch loop and adds an HTTP
+endpoint. Not every application needs real-time event streaming, so SSE
+is registered explicitly via
+<code>register_sse_endpoint(app)</code>.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 36%" />
+<col style="width: 8%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>register_sse_endpoint(app)</code></td>
+<td><code>app: Nexus</code></td>
+<td><code>None</code></td>
+<td>Add <code>GET /events/stream</code> to the HTTP transport</td>
+</tr>
+<tr>
+<td><code>EventBus.sse_url()</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>Returns the canonical SSE path <code>"/events/stream"</code></td>
+</tr>
+<tr>
+<td><code>EventBus(capacity)</code></td>
+<td><code>capacity: int = 256</code></td>
+<td><code>EventBus</code></td>
+<td>Create a bounded event bus</td>
+</tr>
+<tr>
+<td><code>bus.publish(event)</code></td>
+<td><code>event: NexusEvent</code></td>
+<td><code>None</code></td>
+<td>Publish an event (sync, thread-safe)</td>
+</tr>
+<tr>
+<td><code>bus.publish_handler_registered(name)</code></td>
+<td><code>name: str</code></td>
+<td><code>None</code></td>
+<td>Convenience: publish a HANDLER_REGISTERED event</td>
+</tr>
+<tr>
+<td><code>bus.subscribe()</code></td>
+<td>–</td>
+<td><code>asyncio.Queue</code></td>
+<td>Subscribe to all events</td>
+</tr>
+<tr>
+<td><code>bus.subscribe_filtered(predicate)</code></td>
+<td><code>predicate: Callable</code></td>
+<td><code>asyncio.Queue</code></td>
+<td>Subscribe to matching events only</td>
+</tr>
+<tr>
+<td><code>bus.subscriber_count</code></td>
+<td>–</td>
+<td><code>int</code></td>
+<td>Number of active subscribers</td>
+</tr>
+<tr>
+<td><code>bus.get_history(event_type, limit)</code></td>
+<td><code>event_type: str</code>, <code>limit: int</code></td>
+<td><code>list[dict]</code></td>
+<td>Read from bounded history deque</td>
+</tr>
+<tr>
+<td><code>NexusEvent(event_type, handler_name, data)</code></td>
+<td><code>event_type: NexusEventType</code>,
+<code>handler_name: str</code>, <code>data: dict</code></td>
+<td><code>NexusEvent</code></td>
+<td>Create an event</td>
+</tr>
+<tr>
+<td><code>event.to_dict()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Serialize for JSON transport</td>
+</tr>
+<tr>
+<td><code>NexusEvent.from_dict(d)</code></td>
+<td><code>d: dict</code></td>
+<td><code>NexusEvent</code></td>
+<td>Deserialize from dict</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-register-the-sse-endpoint">Step 1: Register the SSE
+Endpoint</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus, register_sse_endpoint</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(api_port<span class="op">=</span><span class="dv">8000</span>, enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>register_sse_endpoint(app)</span></code></pre></div>
+<p>This adds <code>GET /events/stream</code> to the HTTP transport. The
+endpoint streams events from the EventBus in SSE format.</p>
+<h3 id="step-2-eventbus-sse-url">Step 2: EventBus SSE URL</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.events <span class="im">import</span> EventBus</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>sse_path <span class="op">=</span> EventBus.sse_url()</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sse_path <span class="op">==</span> <span class="st">&quot;/events/stream&quot;</span></span></code></pre></div>
+<p><code>sse_url()</code> returns the canonical path, matching the Rust
+SDK’s <code>EventBus::sse_url()</code>.</p>
+<h3 id="step-3-access-the-internal-eventbus">Step 3: Access the Internal
+EventBus</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>bus <span class="op">=</span> app._event_bus</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(bus, EventBus)</span></code></pre></div>
+<p>Nexus creates an EventBus internally with a default capacity of 256
+events.</p>
+<h3 id="step-4-publish-events">Step 4: Publish Events</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.events <span class="im">import</span> NexusEvent, NexusEventType</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>event <span class="op">=</span> NexusEvent(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    event_type<span class="op">=</span>NexusEventType.HANDLER_CALLED,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    handler_name<span class="op">=</span><span class="st">&quot;greet&quot;</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    data<span class="op">=</span>{<span class="st">&quot;user&quot;</span>: <span class="st">&quot;Alice&quot;</span>},</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>bus.publish(event)</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Convenience method</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>bus.publish_handler_registered(<span class="st">&quot;my_handler&quot;</span>)</span></code></pre></div>
+<p><code>publish()</code> is thread-safe and non-blocking. Events enter
+the janus sync queue and are dispatched to subscribers once
+<code>bus.start()</code> launches the async dispatch loop.</p>
+<h3 id="step-5-event-serialization">Step 5: Event Serialization</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>event_dict <span class="op">=</span> event.to_dict()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> event_dict[<span class="st">&quot;event_type&quot;</span>] <span class="op">==</span> <span class="st">&quot;handler.called&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> event_dict[<span class="st">&quot;handler_name&quot;</span>] <span class="op">==</span> <span class="st">&quot;greet&quot;</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> event_dict[<span class="st">&quot;data&quot;</span>][<span class="st">&quot;user&quot;</span>] <span class="op">==</span> <span class="st">&quot;Alice&quot;</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>restored <span class="op">=</span> NexusEvent.from_dict(event_dict)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> restored.event_type <span class="op">==</span> event.event_type</span></code></pre></div>
+<p><code>to_dict()</code> produces JSON-serializable output for SSE
+transport. <code>from_dict()</code> reconstructs the event for
+round-trip serialization.</p>
+<h3 id="step-6-subscribe-to-events">Step 6: Subscribe to Events</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> asyncio</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>q_all <span class="op">=</span> bus.subscribe()</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(q_all, asyncio.Queue)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>q_filtered <span class="op">=</span> bus.subscribe_filtered(</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">lambda</span> evt: evt.event_type <span class="op">==</span> NexusEventType.HANDLER_CALLED</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(q_filtered, asyncio.Queue)</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> bus.subscriber_count <span class="op">==</span> <span class="dv">2</span></span></code></pre></div>
+<p><code>subscribe()</code> returns a queue that receives all events.
+<code>subscribe_filtered()</code> takes a predicate function and only
+delivers matching events.</p>
+<h3 id="step-7-query-event-history">Step 7: Query Event History</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>history <span class="op">=</span> bus.get_history()</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(history, <span class="bu">list</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>history_filtered <span class="op">=</span> bus.get_history(event_type<span class="op">=</span><span class="st">&quot;handler.called&quot;</span>, limit<span class="op">=</span><span class="dv">10</span>)</span></code></pre></div>
+<p><code>get_history()</code> reads from the internal bounded deque with
+optional filters. The history is populated by the dispatch loop in
+production.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 28%" />
+<col style="width: 37%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Expecting history before <code>bus.start()</code></td>
+<td>Events are in the janus queue, not history, until dispatch runs</td>
+<td>Run the dispatch loop or check the queue directly</td>
+</tr>
+<tr>
+<td>Forgetting to call <code>register_sse_endpoint(app)</code></td>
+<td>No SSE endpoint is created</td>
+<td>SSE is opt-in; register explicitly</td>
+</tr>
+<tr>
+<td>Not handling SSE keepalives</td>
+<td>Client may disconnect after 15s silence</td>
+<td>The SSE generator sends keepalive comments automatically</td>
+</tr>
+<tr>
+<td>Creating EventBus with very small capacity</td>
+<td>Events evicted before consumers read them</td>
+<td>Use capacity &gt;= 256 for production</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Event Round-Trip</strong>: Create five
+<code>NexusEvent</code> instances with different event types. Serialize
+each with <code>to_dict()</code>, then restore with
+<code>from_dict()</code>. Verify all fields survive the round
+trip.</p></li>
+<li><p><strong>Filtered Subscriptions</strong>: Create an EventBus and
+add three subscribers: one unfiltered, one for
+<code>HANDLER_CALLED</code> events only, and one for
+<code>HANDLER_ERROR</code> events only. Verify the subscriber count is
+3.</p></li>
+<li><p><strong>History Capacity</strong>: Create an EventBus with
+<code>capacity=5</code>. Directly append 10 events to
+<code>_history</code>. Verify that only the 5 most recent events
+survive, demonstrating the bounded deque behavior.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>register_sse_endpoint(app)</code> adds
+<code>GET /events/stream</code> for real-time event streaming.</li>
+<li><code>EventBus.sse_url()</code> returns the canonical SSE path
+<code>"/events/stream"</code>.</li>
+<li>Events are published via <code>bus.publish()</code> (sync,
+thread-safe).</li>
+<li>SSE format: <code>data: {json}\n\n</code> with 15-second keepalive
+comments.</li>
+<li>Optional <code>?event_type=</code> query parameter enables
+server-side filtering.</li>
+<li>EventBus stores bounded history (default 256 events) with LRU
+eviction.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="05_middleware.md">Chapter 5: Middleware</a> – Add middleware
+to Nexus for CORS, security headers, CSRF protection, and response
+caching.</p>
 
-  <h2>Overview</h2>
-  <p>Server-Sent Events (SSE) provide one-way real-time streaming from server to client over HTTP. Nexus uses SSE to stream EventBus events to browser dashboards, monitoring tools, and other clients. This chapter covers <code>register_sse_endpoint()</code>, the <code>EventBus</code> class, event publishing and subscription, and SSE filtering.</p>
-
-  <h2>Prerequisites</h2>
-  <ul>
-    <li>Completed Chapters 1&ndash;3</li>
-    <li>Understanding of HTTP streaming concepts</li>
-    <li>Familiarity with async generators in Python</li>
-  </ul>
-
-  <h2>Concepts</h2>
-
-  <h3>What Are Server-Sent Events?</h3>
-  <p>SSE is a W3C standard for one-way streaming from server to client over HTTP. Unlike WebSockets (bidirectional), SSE is simpler and sufficient for monitoring dashboards and event feeds.</p>
-  <pre><code>data: {"event_type": "handler.called", "timestamp": "...", ...}\n\n</code></pre>
-
-  <h3>The EventBus</h3>
-  <p>Nexus's <code>EventBus</code> bridges synchronous publishers and asynchronous consumers via a <code>janus.Queue</code>. It maintains a bounded history (default 256 events) and supports filtered subscriptions.</p>
-
-  <h2>Key API</h2>
-  <table>
-    <tr><th>Method</th><th>Parameters</th><th>Returns</th><th>Description</th></tr>
-    <tr><td><code>register_sse_endpoint(app)</code></td><td><code>app: Nexus</code></td><td><code>None</code></td><td>Add <code>GET /events/stream</code></td></tr>
-    <tr><td><code>EventBus.sse_url()</code></td><td>&mdash;</td><td><code>str</code></td><td>Returns <code>"/events/stream"</code></td></tr>
-    <tr><td><code>EventBus(capacity)</code></td><td><code>capacity: int</code></td><td><code>EventBus</code></td><td>Create bounded event bus</td></tr>
-    <tr><td><code>bus.publish(event)</code></td><td><code>NexusEvent</code></td><td><code>None</code></td><td>Publish event (thread-safe)</td></tr>
-    <tr><td><code>bus.subscribe()</code></td><td>&mdash;</td><td><code>asyncio.Queue</code></td><td>Subscribe to all events</td></tr>
-    <tr><td><code>bus.subscribe_filtered(pred)</code></td><td><code>Callable</code></td><td><code>asyncio.Queue</code></td><td>Subscribe to matching events</td></tr>
-    <tr><td><code>bus.get_history()</code></td><td><code>event_type</code>, <code>limit</code></td><td><code>list[dict]</code></td><td>Read bounded history</td></tr>
-    <tr><td><code>event.to_dict()</code></td><td>&mdash;</td><td><code>dict</code></td><td>Serialize for JSON</td></tr>
-    <tr><td><code>NexusEvent.from_dict(d)</code></td><td><code>dict</code></td><td><code>NexusEvent</code></td><td>Deserialize from dict</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Register SSE Endpoint</h3>
-  <pre><code class="language-python">from nexus import Nexus, register_sse_endpoint
-
-app = Nexus(api_port=8000, enable_durability=False)
-register_sse_endpoint(app)</code></pre>
-
-  <h3>Step 2: Publish Events</h3>
-  <pre><code class="language-python">from nexus.events import EventBus, NexusEvent, NexusEventType
-
-bus = app._event_bus
-
-event = NexusEvent(
-    event_type=NexusEventType.HANDLER_CALLED,
-    handler_name="greet",
-    data={"user": "Alice"},
-)
-bus.publish(event)
-
-# Convenience method
-bus.publish_handler_registered("my_handler")</code></pre>
-
-  <h3>Step 3: Event Serialization</h3>
-  <pre><code class="language-python">event_dict = event.to_dict()
-assert event_dict["event_type"] == "handler.called"
-
-restored = NexusEvent.from_dict(event_dict)
-assert restored.event_type == event.event_type</code></pre>
-
-  <h3>Step 4: Subscribe to Events</h3>
-  <pre><code class="language-python">import asyncio
-
-q_all = bus.subscribe()
-q_filtered = bus.subscribe_filtered(
-    lambda evt: evt.event_type == NexusEventType.HANDLER_CALLED
-)
-
-assert bus.subscriber_count == 2</code></pre>
-
-  <div class="callout">
-    <strong>SSE Streaming Format:</strong> Events are sent as <code>data: {json}\n\n</code>. If no events arrive within 15 seconds, a keepalive comment (<code>: keepalive\n\n</code>) is sent. Clients can filter by event type via <code>?event_type=handler.called</code>.
-  </div>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Expecting history before dispatch loop</td><td>Events queued but not dispatched</td><td>Run <code>bus.start()</code> first</td></tr>
-    <tr><td>Forgetting <code>register_sse_endpoint()</code></td><td>No SSE endpoint created</td><td>SSE is opt-in</td></tr>
-    <tr><td>Very small EventBus capacity</td><td>Events evicted too quickly</td><td>Use capacity &ge; 256</td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li><code>register_sse_endpoint(app)</code> adds <code>GET /events/stream</code>.</li>
-    <li>Events are published via <code>bus.publish()</code> (sync, thread-safe).</li>
-    <li>SSE format: <code>data: {json}\n\n</code> with 15s keepalive.</li>
-    <li>Optional <code>?event_type=</code> query parameter for server-side filtering.</li>
-    <li>EventBus stores bounded history with LRU eviction.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="03_mcp_transport.html">&larr; Previous: MCP Transport</a>
-    <a href="05_middleware.html">Next: Middleware &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

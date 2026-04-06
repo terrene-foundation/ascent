@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 4: Chain-of-Thought
+Agent &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-4-chain-of-thought-agent">Chapter 4: Chain-of-Thought
+Agent</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>ChainOfThoughtAgent</strong> decomposes complex problems
+into five explicit reasoning steps, producing an auditable chain of
+logic in a single LLM call. Unlike ReAct (iterative with tools) or
+SimpleQA (single answer), CoT fills in a structured five-step template
+that makes every intermediate thought visible. This chapter teaches you
+the CoT pattern, verification, and when to choose CoT over other
+reasoning strategies.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapters 1-3 (Delegate, SimpleQA, ReAct)</li>
+<li>Understanding of the difference between single-shot and multi-cycle
+strategies</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-five-step-reasoning-structure">Concept 1: Five-Step
+Reasoning Structure</h3>
+<p>CoT uses a fixed five-step structure: (1) Problem understanding, (2)
+Data identification and organization, (3) Systematic calculation or
+analysis, (4) Solution verification, (5) Final answer formulation. This
+forces the LLM to show its work rather than jump to a conclusion.</p>
+<ul>
+<li><strong>What</strong>: A structured template with five named
+reasoning steps plus a final answer and confidence score</li>
+<li><strong>Why</strong>: Explicit steps make reasoning auditable –
+every intermediate thought is recorded and reviewable</li>
+<li><strong>How</strong>: The <code>ChainOfThoughtSignature</code>
+defines <code>step1</code> through <code>step5</code>,
+<code>final_answer</code>, and <code>confidence</code> as outputs</li>
+<li><strong>When</strong>: Best for math problems, logical deduction,
+analysis tasks, and anywhere an audit trail is required</li>
+</ul>
+<h3 id="concept-2-single-shot-structured-reasoning">Concept 2:
+Single-Shot Structured Reasoning</h3>
+<p>CoT is a single-shot agent (like SimpleQA) that uses
+<code>AsyncSingleShotStrategy</code>. All five steps are produced in one
+LLM call. This is different from ReAct, which iterates over multiple
+calls. The entire reasoning chain is generated at once.</p>
+<ul>
+<li><strong>What</strong>: One LLM call produces the complete five-step
+reasoning chain</li>
+<li><strong>Why</strong>: Step-by-step analysis that does not need
+external data can be completed in a single pass</li>
+<li><strong>How</strong>: The LLM receives the problem and fills in all
+five step fields plus the final answer simultaneously</li>
+<li><strong>When</strong>: When the problem can be solved from the
+prompt alone without fetching external information</li>
+</ul>
+<h3 id="concept-3-verification">Concept 3: Verification</h3>
+<p>When <code>enable_verification=True</code>, the agent adds a
+<code>verified</code> boolean to the result. If confidence meets or
+exceeds the threshold, the answer is marked as verified. Below
+threshold, a warning is added. This provides a programmatic quality gate
+on CoT outputs.</p>
+<ul>
+<li><strong>What</strong>: A post-processing step that compares
+confidence against the configured threshold</li>
+<li><strong>Why</strong>: Automated verification flags uncertain answers
+for human review without blocking the pipeline</li>
+<li><strong>How</strong>:
+<code>verified = confidence &gt;= confidence_threshold</code>; if False,
+a <code>warning</code> field is added</li>
+<li><strong>When</strong>: Enable for production workloads where answer
+quality must be programmatically gated</li>
+</ul>
+<h3 id="concept-4-text-response-extraction-fallback-parser">Concept 4:
+Text Response Extraction (Fallback Parser)</h3>
+<p>When the LLM returns plain text instead of structured JSON (e.g.,
+with a mock provider), CoT extracts structure from the text using
+pattern matching. This is a safety net for graceful degradation, not the
+primary path.</p>
+<ul>
+<li><strong>What</strong>: A regex-based fallback that parses “Step N:”
+and “Final answer:” markers from freeform text</li>
+<li><strong>Why</strong>: Not all LLM providers reliably return
+structured JSON – the fallback prevents total failure</li>
+<li><strong>How</strong>: <code>_extract_from_text_response()</code>
+scans for step markers, extracts content, and assigns default confidence
+(0.5)</li>
+<li><strong>When</strong>: Automatically invoked when the LLM response
+is not valid JSON</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 41%" />
+<col style="width: 13%" />
+<col style="width: 23%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ChainOfThoughtAgent()</code></td>
+<td><code>llm_provider</code>, <code>model</code>,
+<code>confidence_threshold</code>, <code>enable_verification</code></td>
+<td><code>ChainOfThoughtAgent</code></td>
+<td>Create a CoT agent</td>
+</tr>
+<tr>
+<td><code>agent.run()</code></td>
+<td><code>problem: str</code>, <code>context: str = ""</code></td>
+<td><code>dict</code></td>
+<td>Solve a problem with five-step reasoning</td>
+</tr>
+<tr>
+<td><code>agent._extract_from_text_response()</code></td>
+<td><code>text: str</code></td>
+<td><code>dict</code></td>
+<td>Fallback parser for non-JSON responses</td>
+</tr>
+<tr>
+<td><code>ChainOfThoughtConfig()</code></td>
+<td><code>temperature</code>, <code>reasoning_steps</code>,
+<code>enable_verification</code>, …</td>
+<td><code>ChainOfThoughtConfig</code></td>
+<td>Configuration for CoT behavior</td>
+</tr>
+<tr>
+<td><code>ChainOfThoughtSignature</code></td>
+<td>–</td>
+<td><code>Signature</code></td>
+<td>Five-step I/O definition</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.agents.specialized.chain_of_thought <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    ChainOfThoughtAgent,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    ChainOfThoughtConfig,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ChainOfThoughtSignature,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.core.base_agent <span class="im">import</span> BaseAgent</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<h3
+id="chainofthoughtsignature-five-step-structure">ChainOfThoughtSignature
+– Five-Step Structure</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;problem&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_inputs</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;context&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_inputs</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Five reasoning steps + final answer + confidence</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;step1&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_outputs</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;step2&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_outputs</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;step3&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_outputs</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;step4&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_outputs</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;step5&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_outputs</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;final_answer&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_outputs</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;confidence&quot;</span> <span class="kw">in</span> ChainOfThoughtSignature._signature_outputs</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="co"># context is optional (has default)</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>context_field <span class="op">=</span> ChainOfThoughtSignature._signature_inputs[<span class="st">&quot;context&quot;</span>]</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> context_field.required <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>Two inputs (<code>problem</code> required, <code>context</code>
+optional) and seven outputs (five steps, final answer, confidence). The
+five steps follow a fixed reasoning progression: understand, identify
+data, analyze, verify, formulate.</p>
+<h3 id="chainofthoughtconfig">ChainOfThoughtConfig</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> ChainOfThoughtConfig()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.temperature <span class="op">==</span> <span class="fl">0.1</span>, <span class="st">&quot;Low temperature for precise reasoning&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.max_tokens <span class="op">==</span> <span class="dv">1500</span>, <span class="st">&quot;Larger context for step-by-step output&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.timeout <span class="op">==</span> <span class="dv">45</span>, <span class="st">&quot;Longer timeout for complex reasoning&quot;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.reasoning_steps <span class="op">==</span> <span class="dv">5</span>, <span class="st">&quot;Five reasoning steps&quot;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.confidence_threshold <span class="op">==</span> <span class="fl">0.7</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.enable_verification <span class="kw">is</span> <span class="va">True</span>, <span class="st">&quot;Verification enabled by default&quot;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Custom configuration for stricter reasoning</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>strict_config <span class="op">=</span> ChainOfThoughtConfig(</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    confidence_threshold<span class="op">=</span><span class="fl">0.9</span>,</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    reasoning_steps<span class="op">=</span><span class="dv">5</span>,</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    enable_verification<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> strict_config.confidence_threshold <span class="op">==</span> <span class="fl">0.9</span></span></code></pre></div>
+<p>CoT defaults differ from SimpleQA: higher <code>max_tokens</code>
+(1500 vs 300) to accommodate the five-step output, longer timeout (45s
+vs 30s) for complex reasoning, and verification enabled by default.
+Temperature remains low (0.1) for precision.</p>
+<h3 id="agent-instantiation">Agent Instantiation</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> ChainOfThoughtAgent(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    confidence_threshold<span class="op">=</span><span class="fl">0.7</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    enable_verification<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, ChainOfThoughtAgent)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, BaseAgent)</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent.cot_config.enable_verification <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<p>CoT uses <code>AsyncSingleShotStrategy</code> (the default). Unlike
+ReAct, it does not iterate – all five steps are produced in one LLM
+call.</p>
+<h3 id="input-validation">Input Validation</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>empty_result <span class="op">=</span> agent.run(problem<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;error&quot;</span>] <span class="op">==</span> <span class="st">&quot;INVALID_INPUT&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;confidence&quot;</span>] <span class="op">==</span> <span class="fl">0.0</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;final_answer&quot;</span>] <span class="op">==</span> <span class="st">&quot;Please provide a clear problem to solve.&quot;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co"># All five steps present even on error</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, <span class="dv">6</span>):</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="ss">f&quot;step</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">&quot;</span> <span class="kw">in</span> empty_result</span></code></pre></div>
+<p>Even on validation failure, all five step keys are present in the
+result. This ensures consumers can always access the expected fields
+without key-checking.</p>
+<h3 id="text-response-extraction-fallback">Text Response Extraction
+(Fallback)</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>text_response <span class="op">=</span> <span class="st">&quot;&quot;&quot;Step 1: Understand the problem - we need to multiply 15 by 23.</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="st">Step 2: Break down the numbers - 15 = 10 + 5, 23 = 20 + 3.</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="st">Step 3: Apply distributive property - (10+5)(20+3) = 200+30+100+15.</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="st">Step 4: Sum the parts - 200+30+100+15 = 345.</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="st">Step 5: Verify by estimation - 15*20=300, 15*3=45, total=345. Correct.</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="st">Final answer: 345&quot;&quot;&quot;</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>extracted <span class="op">=</span> agent._extract_from_text_response(text_response)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;step1&quot;</span> <span class="kw">in</span> extracted</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;final_answer&quot;</span> <span class="kw">in</span> extracted</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> extracted[<span class="st">&quot;final_answer&quot;</span>] <span class="op">==</span> <span class="st">&quot;345&quot;</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> extracted[<span class="st">&quot;confidence&quot;</span>] <span class="op">==</span> <span class="fl">0.5</span>, <span class="st">&quot;Default confidence for text-parsed responses&quot;</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Missing steps get empty strings</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>sparse_text <span class="op">=</span> <span class="st">&quot;Final answer: 42&quot;</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>sparse_result <span class="op">=</span> agent._extract_from_text_response(sparse_text)</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> sparse_result[<span class="st">&quot;final_answer&quot;</span>] <span class="op">==</span> <span class="st">&quot;42&quot;</span></span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, <span class="dv">6</span>):</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="ss">f&quot;step</span><span class="sc">{</span>i<span class="sc">}</span><span class="ss">&quot;</span> <span class="kw">in</span> sparse_result  <span class="co"># All step keys present</span></span></code></pre></div>
+<p>The fallback parser handles freeform text by scanning for “Step N:”
+markers and “Final answer:” prefix. Missing steps get empty strings.
+Confidence defaults to 0.5 for text-parsed responses since the parser
+cannot assess the model’s certainty.</p>
+<h3 id="verification-flag">Verification Flag</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># When enable_verification=True, the result includes:</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="co"># {</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;step1&quot;: &quot;Understanding the problem...&quot;,</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;step2&quot;: &quot;Identifying the numbers...&quot;,</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;step3&quot;: &quot;Systematic calculation...&quot;,</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;step4&quot;: &quot;Verifying the result...&quot;,</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;step5&quot;: &quot;Formulating final answer...&quot;,</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;final_answer&quot;: &quot;345&quot;,</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;confidence&quot;: 0.95,</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;verified&quot;: True,   # confidence &gt;= threshold</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="co"># When confidence &lt; threshold:</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="co"># {</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;final_answer&quot;: &quot;...&quot;,</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;confidence&quot;: 0.4,</span></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;verified&quot;: False,</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;warning&quot;: &quot;Low confidence (0.40 &lt; 0.7)&quot;,</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a>no_verify_agent <span class="op">=</span> ChainOfThoughtAgent(</span>
+<span id="cb7-22"><a href="#cb7-22" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb7-23"><a href="#cb7-23" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb7-24"><a href="#cb7-24" aria-hidden="true" tabindex="-1"></a>    enable_verification<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb7-25"><a href="#cb7-25" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-26"><a href="#cb7-26" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> no_verify_agent.cot_config.enable_verification <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<p>Verification adds a programmatic quality gate. When disabled, the
+<code>verified</code> and <code>warning</code> fields are absent from
+the result.</p>
+<h3 id="cot-vs-react-when-to-use-which">CoT vs ReAct: When to Use
+Which</h3>
+<table>
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 30%" />
+<col style="width: 55%" />
+</colgroup>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>CoT (This Chapter)</th>
+<th>ReAct (Chapter 3)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Execution</td>
+<td>Single-shot (one LLM call)</td>
+<td>Multi-cycle (many LLM calls)</td>
+</tr>
+<tr>
+<td>Tools</td>
+<td>No external tools</td>
+<td>Uses tools for data retrieval</td>
+</tr>
+<tr>
+<td>Best for</td>
+<td>Math, logic, audit trails</td>
+<td>Research, multi-step tasks, dynamic exploration</td>
+</tr>
+<tr>
+<td>Transparency</td>
+<td>All five steps visible</td>
+<td>Thought-action log per cycle</td>
+</tr>
+<tr>
+<td>Strategy</td>
+<td><code>AsyncSingleShotStrategy</code></td>
+<td><code>MultiCycleStrategy</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 27%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Using CoT for tasks needing external data</td>
+<td>Use ReActAgent with tools instead</td>
+<td>CoT cannot fetch data – it reasons only from the prompt context</td>
+</tr>
+<tr>
+<td>Ignoring the fallback parser</td>
+<td>Handle both JSON and text responses</td>
+<td>Some providers return freeform text – the fallback prevents total
+failure</td>
+</tr>
+<tr>
+<td>Trusting <code>confidence</code> from text parsing</td>
+<td>Treat 0.5 default confidence as “uncertain”</td>
+<td>Text-parsed confidence is a placeholder, not a model assessment</td>
+</tr>
+<tr>
+<td>Disabling verification in production</td>
+<td>Keep <code>enable_verification=True</code></td>
+<td>Without verification, low-confidence answers pass through
+unchecked</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a <code>ChainOfThoughtAgent</code> with
+<code>confidence_threshold=0.8</code> and
+<code>enable_verification=True</code>. Construct a mock result dict with
+<code>confidence=0.6</code> and determine whether the
+<code>verified</code> field would be True or False, and whether a
+<code>warning</code> would be present.</li>
+<li>Write a text response string that includes all five “Step N:”
+markers and a “Final answer:” line. Pass it to
+<code>_extract_from_text_response()</code> and verify all fields are
+populated. Then write a response with only steps 1 and 5 – what happens
+to steps 2-4?</li>
+<li>Compare the <code>ChainOfThoughtConfig</code> defaults with
+<code>SimpleQAConfig</code> defaults. Why does CoT use higher
+<code>max_tokens</code> and longer <code>timeout</code>?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>CoT decomposes problems into five explicit reasoning steps in a
+single LLM call</li>
+<li><code>ChainOfThoughtSignature</code> defines <code>step1</code>
+through <code>step5</code>, <code>final_answer</code>, and
+<code>confidence</code></li>
+<li>Verification adds a <code>verified</code> boolean and optional
+<code>warning</code> for programmatic quality gating</li>
+<li>The text fallback parser provides graceful degradation when
+structured JSON is unavailable</li>
+<li>CoT is single-shot – for tasks needing external data or iterative
+refinement, use ReAct instead</li>
+<li>All step keys are always present in the result, even on error or
+sparse parsing</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="05_rag_research.md">Chapter 5: RAG Research Agent</a> –
+Build a retrieval-augmented generation agent that combines vector search
+with LLM synthesis for research tasks.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

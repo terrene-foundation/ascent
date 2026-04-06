@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 1: Signatures — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: Signatures &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,135 +24,326 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 1: Signatures</h1>
+<h1 id="chapter-1-signatures">Chapter 1: Signatures</h1>
+<h2 id="overview">Overview</h2>
+<p>Signatures are the foundational abstraction in Kaizen’s agent system.
+A Signature declares WHAT an agent does – its inputs and outputs –
+without specifying HOW it does it. The docstring becomes the agent’s
+system instructions, and
+<code>InputField</code>/<code>OutputField</code> descriptors define the
+structured interface. This chapter covers class-based signatures,
+programmatic creation, inheritance, field metadata, and the metaclass
+machinery that powers the system.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Understanding of Python class syntax and metaclasses
+(conceptual)</li>
+<li>Familiarity with type annotations</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="what-is-a-signature">What Is a Signature?</h3>
+<p>A Signature is a declarative contract between the programmer and the
+AI agent. It specifies:</p>
+<ul>
+<li><strong>System prompt</strong>: The class docstring becomes the
+agent’s instructions.</li>
+<li><strong>Inputs</strong>: Fields the agent receives (e.g., a
+question, context, data).</li>
+<li><strong>Outputs</strong>: Fields the agent must produce (e.g., an
+answer, confidence score).</li>
+</ul>
+<p>The agent framework handles the LLM call, prompt construction, and
+response parsing. You only declare the interface.</p>
+<h3 id="why-signatures">Why Signatures?</h3>
+<p>Without signatures, agent code mixes prompt engineering, I/O parsing,
+and business logic. Signatures separate the interface declaration from
+the execution strategy, making agents:</p>
+<ul>
+<li><strong>Composable</strong>: Swap execution strategies without
+changing the interface.</li>
+<li><strong>Testable</strong>: Verify input/output contracts without
+calling an LLM.</li>
+<li><strong>Auditable</strong>: Every field has a description, making
+the agent’s capabilities transparent.</li>
+</ul>
+<h3 id="how-does-signaturemeta-work">How Does SignatureMeta Work?</h3>
+<p>The <code>Signature</code> class uses a metaclass
+(<code>SignatureMeta</code>) that processes class definitions at import
+time. It extracts <code>InputField</code> and <code>OutputField</code>
+instances from class annotations and stores them in
+<code>_signature_inputs</code> and <code>_signature_outputs</code>
+dictionaries.</p>
+<h3 id="intent-and-guidelines">Intent and Guidelines</h3>
+<p>Beyond the docstring, signatures support:</p>
+<ul>
+<li><code>__intent__</code>: A high-level statement of WHY the agent
+exists.</li>
+<li><code>__guidelines__</code>: A list of behavioral constraints (HOW
+the agent should behave).</li>
+</ul>
+<h2 id="key-api">Key API</h2>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 30%" />
+<col style="width: 17%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Signature</code> (class-based)</td>
+<td>class body with fields</td>
+<td>Signature class</td>
+<td>Declare a signature via class definition</td>
+</tr>
+<tr>
+<td><code>Signature()</code> (programmatic)</td>
+<td><code>inputs</code>, <code>outputs</code>, <code>name</code>,
+<code>description</code></td>
+<td><code>Signature</code> instance</td>
+<td>Create a signature dynamically</td>
+</tr>
+<tr>
+<td><code>InputField(description, default)</code></td>
+<td><code>description: str</code>, <code>default</code> (optional)</td>
+<td><code>InputField</code></td>
+<td>Declare an input field</td>
+</tr>
+<tr>
+<td><code>OutputField(description)</code></td>
+<td><code>description: str</code></td>
+<td><code>OutputField</code></td>
+<td>Declare an output field</td>
+</tr>
+<tr>
+<td><code>cls._signature_inputs</code></td>
+<td>–</td>
+<td><code>dict[str, InputField]</code></td>
+<td>All input fields</td>
+</tr>
+<tr>
+<td><code>cls._signature_outputs</code></td>
+<td>–</td>
+<td><code>dict[str, OutputField]</code></td>
+<td>All output fields</td>
+</tr>
+<tr>
+<td><code>cls._signature_intent</code></td>
+<td>–</td>
+<td><code>str</code></td>
+<td>The intent statement</td>
+</tr>
+<tr>
+<td><code>cls._signature_guidelines</code></td>
+<td>–</td>
+<td><code>list[str]</code></td>
+<td>Behavioral guidelines</td>
+</tr>
+<tr>
+<td><code>field.required</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>True if no default value</td>
+</tr>
+<tr>
+<td><code>field.default</code></td>
+<td>–</td>
+<td><code>Any</code></td>
+<td>Default value (if set)</td>
+</tr>
+<tr>
+<td><code>field.metadata</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Extra keyword arguments</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-class-based-signature-recommended">Step 1: Class-Based
+Signature (Recommended)</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen <span class="im">import</span> Signature, InputField, OutputField</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> QASignature(Signature):</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;You are a helpful question-answering assistant.&quot;&quot;&quot;</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    question: <span class="bu">str</span> <span class="op">=</span> InputField(description<span class="op">=</span><span class="st">&quot;The question to answer&quot;</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    context: <span class="bu">str</span> <span class="op">=</span> InputField(description<span class="op">=</span><span class="st">&quot;Additional context&quot;</span>, default<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    answer: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Clear, accurate answer&quot;</span>)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    confidence: <span class="bu">float</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Confidence score 0.0 to 1.0&quot;</span>)</span></code></pre></div>
+<p>The docstring becomes the system prompt. <code>question</code> is
+required (no default); <code>context</code> is optional (has a
+default).</p>
+<h3 id="step-2-verify-metaclass-processing">Step 2: Verify Metaclass
+Processing</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;question&quot;</span> <span class="kw">in</span> QASignature._signature_inputs</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;context&quot;</span> <span class="kw">in</span> QASignature._signature_inputs</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;answer&quot;</span> <span class="kw">in</span> QASignature._signature_outputs</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;confidence&quot;</span> <span class="kw">in</span> QASignature._signature_outputs</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>question_field <span class="op">=</span> QASignature._signature_inputs[<span class="st">&quot;question&quot;</span>]</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> question_field.required <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>context_field <span class="op">=</span> QASignature._signature_inputs[<span class="st">&quot;context&quot;</span>]</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> context_field.required <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> context_field.default <span class="op">==</span> <span class="st">&quot;&quot;</span></span></code></pre></div>
+<h3 id="step-3-intent-and-guidelines">Step 3: Intent and Guidelines</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> CustomerSupportSignature(Signature):</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;You are a customer support agent for an e-commerce platform.&quot;&quot;&quot;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    __intent__ <span class="op">=</span> <span class="st">&quot;Resolve customer issues efficiently and empathetically&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    __guidelines__ <span class="op">=</span> [</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Acknowledge concerns before proposing solutions&quot;</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Use empathetic language&quot;</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;Escalate if unresolved in 3 turns&quot;</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    customer_message: <span class="bu">str</span> <span class="op">=</span> InputField(description<span class="op">=</span><span class="st">&quot;Customer&#39;s message&quot;</span>)</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    order_history: <span class="bu">str</span> <span class="op">=</span> InputField(description<span class="op">=</span><span class="st">&quot;Recent order history&quot;</span>, default<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    response: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Support response&quot;</span>)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    action: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Action: resolve, escalate, transfer&quot;</span>)</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> CustomerSupportSignature._signature_intent <span class="op">==</span> (</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;Resolve customer issues efficiently and empathetically&quot;</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(CustomerSupportSignature._signature_guidelines) <span class="op">==</span> <span class="dv">3</span></span></code></pre></div>
+<h3 id="step-4-programmatic-creation">Step 4: Programmatic Creation</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>sig <span class="op">=</span> Signature(</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    inputs<span class="op">=</span>[<span class="st">&quot;query&quot;</span>, <span class="st">&quot;context&quot;</span>],</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    outputs<span class="op">=</span>[<span class="st">&quot;result&quot;</span>],</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">&quot;search&quot;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    description<span class="op">=</span><span class="st">&quot;Search for relevant information&quot;</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>Use programmatic creation when inputs/outputs are determined at
+runtime.</p>
+<h3 id="step-5-signature-inheritance">Step 5: Signature Inheritance</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DetailedQA(QASignature):</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Extended QA with source citations.&quot;&quot;&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    sources: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;List of sources used&quot;</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;question&quot;</span> <span class="kw">in</span> DetailedQA._signature_inputs   <span class="co"># Inherited</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;answer&quot;</span> <span class="kw">in</span> DetailedQA._signature_outputs     <span class="co"># Inherited</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;sources&quot;</span> <span class="kw">in</span> DetailedQA._signature_outputs    <span class="co"># Added</span></span></code></pre></div>
+<p>Child fields merge with parent fields. On name collision, the child
+field wins.</p>
+<h3 id="step-6-field-metadata">Step 6: Field Metadata</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> RichSignature(Signature):</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">&quot;&quot;&quot;Signature with rich field metadata.&quot;&quot;&quot;</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    data: <span class="bu">str</span> <span class="op">=</span> InputField(</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        description<span class="op">=</span><span class="st">&quot;Input data&quot;</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>        <span class="bu">format</span><span class="op">=</span><span class="st">&quot;json&quot;</span>,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>        max_length<span class="op">=</span><span class="dv">10000</span>,</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    result: <span class="bu">str</span> <span class="op">=</span> OutputField(description<span class="op">=</span><span class="st">&quot;Processed result&quot;</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>data_field <span class="op">=</span> RichSignature._signature_inputs[<span class="st">&quot;data&quot;</span>]</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> data_field.metadata.get(<span class="st">&quot;format&quot;</span>) <span class="op">==</span> <span class="st">&quot;json&quot;</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> data_field.metadata.get(<span class="st">&quot;max_length&quot;</span>) <span class="op">==</span> <span class="dv">10000</span></span></code></pre></div>
+<p>Extra keyword arguments on
+<code>InputField</code>/<code>OutputField</code> are stored in
+<code>field.metadata</code>.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 30%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Forgetting the docstring</td>
+<td>Agent has no system prompt</td>
+<td>Always include a descriptive docstring</td>
+</tr>
+<tr>
+<td>Making all fields required</td>
+<td>Agent fails on partial input</td>
+<td>Use <code>default=""</code> for optional fields</td>
+</tr>
+<tr>
+<td>Minimal output fields</td>
+<td>Agent response lacks structure</td>
+<td>Include all expected output dimensions</td>
+</tr>
+<tr>
+<td>Putting logic in signatures</td>
+<td>Signatures are data, not code</td>
+<td>Put logic in the agent’s execution strategy</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Sentiment Analyzer</strong>: Create a
+<code>SentimentSignature</code> with inputs <code>text</code> (required)
+and <code>language</code> (optional, default <code>"en"</code>), and
+outputs <code>sentiment</code>, <code>confidence</code>, and
+<code>keywords</code>. Verify all fields via
+<code>_signature_inputs</code> and
+<code>_signature_outputs</code>.</p></li>
+<li><p><strong>Inheritance Chain</strong>: Create a base
+<code>AnalysisSignature</code> with <code>data</code> input and
+<code>result</code> output. Create <code>DetailedAnalysis</code> that
+adds <code>methodology</code> output. Create
+<code>PeerReviewedAnalysis</code> that adds <code>reviewer_notes</code>
+output. Verify the inheritance chain.</p></li>
+<li><p><strong>Field Metadata</strong>: Create a signature where one
+input field has <code>format="csv"</code>, <code>max_rows=1000</code>,
+and <code>encoding="utf-8"</code> metadata. Access the metadata
+dictionary and verify all three values.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Signatures declare WHAT an agent does (inputs/outputs), not
+HOW.</li>
+<li>The class docstring becomes the agent’s system prompt.</li>
+<li><code>InputField(description=, default=)</code> marks inputs;
+<code>OutputField(description=)</code> marks outputs.</li>
+<li>Fields without defaults are required; fields with defaults are
+optional.</li>
+<li><code>__intent__</code> and <code>__guidelines__</code> provide
+high-level purpose and behavioral constraints.</li>
+<li>Signatures support inheritance – child fields merge with parent
+fields.</li>
+<li>Extra keyword arguments on fields are stored in
+<code>field.metadata</code>.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="02_delegate.md">Chapter 2: Delegate</a> – Use Delegate, the
+primary entry point for autonomous AI execution.</p>
 
-  <h2>Overview</h2>
-  <p>Signatures are the foundational abstraction in Kaizen's agent system. A Signature declares WHAT an agent does &mdash; its inputs and outputs &mdash; without specifying HOW. The docstring becomes the agent's system instructions, and <code>InputField</code>/<code>OutputField</code> descriptors define the structured interface.</p>
-
-  <h2>Prerequisites</h2>
-  <ul>
-    <li>Kailash Kaizen installed (<code>pip install kailash-kaizen</code>)</li>
-    <li>Understanding of Python class syntax and type annotations</li>
-  </ul>
-
-  <h2>Concepts</h2>
-
-  <h3>What Is a Signature?</h3>
-  <p>A declarative contract between programmer and AI agent. It specifies:</p>
-  <ul>
-    <li><strong>System prompt</strong>: The class docstring</li>
-    <li><strong>Inputs</strong>: Fields the agent receives</li>
-    <li><strong>Outputs</strong>: Fields the agent must produce</li>
-  </ul>
-
-  <h3>Why Signatures?</h3>
-  <p>Signatures separate interface declaration from execution strategy, making agents composable, testable, and auditable.</p>
-
-  <h2>Key API</h2>
-  <table>
-    <tr><th>API</th><th>Description</th></tr>
-    <tr><td><code>InputField(description=, default=)</code></td><td>Declare an input field</td></tr>
-    <tr><td><code>OutputField(description=)</code></td><td>Declare an output field</td></tr>
-    <tr><td><code>cls._signature_inputs</code></td><td>Dict of all input fields</td></tr>
-    <tr><td><code>cls._signature_outputs</code></td><td>Dict of all output fields</td></tr>
-    <tr><td><code>field.required</code></td><td>True if no default value</td></tr>
-    <tr><td><code>field.metadata</code></td><td>Extra keyword arguments</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Class-Based Signature</h3>
-  <pre><code class="language-python">from kaizen import Signature, InputField, OutputField
-
-class QASignature(Signature):
-    """You are a helpful question-answering assistant."""
-
-    question: str = InputField(description="The question to answer")
-    context: str = InputField(description="Additional context", default="")
-    answer: str = OutputField(description="Clear, accurate answer")
-    confidence: float = OutputField(description="Confidence score 0.0 to 1.0")</code></pre>
-  <p>The docstring becomes the system prompt. <code>question</code> is required (no default); <code>context</code> is optional.</p>
-
-  <h3>Step 2: Verify Fields</h3>
-  <pre><code class="language-python">assert "question" in QASignature._signature_inputs
-assert "answer" in QASignature._signature_outputs
-
-question_field = QASignature._signature_inputs["question"]
-assert question_field.required is True
-
-context_field = QASignature._signature_inputs["context"]
-assert context_field.required is False
-assert context_field.default == ""</code></pre>
-
-  <h3>Step 3: Intent and Guidelines</h3>
-  <pre><code class="language-python">class CustomerSupportSignature(Signature):
-    """You are a customer support agent for an e-commerce platform."""
-
-    __intent__ = "Resolve customer issues efficiently and empathetically"
-    __guidelines__ = [
-        "Acknowledge concerns before proposing solutions",
-        "Use empathetic language",
-        "Escalate if unresolved in 3 turns",
-    ]
-
-    customer_message: str = InputField(description="Customer's message")
-    response: str = OutputField(description="Support response")
-    action: str = OutputField(description="Action: resolve, escalate, transfer")</code></pre>
-
-  <h3>Step 4: Inheritance</h3>
-  <pre><code class="language-python">class DetailedQA(QASignature):
-    """Extended QA with source citations."""
-
-    sources: str = OutputField(description="List of sources used")
-
-assert "question" in DetailedQA._signature_inputs   # Inherited
-assert "sources" in DetailedQA._signature_outputs    # Added</code></pre>
-
-  <div class="callout">
-    <strong>Note:</strong> Child fields merge with parent fields. On name collision, the child field overrides the parent.
-  </div>
-
-  <h3>Step 5: Field Metadata</h3>
-  <pre><code class="language-python">class RichSignature(Signature):
-    """Signature with rich field metadata."""
-
-    data: str = InputField(
-        description="Input data",
-        format="json",
-        max_length=10000,
-    )
-    result: str = OutputField(description="Processed result")
-
-data_field = RichSignature._signature_inputs["data"]
-assert data_field.metadata.get("format") == "json"
-assert data_field.metadata.get("max_length") == 10000</code></pre>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Forgetting the docstring</td><td>Agent has no system prompt</td><td>Always include a descriptive docstring</td></tr>
-    <tr><td>All fields required</td><td>Agent fails on partial input</td><td>Use <code>default=""</code> for optional fields</td></tr>
-    <tr><td>Minimal output fields</td><td>Response lacks structure</td><td>Include all expected dimensions</td></tr>
-    <tr><td>Logic in signatures</td><td>Signatures are data, not code</td><td>Put logic in execution strategy</td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li>Signatures declare WHAT an agent does (inputs/outputs), not HOW.</li>
-    <li>The class docstring becomes the agent's system prompt.</li>
-    <li>Fields without defaults are required; fields with defaults are optional.</li>
-    <li><code>__intent__</code> and <code>__guidelines__</code> provide purpose and constraints.</li>
-    <li>Signatures support inheritance and field metadata.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="../02-nexus/09_probes.html">&larr; Previous: Probes</a>
-    <a href="02_delegate.html">Next: Delegate &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

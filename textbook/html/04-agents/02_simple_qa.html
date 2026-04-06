@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: SimpleQA Agent &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-2-simpleqa-agent">Chapter 2: SimpleQA Agent</h1>
+<h2 id="overview">Overview</h2>
+<p>The <strong>SimpleQAAgent</strong> is a zero-config
+question-answering agent that works out of the box with sensible
+defaults. This chapter teaches you how to use Kaizen’s signature system
+for structured I/O, configure the agent progressively (from zero-config
+to fully customized), and understand the single-shot execution strategy
+that underpins interactive agents.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python 3.10+ installed</li>
+<li>Kailash Kaizen installed
+(<code>pip install kailash-kaizen</code>)</li>
+<li>Completion of Chapter 1 (Delegate with Tools &amp; Events)</li>
+<li>Understanding of the BaseAgent class hierarchy</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-signatures-for-structured-io">Concept 1: Signatures
+for Structured I/O</h3>
+<p>Kaizen agents use <strong>Signatures</strong> to define typed inputs
+and outputs. The LLM receives the signature fields as structured prompts
+and returns structured data that maps back to the output fields. This
+replaces unstructured prompt engineering with a typed contract.</p>
+<ul>
+<li><strong>What</strong>: A declarative schema of
+<code>InputField</code> and <code>OutputField</code> definitions that
+the agent uses for I/O</li>
+<li><strong>Why</strong>: Structured I/O ensures consistent return
+formats, enables validation, and makes agent behavior predictable</li>
+<li><strong>How</strong>: <code>QASignature</code> defines
+<code>question</code> and <code>context</code> as inputs,
+<code>answer</code>, <code>confidence</code>, and <code>reasoning</code>
+as outputs</li>
+<li><strong>When</strong>: Every Kaizen agent uses a Signature – it is
+the fundamental I/O contract</li>
+</ul>
+<h3 id="concept-2-progressive-configuration">Concept 2: Progressive
+Configuration</h3>
+<p>SimpleQAAgent supports three configuration levels: zero-config (just
+works), constructor overrides (targeted changes), and full config object
+(complete control). This progressive approach means beginners start
+immediately while experts can tune every parameter.</p>
+<ul>
+<li><strong>What</strong>: A layered configuration system where each
+level adds more control</li>
+<li><strong>Why</strong>: Reduces the barrier to entry – you can use the
+agent with zero parameters and add configuration as needs grow</li>
+<li><strong>How</strong>: (1) <code>SimpleQAAgent()</code>, (2)
+<code>SimpleQAAgent(temperature=0.2)</code>, (3)
+<code>SimpleQAAgent(config=SimpleQAConfig(...))</code></li>
+<li><strong>When</strong>: Start with zero-config, add parameters only
+when you need to change specific behaviors</li>
+</ul>
+<h3 id="concept-3-asyncsingleshotstrategy">Concept 3:
+AsyncSingleShotStrategy</h3>
+<p>SimpleQA is an <strong>interactive</strong> agent – it makes one LLM
+call per <code>run()</code> invocation. This is the
+<code>AsyncSingleShotStrategy</code>, which is the default when no
+<code>strategy=</code> is passed to BaseAgent. Autonomous agents (ReAct,
+RAG) use <code>MultiCycleStrategy</code> instead.</p>
+<ul>
+<li><strong>What</strong>: An execution strategy that makes exactly one
+LLM call per <code>run()</code> invocation</li>
+<li><strong>Why</strong>: Interactive agents answer questions directly –
+they do not need iterative reasoning or tool loops</li>
+<li><strong>How</strong>: The strategy is selected automatically based
+on the agent type; SimpleQA inherits the default</li>
+<li><strong>When</strong>: For question answering, classification,
+summarization – any task that needs one LLM call</li>
+</ul>
+<h3 id="key-api">Key API</h3>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 41%" />
+<col style="width: 10%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Class / Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SimpleQAAgent()</code></td>
+<td><code>llm_provider: str</code>, <code>model: str</code>,
+<code>temperature: float</code>, …</td>
+<td><code>SimpleQAAgent</code></td>
+<td>Create a QA agent (all params optional)</td>
+</tr>
+<tr>
+<td><code>SimpleQAAgent(config=...)</code></td>
+<td><code>config: SimpleQAConfig</code></td>
+<td><code>SimpleQAAgent</code></td>
+<td>Create from a full config object</td>
+</tr>
+<tr>
+<td><code>agent.run()</code></td>
+<td><code>question: str</code>, <code>context: str = ""</code></td>
+<td><code>dict</code></td>
+<td>Ask a question and get a structured answer</td>
+</tr>
+<tr>
+<td><code>SimpleQAConfig()</code></td>
+<td><code>temperature</code>, <code>max_tokens</code>,
+<code>timeout</code>, <code>retry_attempts</code>, …</td>
+<td><code>SimpleQAConfig</code></td>
+<td>Configuration dataclass with defaults</td>
+</tr>
+<tr>
+<td><code>QASignature</code></td>
+<td>–</td>
+<td><code>Signature</code></td>
+<td>Structured I/O definition for QA</td>
+</tr>
+<tr>
+<td><code>SimpleQAAgent.metadata</code></td>
+<td>–</td>
+<td><code>NodeMetadata</code></td>
+<td>Auto-discovery metadata for Kailash Studio</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="imports-and-setup">Imports and Setup</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.agents.specialized.simple_qa <span class="im">import</span> (</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    SimpleQAAgent,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    SimpleQAConfig,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    QASignature,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.core.base_agent <span class="im">import</span> BaseAgent</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen.signatures <span class="im">import</span> InputField, OutputField, Signature</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span></code></pre></div>
+<p>SimpleQAAgent lives in
+<code>kaizen_agents.agents.specialized.simple_qa</code>. It extends
+<code>BaseAgent</code> from the core Kaizen framework. The
+<code>QASignature</code> defines the structured I/O contract.</p>
+<h3 id="qasignature-structured-io">QASignature – Structured I/O</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>sig <span class="op">=</span> QASignature()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;question&quot;</span> <span class="kw">in</span> QASignature._signature_inputs</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;context&quot;</span> <span class="kw">in</span> QASignature._signature_inputs</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;answer&quot;</span> <span class="kw">in</span> QASignature._signature_outputs</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;confidence&quot;</span> <span class="kw">in</span> QASignature._signature_outputs</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;reasoning&quot;</span> <span class="kw">in</span> QASignature._signature_outputs</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co"># context has a default (optional), question does not (required)</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>context_field <span class="op">=</span> QASignature._signature_inputs[<span class="st">&quot;context&quot;</span>]</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> context_field.required <span class="kw">is</span> <span class="va">False</span>, <span class="st">&quot;Context is optional&quot;</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>question_field <span class="op">=</span> QASignature._signature_inputs[<span class="st">&quot;question&quot;</span>]</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> question_field.required <span class="kw">is</span> <span class="va">True</span>, <span class="st">&quot;Question is required&quot;</span></span></code></pre></div>
+<p><code>QASignature</code> defines two inputs (<code>question</code> is
+required, <code>context</code> is optional) and three outputs
+(<code>answer</code>, <code>confidence</code>, <code>reasoning</code>).
+The LLM fills in the output fields based on the input fields. The
+<code>required</code> flag on each field controls whether the agent
+validates its presence before calling the LLM.</p>
+<h3 id="simpleqaconfig-sensible-defaults">SimpleQAConfig – Sensible
+Defaults</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> SimpleQAConfig()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.temperature <span class="op">==</span> <span class="fl">0.1</span>, <span class="st">&quot;Low temperature for factual answers&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.max_tokens <span class="op">==</span> <span class="dv">300</span>, <span class="st">&quot;Short answers by default&quot;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.timeout <span class="op">==</span> <span class="dv">30</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.retry_attempts <span class="op">==</span> <span class="dv">3</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.min_confidence_threshold <span class="op">==</span> <span class="fl">0.5</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config.max_turns <span class="kw">is</span> <span class="va">None</span>, <span class="st">&quot;Memory disabled by default (opt-in)&quot;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Override specific parameters</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>custom_config <span class="op">=</span> SimpleQAConfig(</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    temperature<span class="op">=</span><span class="fl">0.3</span>,</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    max_tokens<span class="op">=</span><span class="dv">500</span>,</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    min_confidence_threshold<span class="op">=</span><span class="fl">0.7</span>,</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_config.temperature <span class="op">==</span> <span class="fl">0.3</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> custom_config.min_confidence_threshold <span class="op">==</span> <span class="fl">0.7</span></span></code></pre></div>
+<p>The config dataclass provides production-ready defaults: low
+temperature (0.1) for factual accuracy, short max tokens (300) for
+concise answers, 3 retries for resilience, and a 0.5 confidence
+threshold for quality gating. Memory is disabled by default (opt-in via
+<code>max_turns</code>).</p>
+<h3 id="zero-config-instantiation">Zero-Config Instantiation</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>agent <span class="op">=</span> SimpleQAAgent(llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, SimpleQAAgent)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(agent, BaseAgent), <span class="st">&quot;SimpleQAAgent extends BaseAgent&quot;</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> agent.qa_config <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>With just a provider, SimpleQAAgent works immediately. It reads
+<code>KAIZEN_*</code> environment variables or falls back to defaults.
+This is the zero-config pattern – no boilerplate required to get
+started.</p>
+<h3 id="progressive-configuration-via-constructor">Progressive
+Configuration via Constructor</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>configured_agent <span class="op">=</span> SimpleQAAgent(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    temperature<span class="op">=</span><span class="fl">0.2</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    max_tokens<span class="op">=</span><span class="dv">400</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    min_confidence_threshold<span class="op">=</span><span class="fl">0.8</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> configured_agent.qa_config.temperature <span class="op">==</span> <span class="fl">0.2</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> configured_agent.qa_config.max_tokens <span class="op">==</span> <span class="dv">400</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> configured_agent.qa_config.min_confidence_threshold <span class="op">==</span> <span class="fl">0.8</span></span></code></pre></div>
+<p>Override individual parameters without creating a config object. The
+constructor passes them through to <code>SimpleQAConfig</code>
+internally. This is the sweet spot for most use cases – change what you
+need, keep defaults for everything else.</p>
+<h3 id="configuration-via-config-object">Configuration via Config
+Object</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>full_config <span class="op">=</span> SimpleQAConfig(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    temperature<span class="op">=</span><span class="fl">0.1</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    max_tokens<span class="op">=</span><span class="dv">300</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    timeout<span class="op">=</span><span class="dv">60</span>,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    retry_attempts<span class="op">=</span><span class="dv">5</span>,</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    min_confidence_threshold<span class="op">=</span><span class="fl">0.6</span>,</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>config_agent <span class="op">=</span> SimpleQAAgent(config<span class="op">=</span>full_config)</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config_agent.qa_config.timeout <span class="op">==</span> <span class="dv">60</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> config_agent.qa_config.retry_attempts <span class="op">==</span> <span class="dv">5</span></span></code></pre></div>
+<p>For full control, create a <code>SimpleQAConfig</code> and pass it
+directly. This is useful when you need to share configuration across
+multiple agents or persist it.</p>
+<h3 id="memory-opt-in">Memory Opt-In</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>memory_agent <span class="op">=</span> SimpleQAAgent(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    llm_provider<span class="op">=</span><span class="st">&quot;mock&quot;</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    max_turns<span class="op">=</span><span class="dv">10</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> memory_agent.qa_config.max_turns <span class="op">==</span> <span class="dv">10</span></span></code></pre></div>
+<p>Memory is disabled by default. Set <code>max_turns</code> to enable
+<code>BufferMemory</code> for multi-turn conversation continuity. The
+buffer keeps the last N turns in context.</p>
+<h3 id="input-validation">Input Validation</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>empty_result <span class="op">=</span> agent.run(question<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;error&quot;</span>] <span class="op">==</span> <span class="st">&quot;INVALID_INPUT&quot;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> empty_result[<span class="st">&quot;confidence&quot;</span>] <span class="op">==</span> <span class="fl">0.0</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>whitespace_result <span class="op">=</span> agent.run(question<span class="op">=</span><span class="st">&quot;   &quot;</span>)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> whitespace_result[<span class="st">&quot;error&quot;</span>] <span class="op">==</span> <span class="st">&quot;INVALID_INPUT&quot;</span></span></code></pre></div>
+<p>SimpleQA validates input before sending to the LLM. Empty or
+whitespace-only questions return an error immediately – no LLM call is
+made, no tokens are consumed. This is input validation (a permitted
+deterministic guard), not agent reasoning.</p>
+<h3 id="return-structure">Return Structure</h3>
+<p>The <code>run()</code> method returns a dictionary with structured
+fields:</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Successful response:</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># {</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;answer&quot;: &quot;Paris&quot;,</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;confidence&quot;: 0.95,</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;reasoning&quot;: &quot;France&#39;s capital is a well-known fact&quot;,</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Low confidence response (below threshold):</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="co"># {</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;answer&quot;: &quot;...&quot;,</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;confidence&quot;: 0.3,</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;reasoning&quot;: &quot;...&quot;,</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="co">#     &quot;warning&quot;: &quot;Low confidence (0.30 &lt; 0.5)&quot;</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="co"># }</span></span></code></pre></div>
+<p>When confidence falls below <code>min_confidence_threshold</code>, a
+<code>warning</code> field is added to alert the consumer.</p>
+<h3 id="node-metadata">Node Metadata</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> SimpleQAAgent.metadata.name <span class="op">==</span> <span class="st">&quot;SimpleQAAgent&quot;</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;qa&quot;</span> <span class="kw">in</span> SimpleQAAgent.metadata.tags</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;question-answering&quot;</span> <span class="kw">in</span> SimpleQAAgent.metadata.tags</span></code></pre></div>
+<p><code>NodeMetadata</code> enables auto-discovery in Kailash Studio.
+Tags like <code>"qa"</code> and <code>"question-answering"</code> allow
+the studio to categorize and present agents to users.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 22%" />
+<col style="width: 26%" />
+<col style="width: 51%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Correct Pattern</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Passing <code>max_turns</code> without understanding</td>
+<td>Start with <code>max_turns=None</code> (default)</td>
+<td>Memory adds context to every call, increasing token costs – enable
+only when multi-turn is needed</td>
+</tr>
+<tr>
+<td>Setting temperature too high for factual QA</td>
+<td><code>temperature=0.1</code> (default)</td>
+<td>High temperature produces creative but less accurate answers for
+factual questions</td>
+</tr>
+<tr>
+<td>Ignoring the <code>warning</code> field in responses</td>
+<td>Check <code>if "warning" in result:</code> after every
+<code>run()</code></td>
+<td>Low-confidence answers may be wrong – the warning signals the need
+for human review</td>
+</tr>
+<tr>
+<td>Using SimpleQA for multi-step reasoning</td>
+<td>Use ReActAgent or ChainOfThoughtAgent instead</td>
+<td>SimpleQA makes one LLM call – it cannot iteratively refine or use
+tools</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>Create a <code>SimpleQAAgent</code> with a custom config that sets
+<code>min_confidence_threshold=0.9</code>. Test it with
+<code>run(question="")</code> and verify the error response contains
+<code>"INVALID_INPUT"</code> with zero confidence.</li>
+<li>Compare the <code>QASignature</code> fields with those of a custom
+<code>Signature</code> you define. Create a new signature with
+<code>InputField(description="...")</code> and
+<code>OutputField(description="...")</code> and verify that
+<code>_signature_inputs</code> and <code>_signature_outputs</code> are
+populated correctly.</li>
+<li>Create two agents – one with <code>max_turns=5</code> (memory
+enabled) and one with default settings (memory disabled). What
+configuration differences do you observe in their
+<code>qa_config</code>?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>SimpleQAAgent</code> is a zero-config question-answering agent
+that works out of the box</li>
+<li><code>QASignature</code> defines structured I/O: required
+<code>question</code>, optional <code>context</code>, and three
+outputs</li>
+<li>Progressive configuration: zero-config -&gt; constructor overrides
+-&gt; full config object</li>
+<li><code>AsyncSingleShotStrategy</code> means one LLM call per
+<code>run()</code> – ideal for interactive agents</li>
+<li>Input validation catches empty questions before any LLM call</li>
+<li>Memory is opt-in via <code>max_turns</code> – disabled by default to
+control token costs</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="03_react_agent.md">Chapter 3: ReAct Agent</a> – Build an
+autonomous agent that reasons and acts iteratively with tools, using the
+multi-cycle execution strategy.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

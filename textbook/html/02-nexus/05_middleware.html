@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 5: Middleware — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 5: Middleware &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,126 +24,289 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 5: Middleware</h1>
+<h1 id="chapter-5-middleware">Chapter 5: Middleware</h1>
+<h2 id="overview">Overview</h2>
+<p>Middleware in Nexus follows the onion model: each middleware wraps
+the handler, processing requests on the way in and responses on the way
+out. Nexus provides built-in middleware for CORS, security headers, CSRF
+protection, and response caching, plus introspection via
+<code>MiddlewareInfo</code>. This chapter covers how to add, configure,
+chain, and inspect middleware in your Nexus application.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-4 (Nexus basics, transports)</li>
+<li>Understanding of HTTP middleware concepts (request/response
+pipeline)</li>
+<li>Familiarity with the Starlette/FastAPI middleware model</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="the-onion-model">The Onion Model</h3>
+<p>Middleware executes in LIFO order (last added = outermost). The
+outermost middleware sees the request first and the response last:</p>
+<pre><code>Request  -&gt; Middleware C -&gt; Middleware B -&gt; Middleware A -&gt; Handler
+Response &lt;- Middleware C &lt;- Middleware B &lt;- Middleware A &lt;- Handler</code></pre>
+<p>This is identical to Starlette’s model.</p>
+<h3 id="why-middleware-ordering-matters">Why Middleware Ordering
+Matters</h3>
+<p>Security headers should be added before CSRF so that security headers
+are always present even on CSRF-rejected requests. Response caching
+should be outermost to cache final responses including all header
+modifications.</p>
+<h3 id="built-in-middleware">Built-In Middleware</h3>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 51%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr>
+<th>Middleware</th>
+<th>Purpose</th>
+<th>Key Configuration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SecurityHeadersMiddleware</code></td>
+<td>Secure-by-default response headers (CSP, HSTS, X-Frame-Options)</td>
+<td><code>SecurityHeadersConfig</code></td>
+</tr>
+<tr>
+<td><code>CSRFMiddleware</code></td>
+<td>Stateless Origin/Referer validation for state-changing methods</td>
+<td><code>allowed_origins</code>, <code>exempt_paths</code></td>
+</tr>
+<tr>
+<td><code>ResponseCacheMiddleware</code></td>
+<td>TTL-based cache with LRU eviction and ETag support</td>
+<td><code>CacheConfig</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 45%" />
+<col style="width: 13%" />
+<col style="width: 19%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app.add_middleware(cls, **kwargs)</code></td>
+<td>middleware class + config</td>
+<td><code>Nexus</code> (for chaining)</td>
+<td>Add middleware to the stack</td>
+</tr>
+<tr>
+<td><code>app.middleware</code></td>
+<td>–</td>
+<td><code>list[MiddlewareInfo]</code></td>
+<td>Introspect the middleware stack</td>
+</tr>
+<tr>
+<td><code>SecurityHeadersConfig()</code></td>
+<td><code>frame_options</code>, <code>hsts_max_age</code>,
+<code>hsts_include_subdomains</code>, <code>hsts_preload</code></td>
+<td>config object</td>
+<td>Security header settings</td>
+</tr>
+<tr>
+<td><code>CSRFMiddleware</code></td>
+<td><code>allowed_origins: list[str]</code>,
+<code>exempt_paths: list[str]</code></td>
+<td>middleware class</td>
+<td>CSRF protection</td>
+</tr>
+<tr>
+<td><code>CacheConfig()</code></td>
+<td><code>default_ttl: int</code>, <code>max_entries: int</code>,
+<code>no_cache_handlers: set[str]</code></td>
+<td>config object</td>
+<td>Cache settings</td>
+</tr>
+<tr>
+<td><code>MiddlewareInfo</code></td>
+<td><code>.name: str</code>, <code>.middleware_class</code>,
+<code>.added_at: datetime</code></td>
+<td>dataclass</td>
+<td>Middleware metadata</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-cors-via-constructor">Step 1: CORS via Constructor</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    api_port<span class="op">=</span><span class="dv">8000</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    cors_origins<span class="op">=</span>[<span class="st">&quot;https://app.example.com&quot;</span>, <span class="st">&quot;https://admin.example.com&quot;</span>],</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    cors_allow_methods<span class="op">=</span>[<span class="st">&quot;GET&quot;</span>, <span class="st">&quot;POST&quot;</span>, <span class="st">&quot;PUT&quot;</span>, <span class="st">&quot;DELETE&quot;</span>],</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    cors_allow_headers<span class="op">=</span>[<span class="st">&quot;Authorization&quot;</span>, <span class="st">&quot;Content-Type&quot;</span>],</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    cors_allow_credentials<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    cors_expose_headers<span class="op">=</span>[<span class="st">&quot;X-Request-Id&quot;</span>],</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    cors_max_age<span class="op">=</span><span class="dv">3600</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    enable_durability<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>CORS is the most common middleware. Configuring it via the Nexus
+constructor is the recommended approach.</p>
+<h3 id="step-2-add-security-headers">Step 2: Add Security Headers</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.middleware.security_headers <span class="im">import</span> (</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    SecurityHeadersConfig,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    SecurityHeadersMiddleware,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>app.add_middleware(</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    SecurityHeadersMiddleware,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    config<span class="op">=</span>SecurityHeadersConfig(</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>        frame_options<span class="op">=</span><span class="st">&quot;SAMEORIGIN&quot;</span>,</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>        hsts_max_age<span class="op">=</span><span class="dv">31536000</span>,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>        hsts_include_subdomains<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p><code>SecurityHeadersConfig</code> has secure defaults:
+<code>frame_options="DENY"</code>,
+<code>content_type_options="nosniff"</code>,
+<code>hsts_max_age=31536000</code> (1 year).</p>
+<h3 id="step-3-add-csrf-protection">Step 3: Add CSRF Protection</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.middleware.csrf <span class="im">import</span> CSRFMiddleware</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>app2 <span class="op">=</span> Nexus(api_port<span class="op">=</span><span class="dv">8001</span>, enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>app2.add_middleware(</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    CSRFMiddleware,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    allowed_origins<span class="op">=</span>[<span class="st">&quot;https://app.example.com&quot;</span>],</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    exempt_paths<span class="op">=</span>[<span class="st">&quot;/webhooks/stripe&quot;</span>, <span class="st">&quot;/healthz&quot;</span>],</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>CSRFMiddleware validates Origin and Referer headers for
+state-changing methods (POST, PUT, DELETE, PATCH). Safe methods (GET,
+HEAD, OPTIONS) bypass validation.</p>
+<h3 id="step-4-add-response-caching">Step 4: Add Response Caching</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.middleware.cache <span class="im">import</span> CacheConfig, ResponseCacheMiddleware</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>cache_config <span class="op">=</span> CacheConfig(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    default_ttl<span class="op">=</span><span class="dv">300</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    max_entries<span class="op">=</span><span class="dv">5000</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    no_cache_handlers<span class="op">=</span>{<span class="st">&quot;create_user&quot;</span>, <span class="st">&quot;delete_user&quot;</span>},</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>app2.add_middleware(ResponseCacheMiddleware, config<span class="op">=</span>cache_config)</span></code></pre></div>
+<p><code>no_cache_handlers</code> exempts specific handlers from caching
+– essential for mutation operations.</p>
+<h3 id="step-5-introspect-the-stack">Step 5: Introspect the Stack</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> mw_info <span class="kw">in</span> app2.middleware:</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="bu">isinstance</span>(mw_info, MiddlewareInfo)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f&quot;</span><span class="sc">{</span>mw_info<span class="sc">.</span>name<span class="sc">}</span><span class="ss"> added at </span><span class="sc">{</span>mw_info<span class="sc">.</span>added_at<span class="sc">}</span><span class="ss">&quot;</span>)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>names <span class="op">=</span> [m.name <span class="cf">for</span> m <span class="kw">in</span> app2.middleware]</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;CSRFMiddleware&quot;</span> <span class="kw">in</span> names</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;ResponseCacheMiddleware&quot;</span> <span class="kw">in</span> names</span></code></pre></div>
+<h3 id="step-6-method-chaining">Step 6: Method Chaining</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>app3 <span class="op">=</span> Nexus(api_port<span class="op">=</span><span class="dv">8002</span>, enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>(</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    app3.add_middleware(SecurityHeadersMiddleware, config<span class="op">=</span>SecurityHeadersConfig())</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    .add_middleware(CSRFMiddleware, allowed_origins<span class="op">=</span>[<span class="st">&quot;https://example.com&quot;</span>])</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    .add_middleware(ResponseCacheMiddleware, config<span class="op">=</span>CacheConfig())</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(app3.middleware) <span class="op">&gt;=</span> <span class="dv">3</span></span></code></pre></div>
+<p><code>add_middleware()</code> returns <code>self</code>, enabling
+fluent configuration.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 28%" />
+<col style="width: 33%" />
+<col style="width: 38%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Adding caching before security headers</td>
+<td>Security headers missing from cached responses</td>
+<td>Add security headers first (innermost)</td>
+</tr>
+<tr>
+<td>Exempting too many paths from CSRF</td>
+<td>Attack surface widened</td>
+<td>Only exempt webhook paths that verify via other means</td>
+</tr>
+<tr>
+<td>Setting <code>no_cache_handlers</code> too broadly</td>
+<td>All responses uncached</td>
+<td>Only exempt mutation handlers</td>
+</tr>
+<tr>
+<td>Forgetting middleware ordering is LIFO</td>
+<td>Unexpected execution order</td>
+<td>Last added = outermost (sees request first)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Security Audit</strong>: Create a Nexus instance with
+<code>SecurityHeadersConfig()</code> defaults. List all the response
+headers that will be added and explain what each protects
+against.</p></li>
+<li><p><strong>CSRF Configuration</strong>: Create a Nexus instance with
+CSRFMiddleware. Explain which HTTP methods are validated and which are
+exempt. Why is GET exempt?</p></li>
+<li><p><strong>Middleware Chain</strong>: Build a Nexus instance with
+all three middleware types using method chaining. Print the middleware
+stack in execution order (outermost to innermost) and explain why the
+order matters for security.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>CORS is best configured via the Nexus constructor; other middleware
+via <code>add_middleware()</code>.</li>
+<li><code>add_middleware(Class, **kwargs)</code> follows the LIFO onion
+model.</li>
+<li><code>SecurityHeadersMiddleware</code> provides secure-by-default
+response headers.</li>
+<li><code>CSRFMiddleware</code> performs stateless Origin/Referer
+validation.</li>
+<li><code>ResponseCacheMiddleware</code> provides TTL + LRU + ETag
+caching.</li>
+<li><code>app.middleware</code> returns a list of
+<code>MiddlewareInfo</code> for runtime introspection.</li>
+<li><code>add_middleware()</code> returns <code>self</code> for method
+chaining.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="06_presets.md">Chapter 6: Presets</a> – Use built-in presets
+for one-line middleware configuration and the NexusEngine builder
+pattern.</p>
 
-  <h2>Overview</h2>
-  <p>Middleware in Nexus follows the onion model: each middleware wraps the handler, processing requests on the way in and responses on the way out. Nexus provides built-in middleware for CORS, security headers, CSRF protection, and response caching, plus introspection via <code>MiddlewareInfo</code>.</p>
-
-  <h2>Concepts</h2>
-
-  <h3>The Onion Model</h3>
-  <p>Middleware executes in LIFO order (last added = outermost):</p>
-  <pre><code>Request  -> Middleware C -> Middleware B -> Middleware A -> Handler
-Response <- Middleware C <- Middleware B <- Middleware A <- Handler</code></pre>
-
-  <h3>Built-In Middleware</h3>
-  <table>
-    <tr><th>Middleware</th><th>Purpose</th><th>Configuration</th></tr>
-    <tr><td><code>SecurityHeadersMiddleware</code></td><td>Secure-by-default response headers</td><td><code>SecurityHeadersConfig</code></td></tr>
-    <tr><td><code>CSRFMiddleware</code></td><td>Stateless Origin/Referer validation</td><td><code>allowed_origins</code>, <code>exempt_paths</code></td></tr>
-    <tr><td><code>ResponseCacheMiddleware</code></td><td>TTL + LRU + ETag caching</td><td><code>CacheConfig</code></td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: CORS via Constructor</h3>
-  <pre><code class="language-python">from nexus import Nexus
-
-app = Nexus(
-    api_port=8000,
-    cors_origins=["https://app.example.com", "https://admin.example.com"],
-    cors_allow_methods=["GET", "POST", "PUT", "DELETE"],
-    cors_allow_headers=["Authorization", "Content-Type"],
-    cors_allow_credentials=False,
-    cors_max_age=3600,
-    enable_durability=False,
-)</code></pre>
-
-  <h3>Step 2: Security Headers</h3>
-  <pre><code class="language-python">from nexus.middleware.security_headers import (
-    SecurityHeadersConfig,
-    SecurityHeadersMiddleware,
-)
-
-app.add_middleware(
-    SecurityHeadersMiddleware,
-    config=SecurityHeadersConfig(
-        frame_options="SAMEORIGIN",
-        hsts_max_age=31536000,
-        hsts_include_subdomains=True,
-    ),
-)</code></pre>
-  <p>Defaults: <code>frame_options="DENY"</code>, <code>content_type_options="nosniff"</code>, <code>hsts_max_age=31536000</code> (1 year).</p>
-
-  <h3>Step 3: CSRF Protection</h3>
-  <pre><code class="language-python">from nexus.middleware.csrf import CSRFMiddleware
-
-app2 = Nexus(api_port=8001, enable_durability=False)
-app2.add_middleware(
-    CSRFMiddleware,
-    allowed_origins=["https://app.example.com"],
-    exempt_paths=["/webhooks/stripe", "/healthz"],
-)</code></pre>
-
-  <h3>Step 4: Response Caching</h3>
-  <pre><code class="language-python">from nexus.middleware.cache import CacheConfig, ResponseCacheMiddleware
-
-cache_config = CacheConfig(
-    default_ttl=300,
-    max_entries=5000,
-    no_cache_handlers={"create_user", "delete_user"},
-)
-app2.add_middleware(ResponseCacheMiddleware, config=cache_config)</code></pre>
-
-  <h3>Step 5: Method Chaining</h3>
-  <pre><code class="language-python">app3 = Nexus(api_port=8002, enable_durability=False)
-
-(
-    app3.add_middleware(SecurityHeadersMiddleware, config=SecurityHeadersConfig())
-    .add_middleware(CSRFMiddleware, allowed_origins=["https://example.com"])
-    .add_middleware(ResponseCacheMiddleware, config=CacheConfig())
-)</code></pre>
-
-  <div class="warning">
-    <strong>Ordering matters:</strong> Because of LIFO, add SecurityHeaders BEFORE CSRF so security headers appear even on CSRF-rejected requests. Response caching should be outermost to cache final responses.
-  </div>
-
-  <h3>Step 6: Introspection</h3>
-  <pre><code class="language-python">from nexus import MiddlewareInfo
-
-for mw_info in app2.middleware:
-    assert isinstance(mw_info, MiddlewareInfo)
-    print(f"{mw_info.name} added at {mw_info.added_at}")
-
-names = [m.name for m in app2.middleware]
-assert "CSRFMiddleware" in names
-assert "ResponseCacheMiddleware" in names</code></pre>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Adding caching before security headers</td><td>Security headers missing from cached responses</td><td>Add security headers first (innermost)</td></tr>
-    <tr><td>Exempting too many CSRF paths</td><td>Attack surface widened</td><td>Only exempt webhook paths</td></tr>
-    <tr><td>Forgetting LIFO ordering</td><td>Unexpected execution order</td><td>Last added = outermost</td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li>CORS is best configured via the Nexus constructor.</li>
-    <li><code>add_middleware()</code> follows the LIFO onion model.</li>
-    <li>Three built-in middleware: SecurityHeaders, CSRF, ResponseCache.</li>
-    <li><code>app.middleware</code> provides runtime introspection via <code>MiddlewareInfo</code>.</li>
-    <li><code>add_middleware()</code> returns <code>self</code> for fluent chaining.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="04_sse_transport.html">&larr; Previous: SSE Transport</a>
-    <a href="06_presets.html">Next: Presets &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

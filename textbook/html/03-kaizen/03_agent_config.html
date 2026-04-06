@@ -2,18 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 3: Agent Configuration — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: Agent
+Configuration &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,61 +25,192 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 3: Agent Configuration</h1>
+<h1 id="chapter-3-agent-configuration">Chapter 3: Agent
+Configuration</h1>
+<h2 id="overview">Overview</h2>
+<p>Kaizen provides framework-wide configuration through
+<code>KaizenConfig</code> and <code>kaizen.configure()</code>, lifecycle
+management via <code>AgentManager</code>, and environment-based
+configuration loading. This chapter covers the global configuration
+system, the <code>Kaizen</code>/<code>Framework</code> entry point
+class, and how to load settings from environment variables.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-2 (Signatures, Delegate)</li>
+<li>Understanding of Python module-level configuration patterns</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="framework-wide-configuration">Framework-Wide Configuration</h3>
+<p><code>kaizen.configure()</code> sets global defaults that apply to
+all new Kaizen instances. This is the central place to enable or disable
+framework features like signature programming, MCP integration,
+multi-agent coordination, and transparency.</p>
+<h3 id="agentmanager">AgentManager</h3>
+<p><code>AgentManager</code> tracks agent instances, their state, and
+provides discovery and shutdown capabilities. It acts as a registry for
+all agents created within a session.</p>
+<h3 id="the-kaizen-class">The Kaizen Class</h3>
+<p><code>Kaizen</code> (aliased as <code>Framework</code>) is the
+framework entry point. It provides the runtime context for agent
+execution.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 23%" />
+<col style="width: 13%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KaizenConfig()</code></td>
+<td>–</td>
+<td><code>KaizenConfig</code></td>
+<td>Framework-wide settings object</td>
+</tr>
+<tr>
+<td><code>kaizen.configure(**kwargs)</code></td>
+<td>feature flags</td>
+<td><code>None</code></td>
+<td>Set global defaults</td>
+</tr>
+<tr>
+<td><code>AgentManager()</code></td>
+<td>–</td>
+<td><code>AgentManager</code></td>
+<td>Lifecycle management for agents</td>
+</tr>
+<tr>
+<td><code>kaizen.load_config_from_env(prefix)</code></td>
+<td><code>prefix: str = "KAIZEN_"</code></td>
+<td><code>dict</code></td>
+<td>Load config from env vars</td>
+</tr>
+<tr>
+<td><code>Kaizen()</code> / <code>Framework()</code></td>
+<td>–</td>
+<td><code>Kaizen</code></td>
+<td>Framework entry point</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-kaizenconfig">Step 1: KaizenConfig</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> kaizen</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen <span class="im">import</span> KaizenConfig, AgentManager</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>config <span class="op">=</span> KaizenConfig()</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(config, KaizenConfig)</span></code></pre></div>
+<h3 id="step-2-global-configuration">Step 2: Global Configuration</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>kaizen.configure(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    signature_programming_enabled<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    mcp_integration_enabled<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    multi_agent_coordination<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    transparency_enabled<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<p>These settings apply to all new Kaizen instances unless overridden at
+the instance level.</p>
+<h3 id="step-3-agentmanager">Step 3: AgentManager</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>manager <span class="op">=</span> AgentManager()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(manager, AgentManager)</span></code></pre></div>
+<p>AgentManager tracks agent instances and provides discovery/shutdown
+capabilities.</p>
+<h3 id="step-4-environment-based-configuration">Step 4:
+Environment-Based Configuration</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>env_config <span class="op">=</span> kaizen.load_config_from_env(prefix<span class="op">=</span><span class="st">&quot;KAIZEN_&quot;</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(env_config, <span class="bu">dict</span>)</span></code></pre></div>
+<p>Reads <code>KAIZEN_*</code> environment variables (e.g.,
+<code>KAIZEN_SIGNATURE_PROGRAMMING_ENABLED=true</code>).</p>
+<h3 id="step-5-framework-entry-point">Step 5: Framework Entry Point</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen <span class="im">import</span> Kaizen, Framework</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> Kaizen <span class="kw">is</span> Framework  <span class="co"># Framework is alias for Kaizen</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>framework <span class="op">=</span> Kaizen()</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(framework, Kaizen)</span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 36%" />
+<col style="width: 28%" />
+<col style="width: 34%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Calling <code>configure()</code> after creating agents</td>
+<td>Settings don’t apply retroactively</td>
+<td>Configure before creating agents</td>
+</tr>
+<tr>
+<td>Missing <code>KAIZEN_</code> prefix in env vars</td>
+<td>Variables not detected</td>
+<td>Use the <code>KAIZEN_</code> prefix consistently</td>
+</tr>
+<tr>
+<td>Creating multiple AgentManagers</td>
+<td>Agent tracking fragmented</td>
+<td>Use a single AgentManager per application</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Feature Flags</strong>: Call
+<code>kaizen.configure()</code> with different combinations of feature
+flags. Verify the configuration is stored correctly.</p></li>
+<li><p><strong>Environment Loading</strong>: Set
+<code>KAIZEN_SIGNATURE_PROGRAMMING_ENABLED=true</code> in your
+<code>.env</code> file. Load the config and verify the value is parsed
+as a boolean.</p></li>
+<li><p><strong>Framework Alias</strong>: Verify that <code>Kaizen</code>
+and <code>Framework</code> are the same class. Create instances of each
+and confirm they are of the same type.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>kaizen.configure()</code> sets framework-wide defaults for all
+new instances.</li>
+<li><code>AgentManager</code> provides lifecycle management and agent
+discovery.</li>
+<li><code>kaizen.load_config_from_env("KAIZEN_")</code> reads
+configuration from environment variables.</li>
+<li><code>Kaizen</code> and <code>Framework</code> are aliases for the
+same class.</li>
+<li>Configure the framework before creating agents – settings do not
+apply retroactively.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="04_llm_providers.md">Chapter 4: LLM Providers</a> –
+Configure LLM providers via environment variables and understand
+provider detection.</p>
 
-  <h2>Overview</h2>
-  <p>Kaizen provides framework-wide configuration through <code>KaizenConfig</code> and <code>kaizen.configure()</code>, lifecycle management via <code>AgentManager</code>, and environment-based configuration loading.</p>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Global Configuration</h3>
-  <pre><code class="language-python">import kaizen
-from kaizen import KaizenConfig, AgentManager
-
-kaizen.configure(
-    signature_programming_enabled=True,
-    mcp_integration_enabled=False,
-    multi_agent_coordination=True,
-    transparency_enabled=True,
-)</code></pre>
-
-  <h3>Step 2: AgentManager</h3>
-  <pre><code class="language-python">manager = AgentManager()
-assert isinstance(manager, AgentManager)</code></pre>
-
-  <h3>Step 3: Environment Loading</h3>
-  <pre><code class="language-python">env_config = kaizen.load_config_from_env(prefix="KAIZEN_")
-assert isinstance(env_config, dict)</code></pre>
-
-  <div class="callout">
-    <strong>Note:</strong> Environment variables use the <code>KAIZEN_</code> prefix, e.g., <code>KAIZEN_SIGNATURE_PROGRAMMING_ENABLED=true</code>.
-  </div>
-
-  <h3>Step 4: Framework Entry Point</h3>
-  <pre><code class="language-python">from kaizen import Kaizen, Framework
-
-assert Kaizen is Framework  # Alias
-
-framework = Kaizen()
-assert isinstance(framework, Kaizen)</code></pre>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li><code>kaizen.configure()</code> sets framework-wide defaults.</li>
-    <li><code>AgentManager</code> provides lifecycle management and agent discovery.</li>
-    <li><code>load_config_from_env("KAIZEN_")</code> reads from environment variables.</li>
-    <li><code>Kaizen</code> and <code>Framework</code> are the same class.</li>
-    <li>Configure before creating agents &mdash; settings do not apply retroactively.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="02_delegate.html">&larr; Previous: Delegate</a>
-    <a href="04_llm_providers.html">Next: LLM Providers &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

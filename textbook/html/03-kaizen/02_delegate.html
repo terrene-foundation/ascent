@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 2: Delegate — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: Delegate &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,120 +24,351 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Kaizen</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 2: Delegate</h1>
+<h1 id="chapter-2-delegate">Chapter 2: Delegate</h1>
+<h2 id="overview">Overview</h2>
+<p>Delegate is the single entry point for autonomous AI execution in
+Kaizen. It composes an AgentLoop with optional governance
+(GovernedSupervisor) and provides both streaming (<code>run()</code>)
+and synchronous (<code>run_sync()</code>) interfaces. This chapter
+covers Delegate construction with progressive disclosure (three layers),
+the typed event system for pattern matching, budget tracking, and cost
+estimation by model provider.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapter 1: Signatures</li>
+<li>Environment variables configured (<code>.env</code> with
+<code>DEFAULT_LLM_MODEL</code>)</li>
+<li>Understanding of async generators in Python</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="progressive-disclosure">Progressive Disclosure</h3>
+<p>Delegate uses three layers of configuration complexity:</p>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 50%" />
+<col style="width: 27%" />
+</colgroup>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What You Provide</th>
+<th>What You Get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Layer 1 (minimal)</td>
+<td><code>model</code></td>
+<td>Basic AI execution</td>
+</tr>
+<tr>
+<td>Layer 2 (configured)</td>
+<td><code>model</code>, <code>tools</code>, <code>system_prompt</code>,
+<code>max_turns</code></td>
+<td>Customized agent behavior</td>
+</tr>
+<tr>
+<td>Layer 3 (governed)</td>
+<td>All above + <code>budget_usd</code></td>
+<td>Cost-controlled execution</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-event-stream">The Event Stream</h3>
+<p><code>Delegate.run()</code> is an async generator that yields typed
+<code>DelegateEvent</code> subclass instances. These are structured data
+for pattern matching, not raw strings:</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 36%" />
+<col style="width: 42%" />
+</colgroup>
+<thead>
+<tr>
+<th>Event Type</th>
+<th>When Yielded</th>
+<th>Key Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TextDelta</code></td>
+<td>Incremental text from the model</td>
+<td><code>text</code></td>
+</tr>
+<tr>
+<td><code>TurnComplete</code></td>
+<td>Model finished responding</td>
+<td><code>prompt_tokens</code>, <code>completion_tokens</code></td>
+</tr>
+<tr>
+<td><code>BudgetExhausted</code></td>
+<td>Budget cap exceeded</td>
+<td><code>budget_usd</code>, <code>consumed_usd</code></td>
+</tr>
+<tr>
+<td><code>ErrorEvent</code></td>
+<td>An error occurred</td>
+<td><code>error</code>, <code>details</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="cost-estimation">Cost Estimation</h3>
+<p>Delegate uses conservative per-1M-token cost estimates by model
+prefix:</p>
+<table>
+<thead>
+<tr>
+<th>Model Prefix</th>
+<th>Input Cost (per 1M)</th>
+<th>Output Cost (per 1M)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>claude-</code></td>
+<td>$3.00</td>
+<td>$15.00</td>
+</tr>
+<tr>
+<td><code>gpt-4o</code></td>
+<td>$2.50</td>
+<td>$10.00</td>
+</tr>
+<tr>
+<td><code>gemini-</code></td>
+<td>$1.25</td>
+<td>$5.00</td>
+</tr>
+</tbody>
+</table>
+<p>These are approximations for budget tracking, not billing data.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 37%" />
+<col style="width: 7%" />
+<col style="width: 18%" />
+<col style="width: 18%" />
+<col style="width: 17%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Delegate(model, tools, system_prompt, max_turns, budget_usd)</code></td>
+<td>see below</td>
+<td><code>Delegate</code></td>
+<td>Create a delegate</td>
+<td></td>
+</tr>
+<tr>
+<td><code>delegate.run(prompt)</code></td>
+<td><code>prompt: str</code></td>
+<td><code>AsyncGenerator[DelegateEvent]</code></td>
+<td>Streaming async execution</td>
+<td></td>
+</tr>
+<tr>
+<td><code>delegate.run_sync(prompt)</code></td>
+<td><code>prompt: str</code></td>
+<td><code>str</code></td>
+<td>Synchronous full-text response</td>
+<td></td>
+</tr>
+<tr>
+<td><code>delegate._budget_usd</code></td>
+<td>–</td>
+<td><code>float                          | None</code></td>
+<td>Budget cap (None = unlimited)</td>
+<td></td>
+</tr>
+<tr>
+<td><code>delegate._consumed_usd</code></td>
+<td>–</td>
+<td><code>float</code></td>
+<td>Cost consumed so far</td>
+<td></td>
+</tr>
+<tr>
+<td><code>delegate._config.max_turns</code></td>
+<td>–</td>
+<td><code>int</code></td>
+<td>Maximum turns per session</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-layer-1-minimal-delegate">Step 1: Layer 1 – Minimal
+Delegate</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> os</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dotenv <span class="im">import</span> load_dotenv</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>load_dotenv()</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents <span class="im">import</span> Delegate</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> os.environ.get(<span class="st">&quot;DEFAULT_LLM_MODEL&quot;</span>, <span class="st">&quot;claude-sonnet-4-20250514&quot;</span>)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>delegate <span class="op">=</span> Delegate(model<span class="op">=</span>model)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(delegate, Delegate)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> delegate._budget_usd <span class="kw">is</span> <span class="va">None</span>  <span class="co"># No budget cap</span></span></code></pre></div>
+<p>Model names always come from environment variables – never
+hardcoded.</p>
+<h3 id="step-2-layer-2-configured-delegate">Step 2: Layer 2 – Configured
+Delegate</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>configured <span class="op">=</span> Delegate(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    tools<span class="op">=</span>[],</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    system_prompt<span class="op">=</span><span class="st">&quot;You are a helpful code reviewer.&quot;</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    max_turns<span class="op">=</span><span class="dv">20</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> configured._config.max_turns <span class="op">==</span> <span class="dv">20</span></span></code></pre></div>
+<h3 id="step-3-layer-3-governed-delegate">Step 3: Layer 3 – Governed
+Delegate</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>governed <span class="op">=</span> Delegate(</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    model<span class="op">=</span>model,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    budget_usd<span class="op">=</span><span class="fl">5.0</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> governed._budget_usd <span class="op">==</span> <span class="fl">5.0</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> governed._consumed_usd <span class="op">==</span> <span class="fl">0.0</span></span></code></pre></div>
+<h3 id="step-4-event-types">Step 4: Event Types</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents.delegate.events <span class="im">import</span> (</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    DelegateEvent, TextDelta, TurnComplete,</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    BudgetExhausted, ErrorEvent,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(TextDelta, DelegateEvent)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(TurnComplete, DelegateEvent)</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(BudgetExhausted, DelegateEvent)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">issubclass</span>(ErrorEvent, DelegateEvent)</span></code></pre></div>
+<h3 id="step-5-streaming-consumption-pattern">Step 5: Streaming
+Consumption Pattern</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Production pattern (requires LLM API key):</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="co"># async for event in delegate.run(&quot;What is Kailash?&quot;):</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="co">#     if isinstance(event, TextDelta):</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co">#         print(event.text, end=&quot;&quot;)</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">#     elif isinstance(event, TurnComplete):</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="co">#         print(f&quot;\nTokens: {event.prompt_tokens} + {event.completion_tokens}&quot;)</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co">#     elif isinstance(event, BudgetExhausted):</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="co">#         print(&quot;Budget exceeded&quot;)</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="co">#     elif isinstance(event, ErrorEvent):</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="co">#         print(f&quot;Error: {event.error}&quot;)</span></span></code></pre></div>
+<h3 id="step-6-budget-validation">Step 6: Budget Validation</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    Delegate(model<span class="op">=</span>model, budget_usd<span class="op">=-</span><span class="fl">1.0</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;non-negative&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e).lower()</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    Delegate(model<span class="op">=</span>model, budget_usd<span class="op">=</span><span class="bu">float</span>(<span class="st">&quot;inf&quot;</span>))</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> e:</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> <span class="st">&quot;finite&quot;</span> <span class="kw">in</span> <span class="bu">str</span>(e).lower()</span></code></pre></div>
+<p>Budget must be finite and non-negative.</p>
+<h3 id="step-7-model-from-environment">Step 7: Model from
+Environment</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>env_delegate <span class="op">=</span> Delegate(model<span class="op">=</span><span class="st">&quot;&quot;</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> env_delegate._config.model <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span></code></pre></div>
+<p>When <code>model=""</code>, Delegate reads
+<code>DEFAULT_LLM_MODEL</code> from the environment.</p>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 29%" />
+<col style="width: 27%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hardcoding model names</td>
+<td>Breaks on provider changes</td>
+<td>Use <code>os.environ.get("DEFAULT_LLM_MODEL")</code></td>
+</tr>
+<tr>
+<td>Forgetting <code>load_dotenv()</code></td>
+<td>Environment variables not loaded</td>
+<td>Call <code>load_dotenv()</code> before any <code>os.environ</code>
+access</td>
+</tr>
+<tr>
+<td>Ignoring <code>BudgetExhausted</code> events</td>
+<td>Agent runs beyond budget</td>
+<td>Always handle budget events in the event loop</td>
+</tr>
+<tr>
+<td>Using <code>run()</code> without async context</td>
+<td><code>run()</code> is an async generator</td>
+<td>Use <code>async for</code> or <code>run_sync()</code> for
+scripts</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Three Layers</strong>: Create a Delegate at each of the
+three layers. Verify the defaults at Layer 1, the configuration at Layer
+2, and the budget tracking at Layer 3.</p></li>
+<li><p><strong>Budget Validation</strong>: Test all invalid budget
+values: negative, infinity, NaN. Verify that each raises
+<code>ValueError</code> with an appropriate message.</p></li>
+<li><p><strong>Cost Estimation</strong>: Given a model prefix, calculate
+the estimated cost for 5000 prompt tokens and 2000 completion tokens.
+Verify the math against the cost table.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Delegate is the single entry point for AI execution, with three
+layers of progressive disclosure.</li>
+<li><code>run()</code> yields typed <code>DelegateEvent</code> instances
+for pattern matching (not raw strings).</li>
+<li><code>run_sync()</code> provides a synchronous convenience for
+scripts.</li>
+<li><code>budget_usd</code> enables automatic cost tracking with
+<code>BudgetExhausted</code> events.</li>
+<li>Model names always come from environment variables, never
+hardcoded.</li>
+<li>Budget must be finite and non-negative; zero is valid (immediately
+exhausted).</li>
+<li>Cost estimation uses conservative per-1M-token rates by model
+prefix.</li>
+</ul>
+<h2 id="next-chapter">Next Chapter</h2>
+<p><a href="03_agent_config.md">Chapter 3: Agent Configuration</a> –
+Configure the Kaizen framework with KaizenConfig and AgentManager.</p>
 
-  <h2>Overview</h2>
-  <p>Delegate is the single entry point for autonomous AI execution in Kaizen. It composes an AgentLoop with optional governance and provides both streaming (<code>run()</code>) and synchronous (<code>run_sync()</code>) interfaces.</p>
-
-  <h2>Concepts</h2>
-
-  <h3>Progressive Disclosure</h3>
-  <table>
-    <tr><th>Layer</th><th>What You Provide</th><th>What You Get</th></tr>
-    <tr><td>Layer 1</td><td><code>model</code></td><td>Basic AI execution</td></tr>
-    <tr><td>Layer 2</td><td>+ <code>tools</code>, <code>system_prompt</code>, <code>max_turns</code></td><td>Customized behavior</td></tr>
-    <tr><td>Layer 3</td><td>+ <code>budget_usd</code></td><td>Cost-controlled execution</td></tr>
-  </table>
-
-  <h3>Event Stream</h3>
-  <table>
-    <tr><th>Event Type</th><th>When Yielded</th><th>Key Fields</th></tr>
-    <tr><td><code>TextDelta</code></td><td>Incremental text</td><td><code>text</code></td></tr>
-    <tr><td><code>TurnComplete</code></td><td>Model finished</td><td><code>prompt_tokens</code>, <code>completion_tokens</code></td></tr>
-    <tr><td><code>BudgetExhausted</code></td><td>Budget exceeded</td><td><code>budget_usd</code>, <code>consumed_usd</code></td></tr>
-    <tr><td><code>ErrorEvent</code></td><td>Error occurred</td><td><code>error</code>, <code>details</code></td></tr>
-  </table>
-
-  <h3>Cost Estimation</h3>
-  <table>
-    <tr><th>Model Prefix</th><th>Input (per 1M)</th><th>Output (per 1M)</th></tr>
-    <tr><td><code>claude-</code></td><td>$3.00</td><td>$15.00</td></tr>
-    <tr><td><code>gpt-4o</code></td><td>$2.50</td><td>$10.00</td></tr>
-    <tr><td><code>gemini-</code></td><td>$1.25</td><td>$5.00</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Minimal Delegate</h3>
-  <pre><code class="language-python">import os
-from dotenv import load_dotenv
-load_dotenv()
-
-from kaizen_agents import Delegate
-
-model = os.environ.get("DEFAULT_LLM_MODEL", "claude-sonnet-4-20250514")
-delegate = Delegate(model=model)
-
-assert delegate._budget_usd is None  # No budget cap</code></pre>
-
-  <div class="warning">
-    <strong>Important:</strong> Model names must come from environment variables, never hardcoded. Call <code>load_dotenv()</code> before any <code>os.environ</code> access.
-  </div>
-
-  <h3>Step 2: Configured Delegate</h3>
-  <pre><code class="language-python">configured = Delegate(
-    model=model,
-    tools=[],
-    system_prompt="You are a helpful code reviewer.",
-    max_turns=20,
-)
-assert configured._config.max_turns == 20</code></pre>
-
-  <h3>Step 3: Governed Delegate</h3>
-  <pre><code class="language-python">governed = Delegate(model=model, budget_usd=5.0)
-
-assert governed._budget_usd == 5.0
-assert governed._consumed_usd == 0.0</code></pre>
-
-  <h3>Step 4: Event Consumption Pattern</h3>
-  <pre><code class="language-python"># Production pattern (requires LLM API key):
-# async for event in delegate.run("What is Kailash?"):
-#     if isinstance(event, TextDelta):
-#         print(event.text, end="")
-#     elif isinstance(event, TurnComplete):
-#         print(f"\nTokens: {event.prompt_tokens}")
-#     elif isinstance(event, BudgetExhausted):
-#         print("Budget exceeded")
-#     elif isinstance(event, ErrorEvent):
-#         print(f"Error: {event.error}")</code></pre>
-
-  <h3>Step 5: Budget Validation</h3>
-  <pre><code class="language-python">try:
-    Delegate(model=model, budget_usd=-1.0)
-except ValueError as e:
-    assert "non-negative" in str(e).lower()
-
-try:
-    Delegate(model=model, budget_usd=float("inf"))
-except ValueError as e:
-    assert "finite" in str(e).lower()</code></pre>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Hardcoding model names</td><td>Breaks on provider changes</td><td>Use <code>os.environ.get()</code></td></tr>
-    <tr><td>Forgetting <code>load_dotenv()</code></td><td>Env vars not loaded</td><td>Call before <code>os.environ</code></td></tr>
-    <tr><td>Ignoring <code>BudgetExhausted</code></td><td>Agent exceeds budget</td><td>Handle in event loop</td></tr>
-    <tr><td>Using <code>run()</code> without async</td><td>Async generator error</td><td>Use <code>async for</code> or <code>run_sync()</code></td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li>Delegate is the single entry point with three layers of progressive disclosure.</li>
-    <li><code>run()</code> yields typed <code>DelegateEvent</code> instances for pattern matching.</li>
-    <li><code>run_sync()</code> provides synchronous convenience for scripts.</li>
-    <li><code>budget_usd</code> enables automatic cost tracking.</li>
-    <li>Model names always come from environment variables.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="01_signatures.html">&larr; Previous: Signatures</a>
-    <a href="03_agent_config.html">Next: Agent Configuration &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>

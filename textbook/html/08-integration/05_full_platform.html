@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 5: Full Platform (All 8
+Packages) &mdash; Kailash SDK Textbook</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
+    h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
+    h2 { color: #1E293B; margin-top: 2em; }
+    h3 { color: #4F46E5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
+    code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
+    .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
+    footer { text-align: center; color: #94A3B8; margin-top: 48px; padding: 24px 0; border-top: 1px solid #E2E8F0; }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+</head>
+<body>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
+
+<h1 id="chapter-5-full-platform-all-8-packages">Chapter 5: Full Platform
+(All 8 Packages)</h1>
+<h2 id="overview">Overview</h2>
+<p>This chapter demonstrates all eight Kailash packages working together
+in a single Python environment. Each package handles a specific layer of
+the platform: workflow orchestration, ML lifecycle, database operations,
+multi-channel deployment, agent framework, specialized agents,
+organizational governance, and LLM fine-tuning. This chapter validates
+that all packages import correctly and shows how they compose into a
+complete ML platform.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>All Kailash packages installed:
+<ul>
+<li><code>pip install kailash</code> (Core SDK)</li>
+<li><code>pip install kailash-ml</code> (ML engines)</li>
+<li><code>pip install kailash-dataflow</code> (Database)</li>
+<li><code>pip install kailash-nexus</code> (Deployment)</li>
+<li><code>pip install kailash-kaizen</code> (Agent framework)</li>
+<li><code>pip install kaizen-agents</code> (Specialized agents)</li>
+<li><code>pip install kailash-pact</code> (Governance)</li>
+<li><code>pip install kailash-align</code> (LLM fine-tuning)</li>
+</ul></li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="concept-1-the-eight-package-architecture">Concept 1: The
+Eight-Package Architecture</h3>
+<p>Each package has a clear responsibility and clean dependency
+boundaries:</p>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 23%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th>Package</th>
+<th>Layer</th>
+<th>Key Exports</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kailash</td>
+<td>Orchestration</td>
+<td>WorkflowBuilder, LocalRuntime, Node</td>
+</tr>
+<tr>
+<td>kailash-ml</td>
+<td>ML Lifecycle</td>
+<td>13 engines (DataExplorer through InferenceServer)</td>
+</tr>
+<tr>
+<td>kailash-dataflow</td>
+<td>Persistence</td>
+<td>DataFlow</td>
+</tr>
+<tr>
+<td>kailash-nexus</td>
+<td>Deployment</td>
+<td>Nexus</td>
+</tr>
+<tr>
+<td>kailash-kaizen</td>
+<td>Agent Framework</td>
+<td>Signature, InputField, OutputField</td>
+</tr>
+<tr>
+<td>kaizen-agents</td>
+<td>Agent Implementations</td>
+<td>Delegate, GovernedSupervisor</td>
+</tr>
+<tr>
+<td>kailash-pact</td>
+<td>Governance</td>
+<td>Address, GovernanceEngine, compile_org, can_access</td>
+</tr>
+<tr>
+<td>kailash-align</td>
+<td>LLM Fine-Tuning</td>
+<td>AlignmentPipeline, AlignmentConfig, AdapterRegistry</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>What</strong>: Eight packages that compose into a complete
+ML platform</li>
+<li><strong>Why</strong>: Clean separation means you install only what
+you need – a training-only deployment does not need Nexus or Kaizen</li>
+<li><strong>How</strong>: Each package exposes a focused API surface;
+integration happens through shared types and protocols</li>
+<li><strong>When</strong>: The full platform is the target for
+production ML systems; individual packages suffice for development</li>
+</ul>
+<h3 id="concept-2-composition-over-monolith">Concept 2: Composition Over
+Monolith</h3>
+<p>Kailash is not a monolithic framework. Each package is independently
+versioned, independently installable, and independently useful. They
+compose through shared conventions (polars DataFrames, async patterns,
+frozen configs) rather than tight coupling.</p>
+<h3 id="key-api">Key API</h3>
+<p>This chapter validates imports from all eight packages. The key
+exports are listed below.</p>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 38%" />
+<col style="width: 47%" />
+</colgroup>
+<thead>
+<tr>
+<th>Package</th>
+<th>Import Path</th>
+<th>Key Classes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Core SDK</td>
+<td><code>from kailash import ...</code></td>
+<td><code>WorkflowBuilder</code>, <code>LocalRuntime</code>,
+<code>Node</code></td>
+</tr>
+<tr>
+<td>ML</td>
+<td><code>from kailash_ml import ...</code></td>
+<td>13 engine classes</td>
+</tr>
+<tr>
+<td>DataFlow</td>
+<td><code>from dataflow import ...</code></td>
+<td><code>DataFlow</code></td>
+</tr>
+<tr>
+<td>Nexus</td>
+<td><code>from nexus import ...</code></td>
+<td><code>Nexus</code></td>
+</tr>
+<tr>
+<td>Kaizen</td>
+<td><code>from kaizen import ...</code></td>
+<td><code>Signature</code>, <code>InputField</code>,
+<code>OutputField</code></td>
+</tr>
+<tr>
+<td>Kaizen Agents</td>
+<td><code>from kaizen_agents import ...</code></td>
+<td><code>Delegate</code>, <code>GovernedSupervisor</code></td>
+</tr>
+<tr>
+<td>PACT</td>
+<td><code>from kailash.trust.pact import ...</code></td>
+<td><code>Address</code>, <code>GovernanceEngine</code>,
+<code>compile_org</code></td>
+</tr>
+<tr>
+<td>Align</td>
+<td><code>from kailash_align import ...</code></td>
+<td><code>AlignmentPipeline</code>, <code>AlignmentConfig</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="package-1-kailash-core-sdk">Package 1: kailash (Core SDK)</h3>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash <span class="im">import</span> WorkflowBuilder, LocalRuntime, Node</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>builder <span class="op">=</span> WorkflowBuilder()</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> builder <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;1/8 kailash (core): WorkflowBuilder, LocalRuntime, Node&quot;</span>)</span></code></pre></div>
+<p>The Core SDK provides workflow orchestration – the foundation that
+all other packages build upon.</p>
+<h3 id="package-2-kailash-ml">Package 2: kailash-ml</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_ml <span class="im">import</span> (</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    DataExplorer,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    PreprocessingPipeline,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    ModelVisualizer,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    FeatureEngineer,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    FeatureStore,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    ExperimentTracker,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    TrainingPipeline,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    HyperparameterSearch,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    AutoMLEngine,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    EnsembleEngine,</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    ModelRegistry,</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    DriftMonitor,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    InferenceServer,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;2/8 kailash-ml: 13 engines loaded&quot;</span>)</span></code></pre></div>
+<p>All 13 ML engines cover the complete ML lifecycle: from data
+exploration through training to production inference and drift
+monitoring.</p>
+<h3 id="package-3-kailash-dataflow">Package 3: kailash-dataflow</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataflow <span class="im">import</span> DataFlow</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>db <span class="op">=</span> DataFlow(database_url<span class="op">=</span><span class="st">&quot;sqlite:///&quot;</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(db, DataFlow)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;3/8 kailash-dataflow: DataFlow&quot;</span>)</span></code></pre></div>
+<p>DataFlow provides zero-config database operations. The
+<code>sqlite:///</code> URL creates an in-memory database for
+testing.</p>
+<h3 id="package-4-kailash-nexus">Package 4: kailash-nexus</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus <span class="im">import</span> Nexus</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>app <span class="op">=</span> Nexus(enable_durability<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(app, Nexus)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;4/8 kailash-nexus: Nexus&quot;</span>)</span></code></pre></div>
+<p>Nexus deploys workflows as multi-channel endpoints (HTTP API + MCP
+tools simultaneously).</p>
+<h3 id="package-5-kailash-kaizen">Package 5: kailash-kaizen</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen <span class="im">import</span> Signature, InputField, OutputField</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> Signature <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;5/8 kailash-kaizen: Signature, InputField, OutputField&quot;</span>)</span></code></pre></div>
+<p>Kaizen provides the AI agent framework: signatures define agent
+behavior, fields declare inputs and outputs.</p>
+<h3 id="package-6-kaizen-agents">Package 6: kaizen-agents</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kaizen_agents <span class="im">import</span> Delegate, GovernedSupervisor</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> Delegate <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> GovernedSupervisor <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;6/8 kaizen-agents: Delegate, GovernedSupervisor&quot;</span>)</span></code></pre></div>
+<p>Kaizen Agents provides pre-built agent implementations: Delegate for
+autonomous tasks, GovernedSupervisor for governance-wrapped multi-agent
+pipelines.</p>
+<h3 id="package-7-kailash-pact">Package 7: kailash-pact</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash.trust.pact <span class="im">import</span> (</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    Address,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    GovernanceEngine,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    compile_org,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    can_access,</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    explain_access,</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>addr <span class="op">=</span> Address.parse(<span class="st">&quot;D1-R1&quot;</span>)</span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> addr.depth() <span class="op">==</span> <span class="dv">2</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;7/8 kailash-pact: Address, GovernanceEngine, compile_org&quot;</span>)</span></code></pre></div>
+<p>PACT provides organizational governance: D/T/R addressing, clearance
+levels, constraint envelopes, and access decisions.</p>
+<h3 id="package-8-kailash-align">Package 8: kailash-align</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> kailash_align <span class="im">import</span> (</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    AlignmentPipeline,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    AlignmentConfig,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    AdapterRegistry,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    AlignmentEvaluator,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> AlignmentConfig <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">&quot;8/8 kailash-align: AlignmentPipeline, AlignmentConfig, AdapterRegistry&quot;</span>)</span></code></pre></div>
+<p>Align handles LLM fine-tuning and alignment: configuration, training,
+adapter management, evaluation, and serving.</p>
+<h3 id="platform-summary">Platform Summary</h3>
+<pre><code>All 8 Kailash packages imported and validated:
+  1. kailash       -- Workflow orchestration
+  2. kailash-ml    -- 13 ML engines
+  3. kailash-dataflow -- Database operations
+  4. kailash-nexus -- Multi-channel deployment
+  5. kailash-kaizen -- Agent framework
+  6. kaizen-agents -- Specialized agents
+  7. kailash-pact  -- Governance
+  8. kailash-align -- LLM fine-tuning</code></pre>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li>For each of the eight packages, write a one-sentence description of
+when you would use it in isolation (without the others). Which packages
+are most commonly used together?</li>
+<li>Create a minimal integration that uses four packages: Core SDK
+(workflow), ML (training), DataFlow (storage), and Nexus (deployment).
+Describe what each package contributes.</li>
+<li>Which packages would you install for a project that only does LLM
+fine-tuning and serving, with no classical ML? Which packages are
+unnecessary?</li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li>Kailash is composed of eight independently installable packages, not
+a monolith</li>
+<li>Each package has a focused responsibility: orchestration, ML,
+database, deployment, agents, governance, alignment</li>
+<li>All packages share conventions: polars DataFrames, async patterns,
+frozen configs, builder patterns</li>
+<li>The full platform combines all eight for a governed ML system</li>
+<li>Install only what you need – a fine-tuning project does not require
+DataFlow or Nexus</li>
+</ul>
+<h2 id="next-section">Next Section</h2>
+<p>This concludes the Integration section. Return to the <a
+href="../07-align/01_alignment_config.md">Align section</a> or the <a
+href="../06-pact/01_addressing.md">PACT section</a> for deeper coverage
+of individual packages.</p>
+
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>

@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Chapter 9: Probes — Kailash SDK Textbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 9: Probes &mdash; Kailash SDK Textbook</title>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #1E293B; line-height: 1.7; }
     h1 { color: #0D9488; border-bottom: 3px solid #0D9488; padding-bottom: 8px; }
     h2 { color: #1E293B; margin-top: 2em; }
     h3 { color: #4F46E5; }
-    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+    pre { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 14px; }
     code { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
     p code, li code { background: #F8FAFC; padding: 2px 6px; border-radius: 4px; border: 1px solid #E2E8F0; font-size: 0.9em; }
     table { border-collapse: collapse; width: 100%; margin: 16px 0; }
     th { background: #0D9488; color: white; padding: 8px 12px; text-align: left; }
     td { padding: 8px 12px; border-bottom: 1px solid #E2E8F0; }
+    tr:hover { background: #F8FAFC; }
     .callout { background: #F0FDFA; border-left: 4px solid #0D9488; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .warning { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
     .nav { display: flex; justify-content: space-between; margin: 32px 0; padding: 16px 0; border-top: 1px solid #E2E8F0; }
@@ -22,133 +24,384 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
 </head>
 <body>
-  <header><p><a href="../index.html">Kailash SDK Textbook</a> / <a href="index.html">Nexus</a></p></header>
+  <header>
+    <p><a href="../index.html">Kailash SDK Textbook</a></p>
+  </header>
 
-  <h1>Chapter 9: Probes</h1>
-
-  <h2>Overview</h2>
-  <p>Kubernetes probes determine whether a container is alive, ready to serve traffic, and finished starting up. Nexus provides a <code>ProbeManager</code> that models the Kubernetes probe lifecycle with thread-safe, atomic state transitions.</p>
-
-  <h2>Concepts</h2>
-
-  <h3>Probe State Machine</h3>
-  <pre><code>STARTING  --&gt;  READY  --&gt;  DRAINING
+<h1 id="chapter-9-probes">Chapter 9: Probes</h1>
+<h2 id="overview">Overview</h2>
+<p>Kubernetes probes determine whether a container is alive, ready to
+serve traffic, and finished starting up. Nexus provides a
+<code>ProbeManager</code> that models the Kubernetes probe lifecycle
+with thread-safe, atomic state transitions. This chapter covers
+<code>ProbeState</code>, the state machine transitions,
+liveness/readiness/startup checks, custom readiness callbacks, and the
+<code>ProbeResponse</code> serialization format.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Completed Chapters 1-8</li>
+<li>Understanding of Kubernetes probe concepts (liveness, readiness,
+startup)</li>
+<li>Familiarity with state machines</li>
+</ul>
+<h2 id="concepts">Concepts</h2>
+<h3 id="probe-state-machine">Probe State Machine</h3>
+<p>ProbeState models the Kubernetes probe lifecycle with monotonic
+transitions:</p>
+<pre><code>STARTING  --&gt;  READY  --&gt;  DRAINING
     |            |            |
     +-----+------+-----+------+
           |            |
           v            v
         FAILED  &lt;------+</code></pre>
+<ul>
+<li><strong>STARTING</strong>: Container is booting. Liveness passes,
+readiness fails.</li>
+<li><strong>READY</strong>: Accepting traffic. All three probes
+pass.</li>
+<li><strong>DRAINING</strong>: Graceful shutdown. Liveness passes,
+readiness fails.</li>
+<li><strong>FAILED</strong>: Terminal state. Only <code>reset()</code>
+can recover.</li>
+</ul>
+<h3 id="three-probe-types">Three Probe Types</h3>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 13%" />
+<col style="width: 28%" />
+<col style="width: 46%" />
+</colgroup>
+<thead>
+<tr>
+<th>Probe</th>
+<th>Endpoint</th>
+<th>Passes When</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Liveness</td>
+<td><code>/healthz</code></td>
+<td>Not FAILED</td>
+<td>Should the container be restarted?</td>
+</tr>
+<tr>
+<td>Readiness</td>
+<td><code>/readyz</code></td>
+<td>READY + callbacks pass</td>
+<td>Should traffic be sent to this pod?</td>
+</tr>
+<tr>
+<td>Startup</td>
+<td><code>/startup</code></td>
+<td>Past STARTING</td>
+<td>Has the initial boot completed?</td>
+</tr>
+</tbody>
+</table>
+<h3 id="readiness-callbacks">Readiness Callbacks</h3>
+<p>Additional checks can be registered as callbacks (e.g., database
+connectivity, model loading). All callbacks must return
+<code>True</code> for readiness to pass. Failed callbacks are reported
+by name in the response details.</p>
+<h2 id="key-api">Key API</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 29%" />
+<col style="width: 11%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method / Property</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ProbeManager()</code></td>
+<td>–</td>
+<td><code>ProbeManager</code></td>
+<td>Create a probe manager (starts in STARTING)</td>
+</tr>
+<tr>
+<td><code>probes.state</code></td>
+<td>–</td>
+<td><code>ProbeState</code></td>
+<td>Current state</td>
+</tr>
+<tr>
+<td><code>probes.is_alive</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>True unless FAILED</td>
+</tr>
+<tr>
+<td><code>probes.is_ready</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>True only in READY</td>
+</tr>
+<tr>
+<td><code>probes.is_started</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>True once past STARTING</td>
+</tr>
+<tr>
+<td><code>probes.mark_ready()</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>Transition to READY</td>
+</tr>
+<tr>
+<td><code>probes.mark_draining()</code></td>
+<td>–</td>
+<td><code>bool</code></td>
+<td>Transition to DRAINING</td>
+</tr>
+<tr>
+<td><code>probes.mark_failed(reason)</code></td>
+<td><code>reason: str</code></td>
+<td><code>bool</code></td>
+<td>Transition to FAILED</td>
+</tr>
+<tr>
+<td><code>probes.reset()</code></td>
+<td>–</td>
+<td><code>None</code></td>
+<td>Return to STARTING</td>
+</tr>
+<tr>
+<td><code>probes.check_liveness()</code></td>
+<td>–</td>
+<td><code>ProbeResponse</code></td>
+<td>Liveness check</td>
+</tr>
+<tr>
+<td><code>probes.check_readiness()</code></td>
+<td>–</td>
+<td><code>ProbeResponse</code></td>
+<td>Readiness check</td>
+</tr>
+<tr>
+<td><code>probes.check_startup()</code></td>
+<td>–</td>
+<td><code>ProbeResponse</code></td>
+<td>Startup check</td>
+</tr>
+<tr>
+<td><code>probes.add_readiness_check(cb)</code></td>
+<td><code>cb: Callable[[], bool]</code></td>
+<td><code>None</code></td>
+<td>Add custom readiness check</td>
+</tr>
+<tr>
+<td><code>probes.set_workflow_count(n)</code></td>
+<td><code>n: int</code></td>
+<td><code>None</code></td>
+<td>Track registered workflows</td>
+</tr>
+<tr>
+<td><code>ProbeResponse</code></td>
+<td><code>.status</code>, <code>.http_status</code>,
+<code>.details</code></td>
+<td>dataclass</td>
+<td>Probe response</td>
+</tr>
+<tr>
+<td><code>response.to_dict()</code></td>
+<td>–</td>
+<td><code>dict</code></td>
+<td>Serialize for JSON</td>
+</tr>
+</tbody>
+</table>
+<h2 id="code-walkthrough">Code Walkthrough</h2>
+<h3 id="step-1-probestate-enum">Step 1: ProbeState Enum</h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> nexus.probes <span class="im">import</span> ProbeManager, ProbeResponse, ProbeState</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ProbeState.STARTING.value <span class="op">==</span> <span class="st">&quot;starting&quot;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ProbeState.READY.value <span class="op">==</span> <span class="st">&quot;ready&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ProbeState.DRAINING.value <span class="op">==</span> <span class="st">&quot;draining&quot;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> ProbeState.FAILED.value <span class="op">==</span> <span class="st">&quot;failed&quot;</span></span></code></pre></div>
+<h3 id="step-2-initial-state">Step 2: Initial State</h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>probes <span class="op">=</span> ProbeManager()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.state <span class="op">==</span> ProbeState.STARTING</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.is_alive <span class="kw">is</span> <span class="va">True</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.is_ready <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.is_started <span class="kw">is</span> <span class="va">False</span></span></code></pre></div>
+<h3 id="step-3-liveness-check-starting">Step 3: Liveness Check
+(STARTING)</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>liveness <span class="op">=</span> probes.check_liveness()</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> liveness.status <span class="op">==</span> <span class="st">&quot;ok&quot;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> liveness.http_status <span class="op">==</span> <span class="dv">200</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;uptime_seconds&quot;</span> <span class="kw">in</span> liveness.details</span></code></pre></div>
+<p>Even while starting, the container is alive (should not be
+restarted).</p>
+<h3 id="step-4-startup-check-starting">Step 4: Startup Check
+(STARTING)</h3>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>startup <span class="op">=</span> probes.check_startup()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> startup.status <span class="op">==</span> <span class="st">&quot;starting&quot;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> startup.http_status <span class="op">==</span> <span class="dv">503</span></span></code></pre></div>
+<p>The startup probe fails until the application transitions past
+STARTING.</p>
+<h3 id="step-5-transition-to-ready">Step 5: Transition to READY</h3>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>probes.mark_ready()</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.state <span class="op">==</span> ProbeState.READY</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.check_liveness().http_status <span class="op">==</span> <span class="dv">200</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.check_readiness().http_status <span class="op">==</span> <span class="dv">200</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.check_startup().http_status <span class="op">==</span> <span class="dv">200</span></span></code></pre></div>
+<p>All three probes now return 200.</p>
+<h3 id="step-6-custom-readiness-checks">Step 6: Custom Readiness
+Checks</h3>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> check_database_connection() <span class="op">-&gt;</span> <span class="bu">bool</span>:</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">True</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> check_model_loaded() <span class="op">-&gt;</span> <span class="bu">bool</span>:</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">True</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>probes.add_readiness_check(check_database_connection)</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>probes.add_readiness_check(check_model_loaded)</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.check_readiness().http_status <span class="op">==</span> <span class="dv">200</span></span></code></pre></div>
+<h3 id="step-7-failing-readiness-callback">Step 7: Failing Readiness
+Callback</h3>
+<div class="sourceCode" id="cb8"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>probes2 <span class="op">=</span> ProbeManager()</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>probes2.mark_ready()</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> always_fails() <span class="op">-&gt;</span> <span class="bu">bool</span>:</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">False</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>probes2.add_readiness_check(always_fails)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>readiness <span class="op">=</span> probes2.check_readiness()</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> readiness.http_status <span class="op">==</span> <span class="dv">503</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="st">&quot;always_fails&quot;</span> <span class="kw">in</span> readiness.details[<span class="st">&quot;failed_checks&quot;</span>]</span></code></pre></div>
+<h3 id="step-8-draining-state">Step 8: DRAINING State</h3>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>probes.mark_draining()</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.is_alive <span class="kw">is</span> <span class="va">True</span>   <span class="co"># Don&#39;t restart</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.is_ready <span class="kw">is</span> <span class="va">False</span>  <span class="co"># Stop sending traffic</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.check_liveness().http_status <span class="op">==</span> <span class="dv">200</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes.check_readiness().http_status <span class="op">==</span> <span class="dv">503</span></span></code></pre></div>
+<h3 id="step-9-failed-state">Step 9: FAILED State</h3>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>probes3 <span class="op">=</span> ProbeManager()</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>probes3.mark_ready()</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>probes3.mark_failed(reason<span class="op">=</span><span class="st">&quot;Out of memory&quot;</span>)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes3.is_alive <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>liveness <span class="op">=</span> probes3.check_liveness()</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> liveness.http_status <span class="op">==</span> <span class="dv">503</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> liveness.details[<span class="st">&quot;reason&quot;</span>] <span class="op">==</span> <span class="st">&quot;Out of memory&quot;</span></span></code></pre></div>
+<h3 id="step-10-invalid-transitions">Step 10: Invalid Transitions</h3>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>probes4 <span class="op">=</span> ProbeManager()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Can&#39;t skip STARTING -&gt; DRAINING</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes4.mark_draining() <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes4.state <span class="op">==</span> ProbeState.STARTING</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="co"># FAILED is terminal</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>probes4.mark_failed(reason<span class="op">=</span><span class="st">&quot;crash&quot;</span>)</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes4.mark_ready() <span class="kw">is</span> <span class="va">False</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="co"># reset() is the only recovery</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>probes4.reset()</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes4.state <span class="op">==</span> ProbeState.STARTING</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> probes4.mark_ready() <span class="kw">is</span> <span class="va">True</span></span></code></pre></div>
+<h2 id="common-mistakes">Common Mistakes</h2>
+<table>
+<colgroup>
+<col style="width: 36%" />
+<col style="width: 27%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th>Mistake</th>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Skipping STARTING -&gt; READY</td>
+<td><code>mark_draining()</code> returns False</td>
+<td>Must go through READY first</td>
+</tr>
+<tr>
+<td>Expecting recovery from FAILED</td>
+<td><code>mark_ready()</code> returns False</td>
+<td>Use <code>reset()</code> first</td>
+</tr>
+<tr>
+<td>Readiness callback that raises exceptions</td>
+<td>Unexpected behavior</td>
+<td>Callbacks must return bool, not raise</td>
+</tr>
+<tr>
+<td>Forgetting to call <code>mark_ready()</code></td>
+<td>Readiness always 503</td>
+<td>Transition to READY after initialization</td>
+</tr>
+</tbody>
+</table>
+<h2 id="exercises">Exercises</h2>
+<ol type="1">
+<li><p><strong>Full Lifecycle</strong>: Walk a ProbeManager through the
+complete lifecycle: STARTING -&gt; READY -&gt; DRAINING. Check all three
+probes at each state. Create a table of expected HTTP status
+codes.</p></li>
+<li><p><strong>Readiness Matrix</strong>: Create a ProbeManager in READY
+state. Add three readiness callbacks (two passing, one failing). Verify
+readiness fails and the response identifies the failing check. Fix the
+callback and verify readiness passes.</p></li>
+<li><p><strong>Recovery Pattern</strong>: Transition a ProbeManager to
+FAILED with a reason. Verify all probes fail. Call <code>reset()</code>,
+verify the state returns to STARTING, then transition back to
+READY.</p></li>
+</ol>
+<h2 id="key-takeaways">Key Takeaways</h2>
+<ul>
+<li><code>ProbeState</code>: STARTING -&gt; READY -&gt; DRAINING (FAILED
+is terminal, <code>reset()</code> recovers).</li>
+<li><code>ProbeManager</code> is thread-safe with atomic state
+transitions.</li>
+<li>Liveness (<code>/healthz</code>): 200 unless FAILED.</li>
+<li>Readiness (<code>/readyz</code>): 200 only in READY state AND all
+callbacks pass.</li>
+<li>Startup (<code>/startup</code>): 200 once past STARTING.</li>
+<li>Custom readiness checks via
+<code>add_readiness_check(callback)</code>.</li>
+<li><code>ProbeResponse.to_dict()</code> produces JSON-serializable
+output.</li>
+<li>Invalid transitions return <code>False</code> without changing
+state.</li>
+</ul>
+<h2 id="next-package">Next Package</h2>
+<p>Continue to <a href="../03-kaizen/01_signatures.md">Package 03:
+Kaizen</a> – Build AI agents with signature-based programming.</p>
 
-  <h3>Three Probe Types</h3>
-  <table>
-    <tr><th>Probe</th><th>Endpoint</th><th>Passes When</th><th>Purpose</th></tr>
-    <tr><td>Liveness</td><td><code>/healthz</code></td><td>Not FAILED</td><td>Should container be restarted?</td></tr>
-    <tr><td>Readiness</td><td><code>/readyz</code></td><td>READY + callbacks pass</td><td>Should traffic be sent?</td></tr>
-    <tr><td>Startup</td><td><code>/startup</code></td><td>Past STARTING</td><td>Has initial boot completed?</td></tr>
-  </table>
-
-  <h2>Code Walkthrough</h2>
-
-  <h3>Step 1: Initial State</h3>
-  <pre><code class="language-python">from nexus.probes import ProbeManager, ProbeResponse, ProbeState
-
-probes = ProbeManager()
-assert probes.state == ProbeState.STARTING
-assert probes.is_alive is True
-assert probes.is_ready is False</code></pre>
-
-  <h3>Step 2: Transition to READY</h3>
-  <pre><code class="language-python">probes.mark_ready()
-
-assert probes.check_liveness().http_status == 200
-assert probes.check_readiness().http_status == 200
-assert probes.check_startup().http_status == 200</code></pre>
-
-  <h3>Step 3: Custom Readiness Checks</h3>
-  <pre><code class="language-python">def check_database_connection() -> bool:
-    return True
-
-def check_model_loaded() -> bool:
-    return True
-
-probes.add_readiness_check(check_database_connection)
-probes.add_readiness_check(check_model_loaded)
-assert probes.check_readiness().http_status == 200</code></pre>
-
-  <h3>Step 4: Failing Callback</h3>
-  <pre><code class="language-python">probes2 = ProbeManager()
-probes2.mark_ready()
-
-def always_fails() -> bool:
-    return False
-
-probes2.add_readiness_check(always_fails)
-
-readiness = probes2.check_readiness()
-assert readiness.http_status == 503
-assert "always_fails" in readiness.details["failed_checks"]</code></pre>
-
-  <h3>Step 5: DRAINING</h3>
-  <pre><code class="language-python">probes.mark_draining()
-
-assert probes.is_alive is True    # Don't restart
-assert probes.is_ready is False   # Stop sending traffic
-assert probes.check_liveness().http_status == 200
-assert probes.check_readiness().http_status == 503</code></pre>
-
-  <h3>Step 6: FAILED and Recovery</h3>
-  <pre><code class="language-python">probes3 = ProbeManager()
-probes3.mark_ready()
-probes3.mark_failed(reason="Out of memory")
-
-assert probes3.is_alive is False
-assert probes3.check_liveness().http_status == 503
-
-# Recovery via reset
-probes3.reset()
-assert probes3.state == ProbeState.STARTING
-probes3.mark_ready()
-assert probes3.state == ProbeState.READY</code></pre>
-
-  <h3>Step 7: Invalid Transitions</h3>
-  <pre><code class="language-python">probes4 = ProbeManager()
-
-# Can't skip STARTING -> DRAINING
-assert probes4.mark_draining() is False
-
-# FAILED is terminal (without reset)
-probes4.mark_failed(reason="crash")
-assert probes4.mark_ready() is False</code></pre>
-
-  <div class="warning">
-    <strong>Important:</strong> Invalid state transitions return <code>False</code> without changing state. Always check the return value to confirm the transition succeeded.
-  </div>
-
-  <h2>Common Mistakes</h2>
-  <table>
-    <tr><th>Mistake</th><th>Problem</th><th>Fix</th></tr>
-    <tr><td>Skipping STARTING &rarr; READY</td><td><code>mark_draining()</code> returns False</td><td>Must go through READY first</td></tr>
-    <tr><td>Expecting recovery from FAILED</td><td><code>mark_ready()</code> returns False</td><td>Use <code>reset()</code> first</td></tr>
-    <tr><td>Readiness callback that raises</td><td>Unexpected behavior</td><td>Callbacks must return bool</td></tr>
-    <tr><td>Forgetting <code>mark_ready()</code></td><td>Readiness always 503</td><td>Transition after init</td></tr>
-  </table>
-
-  <h2>Key Takeaways</h2>
-  <ul>
-    <li><code>ProbeState</code>: STARTING &rarr; READY &rarr; DRAINING (FAILED is terminal).</li>
-    <li><code>ProbeManager</code> is thread-safe with atomic state transitions.</li>
-    <li>Liveness: 200 unless FAILED. Readiness: 200 only in READY + callbacks pass.</li>
-    <li>Custom readiness checks via <code>add_readiness_check(callback)</code>.</li>
-    <li>Invalid transitions return <code>False</code> without changing state.</li>
-    <li><code>reset()</code> is the only recovery from FAILED.</li>
-  </ul>
-
-  <div class="nav">
-    <a href="08_openapi.html">&larr; Previous: OpenAPI</a>
-    <a href="../03-kaizen/01_signatures.html">Next: Kaizen &mdash; Signatures &rarr;</a>
-  </div>
-
-  <footer><p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p></footer>
+  <footer>
+    <p>Kailash SDK Textbook &mdash; Terrene Open Academy &mdash; Terrene Foundation</p>
+  </footer>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 </body>
