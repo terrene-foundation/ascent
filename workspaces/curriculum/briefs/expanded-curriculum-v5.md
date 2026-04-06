@@ -30,16 +30,18 @@
 
 _Zero to productive. Learn Python by exploring real Singapore data._
 
-| #       | Lesson                  | Theory / Python                                                         | Kailash SDK                                                              | Exercise                                     |
-| ------- | ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------- |
-| 1.1     | **Polars Deep Dive**    | Polars Arrow backend, lazy evaluation, expression API, window functions | `polars`: `pl.read_csv()`, `df.shape`, `df.filter()`, `join()`, `over()` | HDB resale (15M+ rows) with MRT/school joins |
-| 1.2     | **Bayesian Estimation** | Normal, Beta, Poisson, conjugate priors, Bayes' theorem                 | `ModelVisualizer` for posterior plots                                    | Bayesian estimation on HDB prices            |
-| 1.3     | **Data Profiling**      | Async profiling, alert types, correlation matrices                      | `DataExplorer`, `AlertConfig`, `DataProfile`, `compare()`                | Profile dirty Singapore economic data        |
-| 1.4     | **Hypothesis Testing**  | Neyman-Pearson, power analysis, MDE, Bonferroni/BH-FDR                  | `ExperimentTracker` (create_experiment, log_param, log_metric)           | A/B test with multiple corrections           |
-| 1.5     | **Data Cleaning**       | None/null handling, encoding, scaling, imputation                       | `PreprocessingPipeline` (auto-detect, encode, scale, impute)             | Clean messy taxi data → full EDA report      |
-| 1.6-1.8 | **(Exercises 6-8)**     | Additional practice and integration                                     | Full M1 toolkit                                                          | Progressive difficulty exercises             |
+| #   | Lesson                        | Theory / Python                                                       | Kailash SDK                                                | Exercise                                      |
+| --- | ----------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
+| 1.1 | **First Data Exploration**    | Polars Arrow backend, `pl.read_csv()`, `df.shape`, `df.describe()`    | `polars` expressions                                       | HDB resale exploration and summary stats      |
+| 1.2 | **Filtering & Transforming**  | Boolean masks, `filter()`, `with_columns()`, `select()`, type casting | `polars` expression API                                    | Filter and transform HDB transactions         |
+| 1.3 | **Functions & Aggregation**   | `group_by()`, `agg()`, user-defined functions, lazy evaluation        | `polars` aggregation framework                             | District-level aggregation and custom metrics |
+| 1.4 | **Joins & Multi-Table Data**  | Left/inner/cross joins, enrichment patterns, multi-source EDA         | `polars` join operations                                   | Enrich HDB with MRT and school proximity      |
+| 1.5 | **Window Functions & Trends** | `over()`, rolling windows, cumulative operations, time series basics  | `polars` window expressions                                | Price trends and moving averages over time    |
+| 1.6 | **Data Visualization**        | Interactive charts, distributions, scatter, heatmaps, line plots      | `ModelVisualizer` (histogram, scatter, bar, heatmap, line) | Interactive EDA visualizations on HDB data    |
+| 1.7 | **Automated Data Profiling**  | Async profiling, alert types, correlation matrices, data quality      | `DataExplorer`, `AlertConfig`, `DataProfile`               | Profile dirty Singapore economic data         |
+| 1.8 | **Data Cleaning & EDA**       | Null handling, encoding, scaling, imputation, end-to-end pipeline     | `DataExplorer`, `PreprocessingPipeline`, `ModelVisualizer` | Clean messy data → full EDA report            |
 
-**Datasets**: Singapore HDB Resale (15M+), Economic Indicators, Taxi Trips, E-commerce A/B Test
+**Datasets**: Singapore HDB Resale (15M+), Economic Indicators, Taxi Trips
 **Scaffolding**: ~70% (near-complete code with blanks for key arguments)
 
 ---
@@ -48,16 +50,18 @@ _Zero to productive. Learn Python by exploring real Singapore data._
 
 _Statistical foundations taught through experiment tracking and feature engineering._
 
-| #       | Lesson                           | Theory                                                              | Kailash SDK                                                            | Exercise                                        |
-| ------- | -------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
-| 2.1     | **Feature Engineering**          | Mutual information, Boruta, VIF, temporal features, target encoding | `FeatureEngineer` (generate + select), `FeatureSchema`, `FeatureField` | Healthcare feature engineering on ICU data      |
-| 2.2     | **Feature Store**                | Point-in-time correctness, data lineage, versioning                 | `FeatureStore` lifecycle: define → compute → version → retrieve        | FeatureStore with leakage prevention            |
-| 2.3     | **A/B Testing & CUPED**          | Power analysis, SRM check, CUPED variance reduction                 | `ExperimentTracker` full lifecycle                                     | CUPED implementation on experiment data         |
-| 2.4     | **Causal Inference**             | DiD, propensity matching, parallel trends, placebo tests            | `ExperimentTracker` for causal logging                                 | DiD on Singapore cooling measures               |
-| 2.5     | **Automated Feature Generation** | FeatureEngineer + ExperimentTracker integration                     | `FeatureEngineer`, `ExperimentTracker.compare_runs()`                  | Automated generation with experiment comparison |
-| 2.6-2.8 | **(Exercises 6-8)**              | Additional practice and integration                                 | Full M2 toolkit                                                        | Progressive difficulty exercises                |
+| #   | Lesson                              | Theory                                                              | Kailash SDK                                                            | Exercise                                      |
+| --- | ----------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------- |
+| 2.1 | **Probability & Bayesian Thinking** | Normal, Beta, Poisson, conjugate priors, Bayes' theorem             | `ModelVisualizer` for posterior plots                                  | Bayesian estimation on HDB prices             |
+| 2.2 | **Estimation & Inference**          | CLT, confidence intervals, MLE, bootstrap intro                     | `ModelVisualizer` for sampling distributions                           | Estimation and inference on real data         |
+| 2.3 | **Hypothesis Testing**              | Neyman-Pearson, power analysis, MDE, Bonferroni/BH-FDR              | `ModelVisualizer` for test visualizations                              | A/B test with multiple corrections            |
+| 2.4 | **Bootstrap & Resampling**          | Percentile/BCa bootstrap, permutation tests, jackknife              | `ModelVisualizer`, `ExperimentTracker`                                 | Bootstrap confidence intervals and comparison |
+| 2.5 | **CUPED & Variance Reduction**      | Power analysis, SRM check, CUPED variance reduction                 | `ExperimentTracker` full lifecycle, `ConnectionManager`                | CUPED implementation on experiment data       |
+| 2.6 | **Sequential Testing & Causal**     | DiD, propensity matching, sequential tests, parallel trends         | `ExperimentTracker` for causal logging, `ConnectionManager`            | DiD on Singapore cooling measures             |
+| 2.7 | **Feature Engineering**             | Mutual information, Boruta, VIF, temporal features, target encoding | `FeatureEngineer` (generate + select), `FeatureSchema`, `FeatureField` | Feature engineering with experiment tracking  |
+| 2.8 | **Feature Store & Capstone**        | Point-in-time correctness, data lineage, versioning                 | `FeatureStore` lifecycle: define → compute → version → retrieve        | FeatureStore with leakage prevention          |
 
-**Datasets**: Healthcare ICU (60K stays), E-commerce Experiment (500K users), Singapore Housing + Policy
+**Datasets**: Singapore HDB Resale, E-commerce Experiment (500K users), Healthcare ICU (60K stays), Singapore Housing + Policy
 **Scaffolding**: ~60% (arguments + some method calls stripped)
 
 ---
@@ -66,15 +70,16 @@ _Statistical foundations taught through experiment tracking and feature engineer
 
 _From theory to production — workflow orchestration, model registry, governed deployment._
 
-| #       | Lesson                               | Theory                                                      | Kailash SDK                                                              | Exercise                                          |
-| ------- | ------------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------- |
-| 3.1     | **Gradient Boosting**                | XGBoost 2nd-order Taylor, LightGBM GOSS, CatBoost ordered   | `TrainingPipeline`, `ModelSpec`, `EvalSpec`                              | XGBoost vs LightGBM vs CatBoost comparison        |
-| 3.2     | **Class Imbalance & Calibration**    | SMOTE failures, cost-sensitive, Focal Loss, Platt/isotonic  | `ModelVisualizer.calibration_curve()`, `precision_recall_curve()`        | Imbalance workshop with calibration               |
-| 3.3     | **SHAP Interpretability**            | Shapley axioms, TreeSHAP, KernelSHAP, LIME, PDP, ALE        | `ModelVisualizer.feature_importance()`                                   | Full SHAP analysis with interaction plots         |
-| 3.4     | **Workflow Orchestration**           | WorkflowBuilder, nodes, connections, custom nodes           | `WorkflowBuilder`, `LocalRuntime`, `PythonCodeNode`, `ConditionalNode`   | ML workflow: load → preprocess → train → evaluate |
-| 3.5     | **Hyperparameter Search & Registry** | Bayesian optimization, model versioning, staging→production | `HyperparameterSearch`, `SearchSpace`, `ModelRegistry`, `ModelSignature` | Bayesian optimization → staging → production      |
-| 3.6     | **End-to-End Pipeline**              | Model cards, conformal prediction, full pipeline            | Complete: train → calibrate → register → promote → model card            | Production pipeline with model card               |
-| 3.7-3.8 | **(Exercises 7-8)**                  | DataFlow persistence, integration                           | `DataFlow`, `field()`, `db.express`, `ConnectionManager`                 | Persist ML results + integration project          |
+| #   | Lesson                               | Theory                                                      | Kailash SDK                                                              | Exercise                                          |
+| --- | ------------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------- |
+| 3.1 | **Bias-Variance & Regularisation**   | Bias-variance tradeoff, L1/L2 regularisation, cross-val     | `PreprocessingPipeline`, `ModelVisualizer`, `interop`                    | Regularisation comparison on credit data          |
+| 3.2 | **Gradient Boosting**                | XGBoost 2nd-order Taylor, LightGBM GOSS, CatBoost ordered   | `PreprocessingPipeline`, `ModelVisualizer`                               | XGBoost vs LightGBM vs CatBoost comparison        |
+| 3.3 | **Class Imbalance & Calibration**    | SMOTE failures, cost-sensitive, Focal Loss, Platt/isotonic  | `ModelVisualizer.calibration_curve()`, `precision_recall_curve()`        | Imbalance workshop with calibration               |
+| 3.4 | **SHAP, LIME & Fairness**            | Shapley axioms, TreeSHAP, KernelSHAP, LIME, PDP, ALE, bias  | `ModelVisualizer.feature_importance()`                                   | Full SHAP analysis with fairness audit            |
+| 3.5 | **Workflow Orchestration**           | WorkflowBuilder, nodes, connections, custom nodes           | `WorkflowBuilder`, `LocalRuntime`, `PythonCodeNode`, `ConditionalNode`   | ML workflow: load → preprocess → train → evaluate |
+| 3.6 | **DataFlow & Persistence**           | Database models, CRUD operations, ML result storage         | `DataFlow`, `field()`, `db.express`, `ConnectionManager`                 | Persist ML evaluation results to DataFlow         |
+| 3.7 | **Hyperparameter Search & Registry** | Bayesian optimization, model versioning, staging→production | `HyperparameterSearch`, `SearchSpace`, `ModelRegistry`, `ModelSignature` | Bayesian optimization → staging → production      |
+| 3.8 | **Production Pipeline**              | Model cards, experiment tracking, full pipeline             | `ModelRegistry`, `ExperimentTracker`, `PreprocessingPipeline`            | End-to-end production pipeline with model card    |
 
 **Datasets**: Singapore Credit Scoring (100K apps, 12% default), Lending Club (300K+)
 **Scaffolding**: ~50% (method calls + setup stripped)
@@ -85,15 +90,16 @@ _From theory to production — workflow orchestration, model registry, governed 
 
 _Clustering, dimensionality reduction, anomaly detection, and production monitoring._
 
-| #       | Lesson                            | Theory                                            | Kailash SDK                                                  | Exercise                                 |
-| ------- | --------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------- |
-| 4.1     | **Clustering**                    | K-means, spectral, HDBSCAN, GMM, gap statistic    | `AutoMLEngine`, `AutoMLConfig`                               | Clustering comparison on customer data   |
-| 4.2     | **Anomaly Detection & Ensembles** | Isolation Forest, LOF, score blending             | `EnsembleEngine` (`blend()`, `stack()`, `bag()`, `boost()`)  | UMAP + anomaly detection on fraud data   |
-| 4.3     | **NLP: Text to Topics**           | TF-IDF, BM25, Word2Vec, BERTopic, NPMI coherence  | `ModelVisualizer` for topics                                 | BERTopic on Singapore news corpus        |
-| 4.4     | **Drift Monitoring**              | PSI, KS test, performance degradation, monitoring | `DriftMonitor`, `DriftSpec`                                  | Deploy model, simulate drift, detect     |
-| 4.5     | **Deep Learning Intro**           | Backprop, gradient flow, CNN, ResBlock, BatchNorm | PyTorch + `ModelVisualizer.training_history()`, `OnnxBridge` | CNN on chest X-ray with LR scheduling    |
-| 4.6     | **Inference & Deployment**        | ONNX export, InferenceServer, Nexus multi-channel | `OnnxBridge`, `InferenceServer`, `Nexus`                     | InferenceServer + Nexus: API + CLI + MCP |
-| 4.7-4.8 | **(Exercises 7-8)**               | Additional practice and integration               | Full M4 toolkit                                              | Progressive difficulty exercises         |
+| #   | Lesson                            | Theory                                             | Kailash SDK                                                 | Exercise                                 |
+| --- | --------------------------------- | -------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------- |
+| 4.1 | **Clustering**                    | K-means, spectral, HDBSCAN, gap statistic          | `AutoMLEngine`, `AutoMLConfig`, `ModelVisualizer`           | Clustering comparison on customer data   |
+| 4.2 | **EM & Gaussian Mixture Models**  | EM algorithm, GMM, BIC selection, soft assignments | `ModelVisualizer`, `AutoMLEngine`                           | GMM on e-commerce customer segmentation  |
+| 4.3 | **Dimensionality Reduction**      | PCA, t-SNE, UMAP, explained variance, perplexity   | `ModelVisualizer` for embeddings                            | PCA/t-SNE/UMAP comparison on real data   |
+| 4.4 | **Anomaly Detection & Ensembles** | Isolation Forest, LOF, score blending, ensembles   | `EnsembleEngine` (`blend()`, `stack()`, `bag()`, `boost()`) | Anomaly detection with ensemble scoring  |
+| 4.5 | **NLP: Text to Topics**           | TF-IDF, BM25, Word2Vec, BERTopic, NPMI coherence   | `ModelVisualizer` for topics                                | BERTopic on Singapore news corpus        |
+| 4.6 | **Drift Monitoring**              | PSI, KS test, performance degradation, monitoring  | `DriftMonitor`, `DriftSpec`, `ConnectionManager`            | Deploy model, simulate drift, detect     |
+| 4.7 | **Deep Learning Foundations**     | Backprop, gradient flow, CNN, ResBlock, BatchNorm  | `ModelVisualizer.training_history()`, `OnnxBridge`          | CNN on chest X-ray with ONNX export      |
+| 4.8 | **Capstone: Unsupervised + DL**   | ONNX export, InferenceServer, Nexus multi-channel  | `OnnxBridge`, `InferenceServer`, `Nexus`                    | InferenceServer + Nexus: API + CLI + MCP |
 
 **Datasets**: E-commerce (200K), Credit Card Fraud (284K), Singapore News (50K), ChestX-ray14 (10K)
 **Scaffolding**: ~40% (setup + calls + logic stripped)
@@ -104,15 +110,16 @@ _Clustering, dimensionality reduction, anomaly detection, and production monitor
 
 _Build intelligent agents, then deploy them at scale._
 
-| #       | Lesson                        | Theory / Practice                                     | Kailash SDK                                                       | Exercise                             |
-| ------- | ----------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
-| 5.1     | **Delegate & Signatures**     | Tokenization, scaling laws, structured output         | `Kaizen`: `Signature`, `InputField`, `OutputField`, `Delegate`    | Delegate + SimpleQAAgent             |
-| 5.2     | **Chain-of-Thought**          | Step-by-step reasoning, CoT vs direct answering       | `ChainOfThoughtAgent`                                             | CoT on clustering results from M4    |
-| 5.3     | **ReAct Agents**              | Reasoning + action loops, tool selection, cost budget | `ReActAgent`, custom tools                                        | ReAct with DataExplorer/polars tools |
-| 5.4     | **RAG Systems**               | Chunking, retrieval, RAGAS evaluation, HyDE           | `RAGResearchAgent`, `MemoryAgent`                                 | RAG over SDK + regulatory docs       |
-| 5.5     | **ML Agent Pipeline**         | LLMs augmenting ML lifecycle, double opt-in           | 6 ML agents: DataScientist, FeatureEngineer, ModelSelector, etc.  | Full 6-agent pipeline                |
-| 5.6     | **Multi-Agent Orchestration** | A2A, supervisor-worker, sequential, parallel, handoff | `SupervisorWorkerPattern`, `SequentialPattern`, `ParallelPattern` | Multi-agent A2A orchestration        |
-| 5.7-5.8 | **(Exercises 7-8)**           | MCP integration, production deployment                | `kailash.mcp_server`, `Nexus`, middleware                         | MCP server + Nexus deployment        |
+| #   | Lesson                        | Theory / Practice                                     | Kailash SDK                                                       | Exercise                             |
+| --- | ----------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
+| 5.1 | **LLM Fundamentals & Kaizen** | Tokenization, scaling laws, structured output         | `Kaizen`: `Signature`, `InputField`, `OutputField`, `Delegate`    | Delegate + SimpleQAAgent             |
+| 5.2 | **Chain-of-Thought**          | Step-by-step reasoning, CoT vs direct answering       | `ChainOfThoughtAgent`                                             | CoT on clustering results from M4    |
+| 5.3 | **ReAct Agents**              | Reasoning + action loops, tool selection, cost budget | `ReActAgent`, custom tools                                        | ReAct with DataExplorer/polars tools |
+| 5.4 | **RAG Systems**               | Chunking, retrieval, RAGAS evaluation, HyDE           | `RAGResearchAgent`, `MemoryAgent`                                 | RAG over SDK + regulatory docs       |
+| 5.5 | **MCP Servers & Tools**       | MCP protocol, tool registration, agent-driven ML      | `kailash.mcp_server`, MCP tools                                   | MCP server for tool integration      |
+| 5.6 | **ML Agent Pipeline**         | LLMs augmenting ML lifecycle, double opt-in           | 6 ML agents: DataScientist, FeatureEngineer, ModelSelector, etc.  | Full 6-agent pipeline                |
+| 5.7 | **Multi-Agent Orchestration** | A2A, supervisor-worker, sequential, parallel, handoff | `SupervisorWorkerPattern`, `SequentialPattern`, `ParallelPattern` | Multi-agent A2A orchestration        |
+| 5.8 | **Production Deployment**     | Multi-channel deployment, middleware, session mgmt    | `Nexus`, middleware, `Delegate`                                   | Nexus multi-channel deployment       |
 
 **Datasets**: E-commerce + credit (familiar data), Kailash SDK docs, Singapore AI Verify corpus
 **Scaffolding**: ~30% (most logic stripped, imports + structure given)
@@ -123,18 +130,19 @@ _Build intelligent agents, then deploy them at scale._
 
 _Fine-tuning, governance, RL, and the capstone. Masters-level content, coherently grouped._
 
-| #       | Lesson                      | Theory                                          | Kailash SDK                                                   | Exercise                                     |
-| ------- | --------------------------- | ----------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------- |
-| 6.1     | **SFT Fine-Tuning**         | LoRA/QLoRA/DoRA, adapter lifecycle              | `AlignmentPipeline`, `AlignmentConfig`, `AdapterRegistry`     | SFT on small model with adapter tracking     |
-| 6.2     | **Preference Alignment**    | DPO, Bradley-Terry, LLM-as-judge                | `AlignmentPipeline` (method="dpo"), `evaluator`               | DPO with LLM-as-judge evaluation             |
-| 6.3     | **AI Governance with PACT** | EU AI Act, Singapore AI Verify, D/T/R grammar   | `GovernanceEngine`, `compile_org()`, `Address`, `CostTracker` | Define org in YAML, compile, verify access   |
-| 6.4     | **Governed Agents**         | Monotonic tightening, fail-closed, audit chains | `PactGovernedAgent`, `GovernanceContext`, `RoleEnvelope`      | Wrap ReActAgent with PACT enforcement        |
-| 6.5     | **RL Fundamentals**         | Bellman equations, PPO, reward design           | `RLTrainer`, `env_registry`, `policy_registry`                | PPO on inventory management environment      |
-| 6.6     | **Capstone: Full Platform** | All packages integrated, production readiness   | Core SDK → DataFlow → ML → Kaizen → PACT → Nexus → Align      | Full governed ML platform (~40% scaffolding) |
-| 6.7-6.8 | **(Exercises 7-8)**         | Advanced alignment, agent governance at scale   | `kailash-align` merge, `kaizen_agents.governance`             | Model merging + multi-agent governance       |
+| #   | Lesson                         | Theory                                             | Kailash SDK                                                   | Exercise                                     |
+| --- | ------------------------------ | -------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------- |
+| 6.1 | **SFT Fine-Tuning**            | LoRA/QLoRA/DoRA, adapter lifecycle                 | `AlignmentPipeline`, `AlignmentConfig`, `AdapterRegistry`     | SFT on small model with adapter tracking     |
+| 6.2 | **Preference Alignment**       | DPO, Bradley-Terry, LLM-as-judge                   | `AlignmentPipeline` (method="dpo"), `evaluator`               | DPO with LLM-as-judge evaluation             |
+| 6.3 | **RL Fundamentals**            | Bellman equations, PPO, reward design              | `RLTrainer`, `env_registry`, `policy_registry`                | PPO on inventory management environment      |
+| 6.4 | **Model Merging & Evaluation** | Linear merge, SLERP, TIES, quantization            | `AdapterRegistry`, `kailash-align` merge, `OnnxBridge`        | Merge SFT + DPO adapters, evaluate, export   |
+| 6.5 | **AI Governance with PACT**    | EU AI Act, Singapore AI Verify, D/T/R grammar      | `GovernanceEngine`, `compile_org()`, `Address`, `CostTracker` | Define org in YAML, compile, verify access   |
+| 6.6 | **Governed Agents**            | Monotonic tightening, fail-closed, audit chains    | `PactGovernedAgent`, `GovernanceContext`, `RoleEnvelope`      | Wrap ReActAgent with PACT enforcement        |
+| 6.7 | **Agent Governance at Scale**  | Budget cascade, tool restrictions, multi-agent gov | `PactGovernedAgent`, `AuditChain`, `kaizen_agents.governance` | Multi-agent governance with budget cascades  |
+| 6.8 | **Capstone: Full Platform**    | All packages integrated, production readiness      | Core SDK → DataFlow → ML → Kaizen → PACT → Nexus → Align      | Full governed ML platform (~40% scaffolding) |
 
 **Datasets**: Domain Q&A (SFT, 1000 pairs), Preference pairs (DPO, 500), Gymnasium environments
-**Scaffolding**: ~20% for 6.1-6.5, ~40% for 6.6 capstone
+**Scaffolding**: ~20% for 6.1-6.7, ~40% for 6.8 capstone
 
 ---
 
@@ -242,12 +250,12 @@ _Once you build a powerful system, how do you keep it safe, useful, and accounta
 
 | Package              | Modules         | Key Classes                                                                                        |
 | -------------------- | --------------- | -------------------------------------------------------------------------------------------------- |
-| **kailash** (core)   | M3, M9          | WorkflowBuilder, LocalRuntime, Node, @register_node, PythonCodeNode, ConnectionManager, MCP server |
-| **kailash-ml**       | M1-M8, M10      | All 13 engines + 6 ML agents + RLTrainer + OnnxBridge + interop                                    |
+| **kailash** (core)   | M2-M9           | WorkflowBuilder, LocalRuntime, Node, @register_node, PythonCodeNode, ConnectionManager, MCP server |
+| **kailash-ml**       | M1-M10          | All 13 engines + 6 ML agents + RLTrainer + OnnxBridge + interop                                    |
 | **kailash-dataflow** | M3              | @db.model, field(), db.express CRUD                                                                |
-| **kailash-nexus**    | M4, M5, M9, M10 | Nexus, auth (RBAC/JWT), middleware, plugins                                                        |
-| **kailash-kaizen**   | M5, M9          | Signature, InputField/OutputField, BaseAgent, Delegate, ReActAgent, Pipeline                       |
-| **kaizen-agents**    | M5, M9          | 6+ specialized agents, coordination patterns, ML agents                                            |
+| **kailash-nexus**    | M4-M6, M9, M10  | Nexus, auth (RBAC/JWT), middleware, plugins                                                        |
+| **kailash-kaizen**   | M5, M6, M9, M10 | Signature, InputField/OutputField, BaseAgent, Delegate, ReActAgent, Pipeline                       |
+| **kaizen-agents**    | M5, M6, M9, M10 | 6+ specialized agents, coordination patterns, ML agents                                            |
 | **kailash-pact**     | M6, M10         | GovernanceEngine, PactGovernedAgent, Address, enforcement, costs                                   |
 | **kailash-align**    | M6, M10         | AlignmentPipeline, AlignmentConfig, AdapterRegistry, merge, evaluator                              |
 
