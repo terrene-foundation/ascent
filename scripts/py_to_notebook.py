@@ -39,26 +39,46 @@ def py_to_cells(source: str) -> list[dict]:
             cells.append(make_code_cell(code))
         current_code = []
 
+    # Track whether we've seen the module docstring (first triple-quote block)
+    seen_module_docstring = False
+
     i = 0
     while i < len(lines):
         line = lines[i]
 
-        # Detect docstring start/end
+        # Detect docstring start/end — only convert the MODULE docstring
+        # (first triple-quoted block at column 0) to markdown. All other
+        # triple-quoted strings (e.g., org_yaml = """\n...\n""") stay as code.
         if '"""' in line and not in_docstring:
-            in_docstring = True
-            docstring_lines = []
-            # Check if single-line docstring
-            if line.count('"""') >= 2:
-                in_docstring = False
-                content = line.strip().strip('"').strip()
-                if content:
-                    cells.append(make_markdown_cell(content))
+            # Only treat as docstring if: (1) at start of line, (2) haven't
+            # seen the module docstring yet, (3) not an assignment like x = """
+            is_module_docstring = (
+                not seen_module_docstring
+                and line.lstrip().startswith('"""')
+                and "=" not in line.split('"""')[0]
+            )
+            if is_module_docstring:
+                in_docstring = True
+                docstring_lines = []
+                # Check if single-line docstring
+                if line.count('"""') >= 2:
+                    in_docstring = False
+                    seen_module_docstring = True
+                    content = line.strip().strip('"').strip()
+                    if content:
+                        cells.append(make_markdown_cell(content))
+                    i += 1
+                    continue
                 i += 1
                 continue
-            i += 1
-            continue
+            else:
+                # Not a module docstring — treat as code
+                current_code.append(line)
+                i += 1
+                continue
         elif '"""' in line and in_docstring:
             in_docstring = False
+            seen_module_docstring = True
             # Convert docstring to markdown
             md = "\n".join(docstring_lines).strip()
             if md:
@@ -151,18 +171,31 @@ def make_notebook(cells: list[dict], kernel: str = "python3") -> dict:
 def _detect_packages(source: str) -> str:
     """Detect which Kailash packages are needed from import statements."""
     packages = ["polars", "plotly", "gdown", "python-dotenv"]
-    # Map import prefixes to pip packages
+    # Map import patterns to pip packages — covers both old (kailash_X) and
+    # current (from X import) import styles used across the exercises
     pkg_map = {
         "kailash_ml": "kailash-ml",
+        "from kailash_ml": "kailash-ml",
         "kailash_align": "kailash-align",
+        "from kailash_align": "kailash-align",
+        "from align": "kailash-align",
         "kailash_pact": "kailash-pact",
+        "from kailash_pact": "kailash-pact",
+        "from pact": "kailash-pact",
         "kailash_nexus": "kailash-nexus",
+        "from kailash_nexus": "kailash-nexus",
+        "from nexus": "kailash-nexus",
         "kailash_mcp": "kailash-mcp",
-        "kailash.": "kailash",
-        "kaizen": "kailash-kaizen",
+        "from kailash.mcp": "kailash",
+        "from kailash.": "kailash",
+        "from kailash_kaizen": "kailash-kaizen",
+        "from kaizen_agents": "kailash-kaizen",
+        "from kaizen": "kailash-kaizen",
+        "from kailash_dataflow": "kailash-dataflow",
+        "from dataflow": "kailash-dataflow",
     }
-    for prefix, pkg in pkg_map.items():
-        if f"from {prefix}" in source or f"import {prefix}" in source:
+    for pattern, pkg in pkg_map.items():
+        if pattern in source:
             if pkg not in packages:
                 packages.append(pkg)
     return " ".join(packages)
@@ -195,16 +228,21 @@ def convert_asyncio_for_notebook(cells: list[dict]) -> list[dict]:
 
         source = "".join(cell["source"])
 
-        # Replace asyncio.run(func()) with await func()
+        # Replace asyncio.run(...) with await ... — handles:
+        #   asyncio.run(main())  →  await main()
+        #   result = asyncio.run(func(a, b))  →  result = await func(a, b)
+        #   asyncio.run(some_coroutine())  →  await some_coroutine()
         source = re.sub(
-            r"(\w[\w, ]*)\s*=\s*asyncio\.run\((\w+)\((.*?)\)\)",
-            r"\1 = await \2(\3)",
+            r"(\w[\w, ]*)\s*=\s*asyncio\.run\((.+?)\)\s*$",
+            r"\1 = await \2",
             source,
+            flags=re.MULTILINE,
         )
         source = re.sub(
-            r"asyncio\.run\((\w+)\((.*?)\)\)",
-            r"await \1(\2)",
+            r"^(\s*)asyncio\.run\((.+?)\)\s*$",
+            r"\1await \2",
             source,
+            flags=re.MULTILINE,
         )
 
         # Remove `import asyncio` if no longer needed
