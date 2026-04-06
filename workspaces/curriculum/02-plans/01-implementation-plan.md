@@ -24,25 +24,33 @@ All deliverables produced in parallel autonomous agent streams. Expanded from v4
 ### Phase 3: Supplementary Materials (Complete)
 
 - [x] 10 Reveal.js lecture decks (~1,398 slides)
-- [x] 10 speaker notes files
-- [x] 10 module READMEs with lesson plans
-- [x] 10 quiz files (M1-M6: 24-32 questions each, M7-M10: 16 questions each)
+- [x] 10 speaker notes files with time budget sections (M1-M9)
+- [x] 10 module READMEs with lesson plans (8 exercises each)
+- [x] 10 quiz files (246 questions total, 24-25 per module)
 - [x] 10 deck PDFs (decktape, 1280x720)
 - [x] Curriculum v5 document (expanded-curriculum-v5.md)
 
-### Phase 4: Textbook (In Progress)
+### Phase 4: Textbook (Complete)
 
 - [x] 83/83 Python tutorial files across 9 sections
-- [ ] 68/68 Markdown tutorial files (33 complete, 35 in progress)
-- [ ] 68/68 HTML tutorial files (26 complete, 42 needed)
+- [x] 83/83 Markdown tutorial files
+- [x] 84 HTML tutorial files
 
-### Phase 5: Validation
+### Phase 5: Validation (Complete — Session 10)
 
-- [ ] Red team all exercise solutions
-- [ ] Verify three-format consistency
-- [ ] Check no hardcoded keys/secrets
-- [ ] Check no PCML references
-- [ ] Validate PDFs render correctly
+- [x] Red team all exercises (RT1: spec coverage, RT2: three-format, RT3: scaffolding)
+- [x] Verify three-format consistency (240/240 files, 0 blank mismatches)
+- [x] Check no hardcoded keys/secrets (RT4: 0 violations)
+- [x] Check no PCML references (RT6: 0 violations, .env.example clean)
+- [x] Validate PDFs render correctly (10/10 confirmed)
+- [x] Fix deck-audit script (slide bounds, not viewport)
+- [x] Fix py_to_notebook.py (triple-quote blanks, package detection, asyncio.run)
+
+### Phase 6: Outstanding (Future Work)
+
+- [ ] Block-level scaffolding redesign for M3-M10 exercises (RT3 finding: all exercises over-scaffolded at 80-97% vs 20-70% target)
+- [ ] M7-M10 quiz process_doc question type (RT5 finding: 0 process_doc in advanced modules)
+- [ ] M5 speaker notes expansion (18 section-grouped entries vs 150 HTML slides — adequate but less granular than other modules)
 
 ## Module Mapping (v5)
 
