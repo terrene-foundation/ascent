@@ -51,7 +51,7 @@ setup_environment()
 model_name_llm = os.environ.get(
     "DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL")
 )
-jwt_secret = os.environ.get("NEXUS_JWT_SECRET", "dev-secret-change-in-production")
+jwt_secret = os.environ["NEXUS_JWT_SECRET"]
 
 
 # ── Data Loading ──────────────────────────────────────────────────────

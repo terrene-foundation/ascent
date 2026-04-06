@@ -97,7 +97,7 @@ QUIZ = {
                 "The two largest positive SHAP contributors (pushing toward default) are "
                 "debt_to_income_ratio (+0.42) and credit_utilisation (+0.31). "
                 "MAS guidelines require plain-language adverse action notices that name the actual factors, "
-                "not model scores or SHAP values. Option B translates SHAP outputs into "
+                "not model scores or SHAP values. Option A translates SHAP outputs into "
                 "customer-facing language while correctly identifying the top two drivers."
             ),
             "learning_outcome": "Translate SHAP values into regulatory-compliant adverse action notices",

@@ -170,10 +170,12 @@ QUIZ = {
             ],
             "answer": "D",
             "explanation": (
-                "After group_by/agg you have one row per tier with a count column. "
-                "Filter to the premium row, take its count, divide by the total of all counts. "
-                "Option D also works on the original DataFrame but requires the price_tier column to exist. "
-                "Option B works directly on the tier_counts result shown in the exercise output."
+                "Option D uses .height (row count) on the original DataFrame: filter to premium rows, "
+                "divide by total rows. This is the simplest and most direct approach. "
+                "Option C also gives the right answer but indexes into the aggregated result, "
+                "which is more fragile (assumes row order). "
+                "Option A divides by mean instead of sum — wrong denominator. "
+                "Option B calls value_counts() on a column that's already aggregated — errors."
             ),
             "learning_outcome": "Derive proportions from group_by/agg output",
         },

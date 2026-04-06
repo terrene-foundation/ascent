@@ -32,7 +32,7 @@ _Zero to productive. Learn Python by exploring real Singapore data._
 
 | #   | Lesson                        | Theory / Python                                                       | Kailash SDK                                                | Exercise                                      |
 | --- | ----------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| 1.1 | **First Data Exploration**    | Polars Arrow backend, `pl.read_csv()`, `df.shape`, `df.describe()`    | `polars` expressions                                       | HDB resale exploration and summary stats      |
+| 1.1 | **First Data Exploration**    | Polars Arrow backend, `pl.read_csv()`, `df.shape`, `df.describe()`    | `polars` expressions                                       | Singapore weather data exploration            |
 | 1.2 | **Filtering & Transforming**  | Boolean masks, `filter()`, `with_columns()`, `select()`, type casting | `polars` expression API                                    | Filter and transform HDB transactions         |
 | 1.3 | **Functions & Aggregation**   | `group_by()`, `agg()`, user-defined functions, lazy evaluation        | `polars` aggregation framework                             | District-level aggregation and custom metrics |
 | 1.4 | **Joins & Multi-Table Data**  | Left/inner/cross joins, enrichment patterns, multi-source EDA         | `polars` join operations                                   | Enrich HDB with MRT and school proximity      |
@@ -76,7 +76,7 @@ _From theory to production — workflow orchestration, model registry, governed 
 | 3.2 | **Gradient Boosting**                | XGBoost 2nd-order Taylor, LightGBM GOSS, CatBoost ordered   | `PreprocessingPipeline`, `ModelVisualizer`                               | XGBoost vs LightGBM vs CatBoost comparison        |
 | 3.3 | **Class Imbalance & Calibration**    | SMOTE failures, cost-sensitive, Focal Loss, Platt/isotonic  | `ModelVisualizer.calibration_curve()`, `precision_recall_curve()`        | Imbalance workshop with calibration               |
 | 3.4 | **SHAP, LIME & Fairness**            | Shapley axioms, TreeSHAP, KernelSHAP, LIME, PDP, ALE, bias  | `ModelVisualizer.feature_importance()`                                   | Full SHAP analysis with fairness audit            |
-| 3.5 | **Workflow Orchestration**           | WorkflowBuilder, nodes, connections, custom nodes           | `WorkflowBuilder`, `LocalRuntime`, `PythonCodeNode`, `ConditionalNode`   | ML workflow: load → preprocess → train → evaluate |
+| 3.5 | **Workflow Orchestration**           | WorkflowBuilder, nodes, connections, custom nodes           | `WorkflowBuilder`, `LocalRuntime`, `PythonCodeNode`                      | ML workflow: load → preprocess → train → evaluate |
 | 3.6 | **DataFlow & Persistence**           | Database models, CRUD operations, ML result storage         | `DataFlow`, `field()`, `db.express`, `ConnectionManager`                 | Persist ML evaluation results to DataFlow         |
 | 3.7 | **Hyperparameter Search & Registry** | Bayesian optimization, model versioning, staging→production | `HyperparameterSearch`, `SearchSpace`, `ModelRegistry`, `ModelSignature` | Bayesian optimization → staging → production      |
 | 3.8 | **Production Pipeline**              | Model cards, experiment tracking, full pipeline             | `ModelRegistry`, `ExperimentTracker`, `PreprocessingPipeline`            | End-to-end production pipeline with model card    |
@@ -115,7 +115,7 @@ _Build intelligent agents, then deploy them at scale._
 | 5.1 | **LLM Fundamentals & Kaizen** | Tokenization, scaling laws, structured output         | `Kaizen`: `Signature`, `InputField`, `OutputField`, `Delegate`    | Delegate + SimpleQAAgent             |
 | 5.2 | **Chain-of-Thought**          | Step-by-step reasoning, CoT vs direct answering       | `ChainOfThoughtAgent`                                             | CoT on clustering results from M4    |
 | 5.3 | **ReAct Agents**              | Reasoning + action loops, tool selection, cost budget | `ReActAgent`, custom tools                                        | ReAct with DataExplorer/polars tools |
-| 5.4 | **RAG Systems**               | Chunking, retrieval, RAGAS evaluation, HyDE           | `RAGResearchAgent`, `MemoryAgent`                                 | RAG over SDK + regulatory docs       |
+| 5.4 | **RAG Systems**               | Chunking, retrieval, RAGAS evaluation, HyDE           | `RAGResearchAgent`                                                | RAG over SDK + regulatory docs       |
 | 5.5 | **MCP Servers & Tools**       | MCP protocol, tool registration, agent-driven ML      | `kailash.mcp_server`, MCP tools                                   | MCP server for tool integration      |
 | 5.6 | **ML Agent Pipeline**         | LLMs augmenting ML lifecycle, double opt-in           | 6 ML agents: DataScientist, FeatureEngineer, ModelSelector, etc.  | Full 6-agent pipeline                |
 | 5.7 | **Multi-Agent Orchestration** | A2A, supervisor-worker, sequential, parallel, handoff | `SupervisorWorkerPattern`, `SequentialPattern`, `ParallelPattern` | Multi-agent A2A orchestration        |
@@ -136,7 +136,7 @@ _Fine-tuning, governance, RL, and the capstone. Masters-level content, coherentl
 | 6.2 | **Preference Alignment**       | DPO, Bradley-Terry, LLM-as-judge                   | `AlignmentPipeline` (method="dpo"), `evaluator`               | DPO with LLM-as-judge evaluation             |
 | 6.3 | **RL Fundamentals**            | Bellman equations, PPO, reward design              | `RLTrainer`, `env_registry`, `policy_registry`                | PPO on inventory management environment      |
 | 6.4 | **Model Merging & Evaluation** | Linear merge, SLERP, TIES, quantization            | `AdapterRegistry`, `kailash-align` merge, `OnnxBridge`        | Merge SFT + DPO adapters, evaluate, export   |
-| 6.5 | **AI Governance with PACT**    | EU AI Act, Singapore AI Verify, D/T/R grammar      | `GovernanceEngine`, `compile_org()`, `Address`, `CostTracker` | Define org in YAML, compile, verify access   |
+| 6.5 | **AI Governance with PACT**    | EU AI Act, Singapore AI Verify, D/T/R grammar      | `GovernanceEngine`, `compile_org()`, `Address`                | Define org in YAML, compile, verify access   |
 | 6.6 | **Governed Agents**            | Monotonic tightening, fail-closed, audit chains    | `PactGovernedAgent`, `GovernanceContext`, `RoleEnvelope`      | Wrap ReActAgent with PACT enforcement        |
 | 6.7 | **Agent Governance at Scale**  | Budget cascade, tool restrictions, multi-agent gov | `PactGovernedAgent`, `AuditChain`, `kaizen_agents.governance` | Multi-agent governance with budget cascades  |
 | 6.8 | **Capstone: Full Platform**    | All packages integrated, production readiness      | Core SDK → DataFlow → ML → Kaizen → PACT → Nexus → Align      | Full governed ML platform (~40% scaffolding) |
@@ -152,12 +152,12 @@ _Deep learning moves feature engineering inside the model. From single neurons t
 
 | #   | Lesson                         | Theory                                                           | Kailash SDK                                                          | Exercise                                     |
 | --- | ------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------- |
-| 7.1 | **Neural Network Foundations** | Linear regression as neuron, forward pass, MSE, gradient descent | `TrainingPipeline`, `ModelVisualizer`                                | Linear regression as single-neuron network   |
+| 7.1 | **Neural Network Foundations** | Linear regression as neuron, forward pass, MSE, gradient descent | Manual implementation, `ModelVisualizer`                             | Linear regression as single-neuron network   |
 | 7.2 | **Hidden Layers & XOR**        | Multi-layer perceptron, decision boundaries, depth vs width      | `ModelVisualizer` for decision boundaries                            | Hidden layers solving XOR problem            |
 | 7.3 | **Activation Functions**       | Sigmoid vs ReLU vs GELU, gradient flow, dead neurons             | `ModelVisualizer.training_history()`                                 | Activation function comparison and analysis  |
-| 7.4 | **Loss & Initialization**      | CrossEntropy, Xavier vs He init, vanishing gradients             | `TrainingPipeline`                                                   | Loss functions with weight initialization    |
+| 7.4 | **Loss & Initialization**      | CrossEntropy, Xavier vs He init, vanishing gradients             | Manual implementation, `ModelVisualizer`                             | Loss functions with weight initialization    |
 | 7.5 | **Backpropagation**            | Chain rule, computational graph, gradient checking               | Manual implementation                                                | Backprop from scratch with gradient checking |
-| 7.6 | **Optimizers & Scheduling**    | SGD, momentum, Adam, cosine annealing, warm restarts             | `TrainingPipeline`                                                   | Optimizer comparison with LR scheduling      |
+| 7.6 | **Optimizers & Scheduling**    | SGD, momentum, Adam, cosine annealing, warm restarts             | Manual implementation, `ModelVisualizer`                             | Optimizer comparison with LR scheduling      |
 | 7.7 | **CNNs**                       | Convolution, pooling, dropout, architectures, ONNX export        | `OnnxBridge` (export, validate)                                      | CNN image classification with ONNX export    |
 | 7.8 | **Capstone: DL Pipeline**      | End-to-end: data → train → register → export → serve             | `TrainingPipeline`, `ModelRegistry`, `OnnxBridge`, `InferenceServer` | Full DL pipeline with production serving     |
 
