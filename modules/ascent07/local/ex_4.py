@@ -156,6 +156,37 @@ def train_with_loss(loss_type: str, epochs: int = 15) -> list[float]:
                 loss = mse_loss(y, out)
             epoch_loss += loss
 
+            # Backpropagation: output layer gradients
+            if loss_type == "ce":
+                d_out = [out[k] - y[k] for k in range(n_classes)]
+            else:
+                d_out = [2.0 * (out[k] - y[k]) / n_classes for k in range(n_classes)]
+
+            # Update W2, b2
+            for j in range(hidden):
+                for k in range(n_classes):
+                    W2[j][k] -= lr * d_out[k] * h[j]
+            for k in range(n_classes):
+                b2[k] -= lr * d_out[k]
+
+            # Hidden layer gradients (ReLU derivative)
+            z_hidden = [
+                sum(x[i] * W1[i][j] for i in range(n_features)) + b1[j]
+                for j in range(hidden)
+            ]
+            d_h = [
+                sum(d_out[k] * W2[j][k] for k in range(n_classes))
+                * (1.0 if z_hidden[j] > 0 else 0.0)
+                for j in range(hidden)
+            ]
+
+            # Update W1, b1
+            for i in range(n_features):
+                for j in range(hidden):
+                    W1[i][j] -= lr * d_h[j] * x[i]
+            for j in range(hidden):
+                b1[j] -= lr * d_h[j]
+
         losses.append(epoch_loss / train_size)
 
     return losses

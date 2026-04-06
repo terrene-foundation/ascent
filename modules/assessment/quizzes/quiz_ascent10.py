@@ -88,14 +88,14 @@ QUIZ = {
                 "Exercise 1 produces this memory comparison table for fine-tuning a 7B model:\n\n"
                 "| Method        | Model Weights | Trainable Params | Optimizer States | Total  |\n"
                 "| Full FT       | 14 GB         | 14 GB            | 28 GB            | 56 GB  |\n"
-                "| LoRA (r=16)   | 14 GB         | 8.4 MB           | 16.8 MB          | ~14 GB |\n"
-                "| QLoRA (r=16)  | 3.5 GB        | 8.4 MB           | 16.8 MB          | ~3.5 GB|\n\n"
+                "| LoRA (r=16)   | 14 GB         | 8.4M (16.8 MB)   | 33.6 MB          | ~14 GB |\n"
+                "| QLoRA (r=16)  | 3.5 GB        | 8.4M (16.8 MB)   | 33.6 MB          | ~3.5 GB|\n\n"
                 "Why does QLoRA use only 3.5 GB for model weights instead of 14 GB, "
                 "and why are optimizer states so dramatically different between Full FT and LoRA?"
             ),
             "options": [
                 "A) QLoRA deletes 75% of the model weights — it only keeps the most important parameters",
-                "B) QLoRA quantizes the frozen base model to 4-bit (14 GB fp16 ÷ 4 = 3.5 GB). LoRA adapters remain in fp16 for training precision. Optimizer states differ because Adam stores 2 states (m, v) per trainable parameter: Full FT has 14B trainable × 2 × 2 bytes = 28 GB. LoRA has 8.4M trainable × 2 × 2 bytes = 16.8 MB — a 1,667× reduction. The base model weights require zero optimizer states because they are frozen.",
+                "B) QLoRA quantizes the frozen base model to 4-bit (14 GB fp16 ÷ 4 = 3.5 GB). LoRA adapters remain in fp16 for training precision. Optimizer states differ because Adam stores 2 states (m, v) per trainable parameter: Full FT has 7B trainable × 2 × 2 bytes = 28 GB. LoRA has 8.4M trainable × 2 × 2 bytes = 33.6 MB — an ~833× reduction. The base model weights require zero optimizer states because they are frozen.",
                 "C) QLoRA uses model pruning to remove unnecessary layers, reducing from 14 GB to 3.5 GB",
                 "D) The table is wrong — QLoRA cannot reduce memory below the LoRA baseline",
             ],
@@ -108,9 +108,9 @@ QUIZ = {
                 "(2) Trainable params: Full FT trains all 7B. LoRA/QLoRA train only low-rank adapters (8.4M). "
                 "(3) Optimizer states: Adam maintains first moment (m) and second moment (v) for each "
                 "trainable parameter. Full FT: 7B × 2 states × 2 bytes = 28 GB. "
-                "LoRA/QLoRA: 8.4M × 2 states × 2 bytes = 16.8 MB. "
+                "LoRA/QLoRA: 8.4M × 2 states × 2 bytes = 33.6 MB — an ~833× reduction. "
                 "QLoRA's breakthrough: 4-bit base model + fp16 adapters = fine-tuning a 7B model on a "
-                "single 8 GB GPU (3.5 GB weights + 8.4 MB adapters + 16.8 MB optimizer ≈ 3.5 GB + activations)."
+                "single 8 GB GPU (3.5 GB weights + 16.8 MB adapters + 33.6 MB optimizer ≈ 3.6 GB + activations)."
             ),
             "learning_outcome": "Interpret QLoRA memory savings from quantization of frozen weights and reduced optimizer states",
         },
@@ -395,9 +395,10 @@ QUIZ = {
                 "(2) Quality constraint: F1 ≥ 0.80 eliminates INT4 (F1=0.76). "
                 "(3) INT8 satisfies both: 3.5 GB < 4 GB, F1=0.81 ≥ 0.80. "
                 "The INT8 quantization trade-off: each weight stored as 8-bit integer instead of "
-                "16-bit float. Size reduction: 14 GB × (8/16) = 7 GB theoretical, but with "
-                "quantization metadata overhead, actual is ~3.5 GB. F1 drops only 0.01 because "
-                "INT8 preserves most of the model's representational capacity. "
+                "16-bit float. With GPTQ group quantization (group_size=128), the effective "
+                "compression is better than naive 8-bit: each group shares scale/zero-point "
+                "parameters, yielding ~3.5 GB actual size. F1 drops only 0.01 because "
+                "group quantization preserves most of the model's representational capacity. "
                 "The 2.5× latency improvement (45ms → 18ms) comes from: smaller memory bandwidth, "
                 "INT8 tensor core operations, and reduced cache pressure."
             ),

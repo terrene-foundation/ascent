@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 
 from kaizen_agents.agents.specialized.react import ReActAgent
 from kailash_ml import DataExplorer, TrainingPipeline
-from kailash_mcp import MCPServer
+from kailash.mcp_server import MCPServer
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment

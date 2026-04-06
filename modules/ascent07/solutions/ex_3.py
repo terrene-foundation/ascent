@@ -240,6 +240,30 @@ for act_name in ["sigmoid", "relu", "gelu"]:
             loss = -sum(y[k] * math.log(out[k] + eps) for k in range(n_classes))
             epoch_loss += loss
 
+            # Backpropagation: output layer gradients
+            d_out = [out[k] - y[k] for k in range(n_classes)]
+
+            # Gradients for W2, b2
+            for j in range(net.hidden_dim):
+                for k in range(n_classes):
+                    net.W2[j][k] -= lr * d_out[k] * h1[j]
+            for k in range(n_classes):
+                net.b2[k] -= lr * d_out[k]
+
+            # Hidden layer gradients
+            d_h1 = [
+                sum(d_out[k] * net.W2[j][k] for k in range(n_classes))
+                * net.activate_deriv(z1[j])
+                for j in range(net.hidden_dim)
+            ]
+
+            # Gradients for W1, b1
+            for i in range(len(x)):
+                for j in range(net.hidden_dim):
+                    net.W1[i][j] -= lr * d_h1[j] * x[i]
+            for j in range(net.hidden_dim):
+                net.b1[j] -= lr * d_h1[j]
+
         avg_loss = epoch_loss / train_size
         losses.append(avg_loss)
 
