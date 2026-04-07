@@ -94,8 +94,7 @@ class BM25:
 
     def __init__(self, documents: list[str], k1: float = 1.5, b: float = 0.75):
         # TODO: Store k1/b; tokenize all docs; compute avg_dl; build self.df Counter
-        # where df[term] = number of documents containing that term.
-        ____
+        # (df[term] = number of documents containing that term).
         ____
 
     def _idf(self, term: str) -> float:
@@ -103,13 +102,11 @@ class BM25:
         ____
 
     def score(self, query: str) -> list[float]:
-        # TODO: For each document compute the BM25 score summed over query terms.
-        ____
+        # TODO: Tokenize query; for each doc sum BM25 per-term scores.
         ____
 
     def search(self, query: str, top_k: int = 5) -> list[dict]:
         # TODO: score(), sort descending, return top_k dicts {idx, score, text}.
-        ____
         ____
 
 

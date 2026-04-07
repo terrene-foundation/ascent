@@ -31,9 +31,6 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-
-# ── Data Loading ──────────────────────────────────────────────────────
-
 loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_news_articles.parquet")
 
@@ -50,7 +47,7 @@ print(summary)
 
 def normalize_text(text: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace."""
-    # TODO: (1) lowercase, (2) replace non-alphanumeric with space, (3) collapse whitespace
+    # TODO: three cleaning steps — lowercase, strip non-alphanum, collapse spaces
     text = ____  # Hint: text.lower()
     text = ____  # Hint: re.sub(r"[^a-z0-9\s]", " ", text)
     text = ____  # Hint: re.sub(r"\s+", " ", text).strip()
@@ -77,33 +74,30 @@ print("\n--- Word tokenization complete ---")
 
 def get_pair_freqs(vocab: dict[str, int]) -> Counter:
     """Count adjacent symbol pairs across the vocabulary."""
-    # TODO: Iterate over (word, freq) pairs; split word into symbols;
-    #   accumulate freq for each adjacent (symbols[j], symbols[j+1]) pair
+    # TODO: split each word into symbols; count (sym[j], sym[j+1]) pairs by freq
     pairs = Counter()
     ____
     ____
     ____
-    return pairs  # Hint: pairs[(symbols[j], symbols[j+1])] += freq
+    return pairs
 
 
 def merge_pair(pair: tuple[str, str], vocab: dict[str, int]) -> dict[str, int]:
     """Merge the most frequent pair in the vocabulary."""
-    # TODO: Build bigram=" ".join(pair), replacement="".join(pair);
-    #   return {word.replace(bigram, replacement): freq for word, freq in vocab.items()}
+    # TODO: bigram=" ".join(pair); replacement="".join(pair)
+    #   return new vocab with bigram replaced everywhere
     ____
     ____
-    return ____  # Hint: {word.replace(bigram, replacement): freq for word, freq in vocab.items()}
+    return ____
 
 
-# Build initial character-level vocabulary from corpus
 corpus_words = Counter()
 for text in sample_texts:
     for w in word_tokenize(text):
         corpus_words[____] += 1  # Hint: " ".join(list(w)) + " </w>"
 
-print(f"\nInitial BPE vocab size: {len(corpus_words)} word forms")
+print(f"\nInitial BPE vocab: {len(corpus_words)} word forms")
 
-# Run 10 BPE merge iterations
 num_merges = 10
 merges_log = []
 bpe_vocab = dict(corpus_words)
@@ -141,9 +135,8 @@ def simple_stem(word: str) -> str:
         "s",
     ]
     for suffix in suffixes:
-        # TODO: Strip suffix when remaining stem has at least 3 chars
-        if ____:  # Hint: word.endswith(suffix) and len(word) - len(suffix) >= 3
-            return ____  # Hint: word[: -len(suffix)]
+        if ____:  # Hint: word.endswith(suffix) and len(word)-len(suffix) >= 3
+            return ____  # Hint: word[:-len(suffix)]
     return word
 
 
@@ -163,8 +156,8 @@ for word in test_words:
         f"{word:<18} {stemmed:<15} {'aggressive' if stemmed != word[:3] else 'minimal'}"
     )
 
-print("\nStemming: fast, rule-based, lossy (may produce non-words)")
-print("Lemmatization: dictionary-based, produces valid words, context-aware")
+print("\nStemming: fast, rule-based, lossy")
+print("Lemmatization: dictionary-based, produces valid words")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -174,11 +167,10 @@ print("Lemmatization: dictionary-based, produces valid words, context-aware")
 
 def extract_ngrams(tokens: list[str], n: int) -> list[tuple[str, ...]]:
     """Extract n-grams from a list of tokens."""
-    return ____  # Hint: [tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
+    return ____  # Hint: [tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1)]
 
 
-# TODO: Collect all tokens across the full corpus into all_tokens
-all_tokens = []
+all_tokens: list[str] = []
 for text in df.select("text").to_series().to_list():
     ____  # Hint: all_tokens.extend(word_tokenize(text))
 
@@ -201,31 +193,26 @@ def preprocess_corpus(
     text_col: str = "text",
     max_vocab: int = 5000,
 ) -> pl.DataFrame:
-    """End-to-end preprocessing: normalize, tokenize, count vocab."""
-    # TODO: Step 1 — add "normalized" column by applying normalize_text via map_elements
-    normalized = ____  # Hint: df.with_columns(pl.col(text_col).map_elements(normalize_text, return_dtype=pl.Utf8).alias("normalized"))
+    """End-to-end: normalize → tokenize → token_count → vocabulary."""
+    # TODO: Step 1 — add "normalized" column via map_elements(normalize_text)
+    normalized = ____
 
-    # TODO: Step 2 — add "tokens_str" column: space-join of word_tokenize results
-    tokenized = normalized.with_columns(
-        ____
-    )  # Hint: pl.col("normalized").map_elements(lambda t: " ".join(word_tokenize(t)), return_dtype=pl.Utf8).alias("tokens_str")
+    # TODO: Step 2 — add "tokens_str" (space-joined tokens) via map_elements
+    tokenized = normalized.with_columns(____)
 
-    # TODO: Step 3 — add "token_count" column: split "tokens_str" and take list length
-    result = tokenized.with_columns(
-        ____
-    )  # Hint: pl.col("tokens_str").str.split(" ").list.len().alias("token_count")
+    # TODO: Step 3 — add "token_count" via str.split(" ").list.len()
+    result = tokenized.with_columns(____)
 
-    # TODO: Step 4 — build vocabulary: extend all_words from each row, then Counter.most_common
+    # TODO: Step 4 — collect all words; build Counter vocab capped at max_vocab
     all_words: list[str] = []
     for row in result.select("tokens_str").to_series().to_list():
-        ____  # Hint: all_words.extend(row.split())
-    vocab = ____  # Hint: Counter(all_words).most_common(max_vocab)
+        ____
+    vocab = ____
 
-    print(f"\nPipeline summary:")
-    print(f"  Documents processed: {result.height}")
-    print(f"  Avg tokens/doc: {result['token_count'].mean():.1f}")
-    print(f"  Vocabulary size (capped): {len(vocab)}")
-    print(f"  Top 5 terms: {[w for w, _ in vocab[:5]]}")
+    print(
+        f"\nPipeline: {result.height} docs, avg {result['token_count'].mean():.1f} tokens, vocab={len(vocab)}"
+    )
+    print(f"Top 5: {[w for w, _ in vocab[:5]]}")
     return result
 
 
@@ -236,5 +223,5 @@ post_summary = asyncio.run(explorer_post.profile(processed.select("token_count")
 print(f"\nToken count distribution:\n{post_summary}")
 
 print(
-    "\n✓ Exercise 1 complete — NLP preprocessing pipeline with tokenization, BPE, stemming, n-grams"
+    "\n✓ Exercise 1 complete — NLP preprocessing: tokenization, BPE, stemming, n-grams"
 )

@@ -154,52 +154,26 @@ async def pattern_sequential():
     print(f"{'─' * 60}")
     print(f"Scenario: Feature engineering — each stage depends on prior output")
 
-    stage_configs = [
-        (
-            "data_profiler",
-            "Stage 1 — Data Profiler: Profile this credit dataset and identify the "
-            "most important characteristics for feature engineering:\n"
-            f"{data_context}\n"
-            "Output a concise handoff context for the feature selector.",
-        ),
-        (
-            "feature_selector",
-            "Stage 2 — Feature Selector: Based on the profiler's findings, select "
-            "the most informative features for predicting default. Explain your "
-            "selection rationale. Output a handoff context for the transformer.",
-        ),
-        (
-            "transform_designer",
-            "Stage 3 — Transform Designer: Design the transformation pipeline for "
-            "the selected features. Specify: encoding, scaling, imputation strategies. "
-            "Output a handoff context for the validation planner.",
-        ),
-        (
-            "validation_planner",
-            "Stage 4 — Validation Planner: Design a validation strategy for this "
-            "feature engineering pipeline. Specify: CV strategy, held-out test, "
-            "metrics to track. Output the final validation plan.",
-        ),
-    ]
-
-    # TODO: Implement sequential execution — for each (stage_name, base_prompt):
-    #   1. Create a Delegate with budget_usd=0.5
-    #   2. Build prompt: f"Previous stage context:\n{context}\n\n{base_prompt}"
-    #   3. Await run_delegate(agent, prompt) to get output
-    #   4. Store output in stage_outputs[stage_name]
-    #   5. Update context = output (handoff to next stage)
-    stage_outputs = {}
-    context = data_context
-    ____  # Hint: for stage_name, base_prompt in stage_configs: agent = Delegate(model=model, budget_usd=0.5); ...
-
-    print(f"\nPipeline stages completed: {len(stage_outputs)}")
-    for i, (name, output) in enumerate(stage_outputs.items()):
-        print(f"\n  Stage {i+1} ({name}): {output[:150]}...")
-
-    print(f"\nFinal stage output:")
-    print(f"  {list(stage_outputs.values())[-1][:300]}...")
-
-    return stage_outputs
+    # TODO: Implement the Sequential Pipeline pattern:
+    #   1. Build stage_configs list of (stage_name, base_prompt) for 4 stages:
+    #      data_profiler, feature_selector, transform_designer, validation_planner
+    #      Each prompt instructs one specialist stage and asks for a handoff context
+    #   2. Start with context = data_context
+    #   3. For each stage: create Delegate(budget_usd=0.5), build prompt with previous context,
+    #      run via run_delegate, store output, update context = output (handoff)
+    #   4. Print stage count; print each stage output[:150]; print final stage output[:300]
+    #   5. Return stage_outputs dict
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 sequential_result = asyncio.run(pattern_sequential())
@@ -231,46 +205,24 @@ async def pattern_parallel():
     print(f"{'─' * 60}")
     print(f"Scenario: Model architecture comparison — 3 agents run concurrently")
 
-    # TODO: Create three independent Delegate agents, each with budget_usd=0.5
-    parallel_tasks = {
-        "lightgbm": (
-            ____,  # Hint: Delegate(model=model, budget_usd=0.5)
-            (
-                f"You are a LightGBM specialist. Assess whether LightGBM is the right "
-                f"model for this task:\n{data_context}\n"
-                f"Evaluate: strengths, weaknesses, expected AUC-PR, training time, "
-                f"interpretability. Give a priority rating (HIGH/MEDIUM/LOW)."
-            ),
-        ),
-        "xgboost": (
-            ____,  # Hint: Delegate(model=model, budget_usd=0.5)
-            (
-                f"You are an XGBoost specialist. Assess whether XGBoost is the right "
-                f"model for this task:\n{data_context}\n"
-                f"Evaluate: strengths, weaknesses, expected AUC-PR, training time, "
-                f"interpretability. Give a priority rating (HIGH/MEDIUM/LOW)."
-            ),
-        ),
-        "neural_net": (
-            ____,  # Hint: Delegate(model=model, budget_usd=0.5)
-            (
-                f"You are a neural network specialist. Assess whether a TabNet/MLP is "
-                f"right for this task:\n{data_context}\n"
-                f"Evaluate: strengths, weaknesses, expected AUC-PR, training time, "
-                f"interpretability. Give a priority rating (HIGH/MEDIUM/LOW)."
-            ),
-        ),
-    }
-
-    # TODO: Launch all agents concurrently with asyncio.gather; time the wall-clock duration
-    #   Build coroutines list: [run_delegate(agent, prompt) for agent, prompt in parallel_tasks.values()]
-    #   Capture t_start before, t_end after gather, compute wall_clock
-    t_start = time.perf_counter()
-    ____  # Hint: coros = [...]; results = await asyncio.gather(*coros); agent_results = dict(zip(parallel_tasks.keys(), results))
-    t_end = time.perf_counter()
-    wall_clock = t_end - t_start
-
-    agent_results = dict(zip(parallel_tasks.keys(), results))
+    # TODO: Implement Parallel Fan-out:
+    #   1. Build parallel_tasks dict with keys "lightgbm", "xgboost", "neural_net"
+    #      Each value is (Delegate(budget_usd=0.5), specialist_prompt) — prompt asks
+    #      each specialist to evaluate their model for the credit task and give HIGH/MEDIUM/LOW
+    #   2. Time the wall-clock: record t_start = time.perf_counter()
+    #   3. Build coros = [run_delegate(agent, prompt) for agent, prompt in parallel_tasks.values()]
+    #   4. results = await asyncio.gather(*coros); t_end = time.perf_counter()
+    #   5. agent_results = dict(zip(parallel_tasks.keys(), results))
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
     print(f"\nParallel execution complete:")
     print(f"  Wall-clock time: {wall_clock:.2f}s")
@@ -329,59 +281,32 @@ async def pattern_handoff():
     print(f"{'─' * 60}")
     print(f"Scenario: Query routing — route ML questions to the right specialist")
 
-    # TODO: Create four specialist Delegate agents, each with budget_usd=0.5
-    specialists = {
-        "data_quality": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
-        "model_performance": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
-        "deployment": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
-        "governance": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
-    }
-
-    routing_criteria = {
-        "data_quality": "data issues, null values, distributions, profiling",
-        "model_performance": "AUC, precision, recall, metrics, evaluation",
-        "deployment": "serving, latency, InferenceServer, production, scaling",
-        "governance": "fairness, bias, compliance, audit, PACT, regulations",
-    }
-
-    # TODO: Create a router Delegate with budget_usd=0.3
-    router = ____  # Hint: Delegate(model=model, budget_usd=0.3)
-
-    queries = [
-        "What is the null rate in the annual_income column?",
-        "Why is AUC-PR better than AUC-ROC for this credit dataset?",
-        "How do I reduce inference latency below 20ms?",
-        "Does the credit model satisfy MAS FEAT requirements?",
-    ]
-
-    criteria_text = "\n".join(
-        f"  {name}: {desc}" for name, desc in routing_criteria.items()
-    )
-
-    print(f"\nRouting {len(queries)} queries:")
-    for q in queries:
-        # TODO: Build a routing_prompt asking the router to respond with just the specialist name
-        routing_prompt = ____  # Hint: f"You are a query router. Route this query to the best specialist.\n\nAvailable specialists:\n{criteria_text}\n\nQuery: {q}\n\nRespond with ONLY the specialist name (one of: {list(specialists.keys())})"
-
-        # TODO: Run the router with run_delegate to get route_decision
-        route_decision = ____  # Hint: await run_delegate(router, routing_prompt)
-
-        # Find the closest matching specialist
-        routed_to = "data_quality"  # default
-        for name in specialists:
-            if name in route_decision.lower():
-                routed_to = name
-                break
-
-        # TODO: Run the matched specialist with a domain-specific prompt
-        specialist = specialists[routed_to]
-        response = ____  # Hint: await run_delegate(specialist, f"You are a {routed_to} specialist. Answer this question about the Singapore credit scoring dataset:\n{q}\n\nDataset context: {data_context}")
-
-        print(f"\n  Query: {q}")
-        print(f"  Routed to: {routed_to}")
-        print(f"  Response: {response[:150]}...")
-
-    return specialists
+    # TODO: Implement the Handoff pattern:
+    #   1. Create specialists dict with four Delegate agents (budget_usd=0.5 each):
+    #      keys: data_quality, model_performance, deployment, governance
+    #   2. Build routing_criteria dict mapping each specialist to keywords describing its domain
+    #   3. Create a router Delegate with budget_usd=0.3
+    #   4. For each of four queries (null rate, AUC-PR vs AUC-ROC, latency, MAS FEAT):
+    #      a. Build routing_prompt asking router to respond with ONLY the specialist name
+    #      b. Await run_delegate(router, routing_prompt) → route_decision
+    #      c. Match route_decision to a specialist key (default: data_quality)
+    #      d. Await run_delegate(specialist, domain-specific prompt)
+    #      e. Print query, routed_to, and response[:150]
+    #   5. Return specialists dict
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 handoff_pattern = asyncio.run(pattern_handoff())

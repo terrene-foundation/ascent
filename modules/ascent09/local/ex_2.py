@@ -55,21 +55,16 @@ CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufactu
 
 
 async def zero_shot_classify(text: str) -> str:
-    # TODO: Create Delegate(budget_usd=0.5). Prompt it with CATEGORIES and the
-    # text[:800], asking for ONLY the category name. Stream and return stripped response.
+    # TODO: Create Delegate(budget_usd=0.5). Prompt listing CATEGORIES, ask for
+    # ONLY the category name. Stream and return stripped response.
     ____
     ____
 
 
-async def run_zero_shot():
-    print(f"\n=== Zero-Shot Classification ===")
-    results = []
-    for i, text in enumerate(sample_docs.select("text").to_series().to_list()[:5]):
-        category = await zero_shot_classify(text)
-        print(f"  Doc {i+1}: {category}")
-        results.append(category)
-    return results
-
+# TODO: Implement run_zero_shot() — iterate sample_docs[:5], call zero_shot_classify,
+# print each result, collect into a list and return it.
+____
+____
 
 zero_shot_results = asyncio.run(run_zero_shot())
 
@@ -78,46 +73,21 @@ zero_shot_results = asyncio.run(run_zero_shot())
 # TASK 2: Few-shot with example selection
 # ══════════════════════════════════════════════════════════════════════
 
-FEW_SHOT_EXAMPLES = [
-    {
-        "text": "Revenue increased 15% driven by strong loan growth and net interest margin expansion.",
-        "category": "Financial",
-    },
-    {
-        "text": "The company launched its new cloud-native SaaS platform serving enterprise clients across APAC.",
-        "category": "Technology",
-    },
-    {
-        "text": "Clinical trials for the new oncology drug showed 40% improvement in patient outcomes.",
-        "category": "Healthcare",
-    },
-    {
-        "text": "The integrated township development in Jurong added 2,500 residential units to the portfolio.",
-        "category": "Real Estate",
-    },
-    {
-        "text": "Factory automation reduced production cycle time by 30% at the Tuas semiconductor fab.",
-        "category": "Manufacturing",
-    },
-]
+# TODO: Define FEW_SHOT_EXAMPLES — a list of 5 dicts, one per CATEGORY, each
+# with keys 'text' (a representative Singapore business sentence) and 'category'.
+____
 
 
 async def few_shot_classify(text: str) -> str:
-    # TODO: Format FEW_SHOT_EXAMPLES as 'Text: "..."\nCategory: ...' prefix.
-    # Create Delegate(budget_usd=0.5), stream response, return stripped category.
+    # TODO: Format FEW_SHOT_EXAMPLES as 'Text: "..."\nCategory: ...' prefix,
+    # append the new text[:800]. Delegate(budget_usd=0.5), stream, return stripped.
     ____
     ____
 
 
-async def run_few_shot():
-    print(f"\n=== Few-Shot Classification ===")
-    results = []
-    for i, text in enumerate(sample_docs.select("text").to_series().to_list()[:5]):
-        category = await few_shot_classify(text)
-        print(f"  Doc {i+1}: {category}")
-        results.append(category)
-    return results
-
+# TODO: Implement run_few_shot() — same loop pattern as run_zero_shot but for few-shot.
+____
+____
 
 few_shot_results = asyncio.run(run_few_shot())
 
@@ -128,22 +98,17 @@ few_shot_results = asyncio.run(run_few_shot())
 
 
 async def cot_classify(text: str) -> tuple[str, str]:
-    # TODO: Build a CoT prompt instructing: (1) identify key terms, (2) match
-    # to category, (3) state final classification. Create Delegate(budget_usd=0.5),
-    # stream full response. Return (full_reasoning, last_non_empty_line).
+    # TODO: Build CoT prompt: (1) identify key terms, (2) match to category,
+    # (3) state final classification. Delegate(budget_usd=0.5), stream full response.
+    # Return (full_reasoning, last_non_empty_line).
     ____
     ____
 
 
-async def run_cot():
-    print(f"\n=== Chain-of-Thought Classification ===")
-    results = []
-    for i, text in enumerate(sample_docs.select("text").to_series().to_list()[:3]):
-        reasoning, category = await cot_classify(text)
-        print(f"  Doc {i+1} reasoning: {reasoning[:150]}... → {category}")
-        results.append(category)
-    return results
-
+# TODO: Implement run_cot() — iterate sample_docs[:3], call cot_classify,
+# print reasoning excerpt and final category, collect categories into a list.
+____
+____
 
 cot_results = asyncio.run(run_cot())
 
@@ -152,17 +117,16 @@ cot_results = asyncio.run(run_cot())
 # TASK 4: Custom Signature for structured extraction
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Define ReportExtraction(Signature) with:
+# TODO: Define ReportExtraction(Signature):
 #   InputField:  report_text (str)
 #   OutputFields: category (str), key_entities (list[str]),
 #                 financial_metrics (list[str]), sentiment (str), confidence (float)
-# Precise field descriptions drive output quality — the Signature is the LLM contract.
 ____
 
 
 async def structured_extract():
     # TODO: Create SimpleQAAgent(signature=ReportExtraction, model=model, budget_usd=1.0).
-    # Run it on the first 3 documents and print the structured fields.
+    # Run on first 3 documents, print structured fields, return results list.
     ____
     ____
 
@@ -174,30 +138,13 @@ structured_results = asyncio.run(structured_extract())
 # TASK 5: Compare accuracy across prompting strategies
 # ══════════════════════════════════════════════════════════════════════
 
-comparison = pl.DataFrame(
-    {
-        "strategy": ["Zero-Shot", "Few-Shot", "Chain-of-Thought"],
-        "doc_1": [
-            zero_shot_results[0] if zero_shot_results else "N/A",
-            few_shot_results[0] if few_shot_results else "N/A",
-            cot_results[0] if cot_results else "N/A",
-        ],
-        "doc_2": [
-            zero_shot_results[1] if len(zero_shot_results) > 1 else "N/A",
-            few_shot_results[1] if len(few_shot_results) > 1 else "N/A",
-            cot_results[1] if len(cot_results) > 1 else "N/A",
-        ],
-        "doc_3": [
-            zero_shot_results[2] if len(zero_shot_results) > 2 else "N/A",
-            few_shot_results[2] if len(few_shot_results) > 2 else "N/A",
-            cot_results[2] if len(cot_results) > 2 else "N/A",
-        ],
-    }
-)
-print(f"\n=== Strategy Comparison ===")
-print(comparison)
-print(
-    f"  Zero-shot: fast; Few-shot: consistent; CoT: best for ambiguous; Signature: structured"
-)
+# TODO: Build a pl.DataFrame comparing the three strategies across doc_1/doc_2/doc_3.
+# Columns: strategy, doc_1, doc_2, doc_3. Use zero_shot_results / few_shot_results /
+# cot_results (guard with empty-list checks → "N/A"). Print the DataFrame.
+____
+____
 
+print(
+    f"  Zero-shot: fast | Few-shot: consistent | CoT: best for ambiguous | Signature: structured"
+)
 print("\n✓ Exercise 2 complete — prompt engineering strategies compared")

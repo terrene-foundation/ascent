@@ -111,40 +111,66 @@ print(f"Name: {server.name}")
 
 # TODO: Register profile_dataset as an MCP tool using the @server.tool() decorator.
 #   The function must be async and accept dataset (str) and sample_size (int = 5000).
-#   It should use DataExplorer to profile a sample of credit or customers,
-#   then return a formatted string with: dataset name, rows, columns, types, and alerts.
+#   Use DataExplorer to profile a sample of credit or customers;
+#   return formatted string: dataset name, rows, columns, types, and alerts.
 # Hint: @server.tool()
 #       async def profile_dataset(dataset: str, sample_size: int = 5000) -> str:
-#           from kailash_ml import DataExplorer
-#           df = credit if dataset == "credit" else customers
-#           ...
+____
+____
+____
+____
+____
+____
+____
 ____
 
 
-# TODO: Register describe_column as an MCP tool.
+# TODO: Register describe_column as an MCP tool using @server.tool().
 #   Accepts dataset (str) and column (str).
-#   Returns per-column stats: for numeric — mean, std, min, max, nulls, P25, median, P75;
-#   for categorical — unique count, nulls, top 5 value_counts.
+#   For numeric dtypes: return mean, std, min, max, nulls, P25, median, P75.
+#   For categorical: return n_unique, nulls, and top 5 value_counts.
 # Hint: @server.tool()
 #       async def describe_column(dataset: str, column: str) -> str: ...
 ____
-
-
-# TODO: Register target_analysis as an MCP tool.
-#   Accepts dataset (str), feature (str), target (str).
-#   For numeric features: bin into quartiles using pl.col(feature).cut(breaks=[...]).
-#   For categorical features: group directly.
-#   Return target rate by feature group (top 10 rows).
-# Hint: @server.tool()
-#       async def target_analysis(dataset: str, feature: str, target: str) -> str: ...
+____
+____
+____
+____
+____
+____
+____
+____
 ____
 
 
-# TODO: Register list_columns as an MCP tool.
+# TODO: Register target_analysis as an MCP tool using @server.tool().
+#   Accepts dataset (str), feature (str), target (str).
+#   For numeric features: bin into quartiles with pl.col(feature).cut(breaks=[...]).
+#   For categorical: group directly. Return target rate by feature group (top 10).
+# Hint: @server.tool()
+#       async def target_analysis(dataset: str, feature: str, target: str) -> str: ...
+____
+____
+____
+____
+____
+____
+____
+____
+____
+____
+____
+____
+
+
+# TODO: Register list_columns as an MCP tool using @server.tool().
 #   Accepts dataset (str).
 #   Returns all column names and their dtypes for the selected dataset.
 # Hint: @server.tool()
 #       async def list_columns(dataset: str) -> str: ...
+____
+____
+____
 ____
 
 

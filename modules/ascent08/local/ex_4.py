@@ -32,9 +32,6 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-
-# ── Data Loading ──────────────────────────────────────────────────────
-
 loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_product_reviews.parquet")
 
@@ -42,9 +39,6 @@ explorer = DataExplorer()
 summary = asyncio.run(explorer.profile(df))
 print(f"=== Dataset: {df.height} reviews, columns: {df.columns} ===")
 print(summary)
-
-
-# ── Helpers ───────────────────────────────────────────────────────────
 
 
 def tokenize(text: str) -> list[str]:
@@ -56,13 +50,7 @@ word_counts = Counter(tok for t in corpus for tok in tokenize(t))
 vocab = ["<pad>", "<unk>"] + [w for w, c in word_counts.most_common(2000) if c >= 2]
 word_to_idx = {w: i for i, w in enumerate(vocab)}
 vocab_size = len(vocab)
-
 print(f"Vocabulary: {vocab_size} words")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Vanilla RNN cell forward pass
-# ══════════════════════════════════════════════════════════════════════
 
 
 def tanh(x: float) -> float:
@@ -76,8 +64,13 @@ def sigmoid(x: float) -> float:
     return ex / (1.0 + ex)
 
 
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Vanilla RNN cell forward pass
+# ══════════════════════════════════════════════════════════════════════
+
+
 class RNNCell:
-    """Vanilla RNN: h_t = tanh(W_hh * h_{t-1} + W_xh * x_t + b)."""
+    """Vanilla RNN: h_t = tanh(W_xh*x + W_hh*h_{t-1} + b)."""
 
     def __init__(self, input_dim: int, hidden_dim: int):
         self.hidden_dim = hidden_dim
@@ -93,20 +86,19 @@ class RNNCell:
         self.b_h = [0.0] * hidden_dim
 
     def forward(self, x: list[float], h_prev: list[float]) -> list[float]:
-        """Single RNN step: h_t = tanh(W_xh * x + W_hh * h_prev + b)."""
-        # TODO: For each hidden unit j, accumulate b_h[j] + W_xh contribution + W_hh contribution, apply tanh
+        """h_t = tanh(W_xh*x + W_hh*h_prev + b) for each hidden unit."""
+        # TODO: for each unit j: val = b_h[j] + sum_k(x[k]*W_xh[k][j]) + sum_k(h_prev[k]*W_hh[k][j]); h_new[j]=tanh(val)
         h_new = [0.0] * self.hidden_dim
         for j in range(self.hidden_dim):
             val = self.b_h[j]
             for k in range(len(x)):
-                ____  # Hint: val += x[k] * self.W_xh[k][j]
+                ____  # Hint: val += x[k]*self.W_xh[k][j]
             for k in range(self.hidden_dim):
-                ____  # Hint: val += h_prev[k] * self.W_hh[k][j]
+                ____  # Hint: val += h_prev[k]*self.W_hh[k][j]
             h_new[j] = ____  # Hint: tanh(val)
         return h_new
 
     def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
-        """Process full sequence, collect hidden states."""
         h = [0.0] * self.hidden_dim
         hidden_states = []
         for x_t in sequence:
@@ -120,7 +112,7 @@ rnn = RNNCell(input_dim, hidden_dim)
 demo_seq = [[random.gauss(0, 1) for _ in range(input_dim)] for _ in range(5)]
 states = rnn.forward_sequence(demo_seq)
 
-print(f"\nRNN Cell: input_dim={input_dim}, hidden_dim={hidden_dim}")
+print(f"\nRNN: input={input_dim}, hidden={hidden_dim}")
 for t, h in enumerate(states):
     norm = math.sqrt(sum(v * v for v in h))
     print(f"  t={t}: ||h||={norm:.4f}, h[:3]={[f'{v:.3f}' for v in h[:3]]}")
@@ -132,32 +124,29 @@ for t, h in enumerate(states):
 
 
 def measure_gradient_flow(cell: RNNCell, seq_len: int) -> list[float]:
-    """Approximate gradient magnitude at each time step via perturbation."""
+    """Sensitivity of final output to each input time step (perturbation)."""
     epsilon = 1e-5
     sequence = [
         [random.gauss(0, 0.5) for _ in range(input_dim)] for _ in range(seq_len)
     ]
-    states = cell.forward_sequence(sequence)
-    final_output = sum(states[-1])
+    final_output = sum(cell.forward_sequence(sequence)[-1])
     sensitivities = []
     for t in range(seq_len):
         perturbed = [row[:] for row in sequence]
         perturbed[t][0] += epsilon
-        perturbed_output = sum(cell.forward_sequence(perturbed)[-1])
-        sensitivities.append(abs(perturbed_output - final_output) / epsilon)
+        sensitivities.append(
+            abs(sum(cell.forward_sequence(perturbed)[-1]) - final_output) / epsilon
+        )
     return sensitivities
 
 
-print(f"\n--- Vanishing Gradient Demonstration ---")
+print(f"\n--- Vanishing Gradient ---")
 for seq_len in [10, 25, 50]:
-    grads = measure_gradient_flow(rnn, seq_len)
+    g = measure_gradient_flow(rnn, seq_len)
     print(
-        f"\n  seq_len={seq_len}: t=0 grad={grads[0]:.6f}, t={seq_len-1} grad={grads[-1]:.6f}, ratio={grads[0]/(grads[-1]+1e-10):.2f}"
+        f"  len={seq_len}: grad[0]={g[0]:.6f}, grad[-1]={g[-1]:.6f}, ratio={g[0]/(g[-1]+1e-10):.2f}"
     )
-
-print(
-    f"\ntanh derivatives < 1 compound multiplicatively — early inputs lose influence."
-)
+print(f"\ntanh derivatives < 1 multiply across steps — early inputs lose influence.")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -166,7 +155,7 @@ print(
 
 
 class LSTMCell:
-    """LSTM with forget, input, and output gates."""
+    """LSTM with forget, input, cell-candidate, and output gates."""
 
     def __init__(self, input_dim: int, hidden_dim: int):
         self.hidden_dim = hidden_dim
@@ -184,7 +173,7 @@ class LSTMCell:
         self.W_o = [
             [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
         ]
-        self.b_f = [1.0] * hidden_dim  # forget bias = 1 → remember by default
+        self.b_f = [1.0] * hidden_dim
         self.b_i = [0.0] * hidden_dim
         self.b_c = [0.0] * hidden_dim
         self.b_o = [0.0] * hidden_dim
@@ -192,41 +181,37 @@ class LSTMCell:
     def _gate(
         self, combined: list[float], W: list[list[float]], b: list[float], activation
     ) -> list[float]:
-        result = [0.0] * self.hidden_dim
-        for j in range(self.hidden_dim):
-            val = b[j] + sum(combined[k] * W[k][j] for k in range(len(combined)))
-            result[j] = activation(val)
-        return result
+        return [
+            activation(b[j] + sum(combined[k] * W[k][j] for k in range(len(combined))))
+            for j in range(self.hidden_dim)
+        ]
 
     def forward(
         self, x: list[float], h_prev: list[float], c_prev: list[float]
     ) -> tuple[list[float], list[float]]:
-        """Single LSTM step: returns (h_t, c_t)."""
+        """Single LSTM step: forget→input→cell→output gates → (h_t, c_t)."""
         combined = x + h_prev
-        # TODO: Compute forget, input, cell-candidate, output gates using _gate
+        # TODO: compute four gates using _gate; then c_t and h_t
         f_t = ____  # Hint: self._gate(combined, self.W_f, self.b_f, sigmoid)
         i_t = ____  # Hint: self._gate(combined, self.W_i, self.b_i, sigmoid)
         c_hat = ____  # Hint: self._gate(combined, self.W_c, self.b_c, tanh)
         o_t = ____  # Hint: self._gate(combined, self.W_o, self.b_o, sigmoid)
-        # TODO: Cell state update: c_t = f_t ⊙ c_prev + i_t ⊙ c_hat
-        c_t = ____  # Hint: [f_t[j] * c_prev[j] + i_t[j] * c_hat[j] for j in range(self.hidden_dim)]
-        # TODO: Hidden state: h_t = o_t ⊙ tanh(c_t)
-        h_t = ____  # Hint: [o_t[j] * tanh(c_t[j]) for j in range(self.hidden_dim)]
+        c_t = ____  # Hint: [f_t[j]*c_prev[j]+i_t[j]*c_hat[j] for j in range(self.hidden_dim)]
+        h_t = ____  # Hint: [o_t[j]*tanh(c_t[j]) for j in range(self.hidden_dim)]
         return h_t, c_t
 
     def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
         h, c = [0.0] * self.hidden_dim, [0.0] * self.hidden_dim
-        hidden_states = []
+        states = []
         for x_t in sequence:
             h, c = self.forward(x_t, h, c)
-            hidden_states.append(h[:])
-        return hidden_states
+            states.append(h[:])
+        return states
 
 
 lstm = LSTMCell(input_dim, hidden_dim)
 lstm_states = lstm.forward_sequence(demo_seq)
-
-print(f"\nLSTM Cell: {input_dim}→{hidden_dim}")
+print(f"\nLSTM: {input_dim}→{hidden_dim}")
 for t, h in enumerate(lstm_states):
     print(f"  t={t}: ||h||={math.sqrt(sum(v*v for v in h)):.4f}")
 
@@ -237,7 +222,7 @@ for t, h in enumerate(lstm_states):
 
 
 class BiLSTM:
-    """Bidirectional LSTM: forward + backward passes, concatenated output."""
+    """Forward + backward LSTM, concatenated at each position."""
 
     def __init__(self, input_dim: int, hidden_dim: int):
         self.forward_lstm = LSTMCell(input_dim, hidden_dim)
@@ -245,22 +230,20 @@ class BiLSTM:
         self.hidden_dim = hidden_dim
 
     def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
-        """Concatenate [forward; backward] hidden states at each position."""
-        # TODO: Forward pass on sequence; backward pass on reversed sequence (then re-reverse)
+        """Concatenate [forward; backward] hidden states."""
+        # TODO: forward pass; backward pass on reversed sequence (re-reverse result); concatenate
         fwd_states = ____  # Hint: self.forward_lstm.forward_sequence(sequence)
         bwd_states = (
             ____  # Hint: self.backward_lstm.forward_sequence(sequence[::-1])[::-1]
         )
-        # TODO: Concatenate forward and backward at each time step
-        return ____  # Hint: [f + b for f, b in zip(fwd_states, bwd_states)]
+        return ____  # Hint: [f+b for f,b in zip(fwd_states, bwd_states)]
 
 
 bilstm = BiLSTM(input_dim, hidden_dim)
 bi_states = bilstm.forward_sequence(demo_seq)
-
-print(f"\nBiLSTM output dim: {len(bi_states[0])} (2 × {hidden_dim})")
-print(f"Forward captures left context; backward captures right context.")
-print(f"In production: TrainingPipeline(feature_store, registry).fit(data)")
+print(f"\nBiLSTM output dim: {len(bi_states[0])} (2×{hidden_dim})")
+print(f"Forward: left context | Backward: right context")
+print(f"Production: TrainingPipeline(feature_store, registry).fit(data)")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -270,17 +253,16 @@ print(f"In production: TrainingPipeline(feature_store, registry).fit(data)")
 rnn_grads = measure_gradient_flow(rnn, 50)
 lstm_grads = measure_gradient_flow(lstm, 50)
 
-print(f"\n--- RNN vs LSTM Gradient Flow (seq_len=50) ---")
-print(f"{'Step':<8} {'RNN grad':<15} {'LSTM grad'}")
-print("-" * 38)
+print(f"\n--- Gradient Flow (seq_len=50) ---")
+print(f"{'t':<6} {'RNN':<14} {'LSTM'}")
 for t in [0, 10, 25, 40, 49]:
-    print(f"  t={t:<4} {rnn_grads[t]:<15.6f} {lstm_grads[t]:.6f}")
+    print(f"  {t:<6} {rnn_grads[t]:<14.6f} {lstm_grads[t]:.6f}")
 
-# TODO: Instantiate ModelVisualizer and plot training history
+# TODO: Instantiate ModelVisualizer and plot gradient flow comparison
 viz = ____  # Hint: ModelVisualizer()
 fig = viz.training_history(
     metrics={"rnn_gradient": rnn_grads, "lstm_gradient": lstm_grads}
 )
-print(f"\nLSTM cell-state highway lets gradients pass with forget-gate ≈ 1.")
+print(f"\nLSTM cell-state highway: forget-gate≈1 lets gradients pass unattenuated.")
 
-print("\n✓ Exercise 4 complete — RNN/LSTM cells, vanishing gradients, BiLSTM sentiment")
+print("\n✓ Exercise 4 complete — RNN/LSTM cells, vanishing gradients, BiLSTM")

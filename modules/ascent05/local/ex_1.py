@@ -65,32 +65,25 @@ print(data_summary)
 async def delegate_analysis():
     """Use Delegate for autonomous data analysis Q&A."""
 
-    # TODO: Create Delegate with model and budget_usd=2.0 (MANDATORY for all M5 exercises)
-    delegate = ____  # Hint: Delegate(model=model, budget_usd=2.0)
-
-    questions = [
-        "Based on this customer data, what are the top 3 customer segments you'd recommend for targeted marketing?",
-        "What metrics should we track to predict customer churn from this dataset?",
-        "If we wanted to build a recommendation system, which features would be most important?",
-    ]
-
-    print(f"\n=== Delegate Analysis (budget: $2.00) ===")
-    results = []
-    for i, question in enumerate(questions):
-        prompt = f"{data_summary}\n\nQuestion: {question}"
-        print(f"\nQ{i+1}: {question}")
-
-        # TODO: Stream Delegate response — async for event in delegate.run(prompt);
-        #   accumulate event.text if hasattr(event, "text")
-        response_text = ""
-        ____
-        ____
-        ____
-
-        print(f"A{i+1}: {response_text[:300]}...")
-        results.append({"question": question, "answer": response_text})
-
-    return delegate, results
+    # TODO: Implement delegate_analysis():
+    #   1. Create Delegate(model=model, budget_usd=2.0) — budget is MANDATORY for all M5 exercises
+    #   2. Define a list of 3 questions about customer segments, churn metrics, and recommendation features
+    #   3. For each question: build prompt = f"{data_summary}\n\nQuestion: {question}"
+    #      Stream delegate.run(prompt) — async for event: accumulate event.text
+    #   4. Print Q{i+1} and first 300 chars of answer; append {question, answer} to results
+    #   5. Return (delegate, results)
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 delegate, delegate_results = asyncio.run(delegate_analysis())
@@ -102,7 +95,7 @@ delegate, delegate_results = asyncio.run(delegate_analysis())
 
 
 # TODO: Define CustomerSegmentAnalysis(Signature) with:
-#   InputField: data_context (str), question (str)
+#   InputField:  data_context (str), question (str)
 #   OutputField: segments (list[str]), reasoning (str),
 #                confidence (float), next_steps (list[str])
 ____
@@ -116,7 +109,7 @@ ____
 
 
 # TODO: Define ChurnPrediction(Signature) with:
-#   InputField: data_context (str)
+#   InputField:  data_context (str)
 #   OutputField: risk_factors (list[str]), key_metrics (list[str]),
 #                model_recommendation (str)
 ____
@@ -135,27 +128,23 @@ ____
 def structured_analysis():
     """Use SimpleQAAgent for structured output."""
 
-    # TODO: Create SimpleQAAgent(model=model) for segment analysis;
-    #   run with question="What customer segments should we target for a premium loyalty programme?"
-    #   and context=data_summary; store result in segment_result
-    segment_agent = ____  # Hint: SimpleQAAgent(model=model)
-    segment_result = ____  # Hint: segment_agent.run(question=..., context=data_summary)
-
-    print(f"\n=== Structured Segment Analysis ===")
-    for key, value in segment_result.items():
-        print(f"  {key}: {str(value)[:200]}")
-
-    # TODO: Create a second SimpleQAAgent(model=model) for churn analysis;
-    #   run with a question about top churn risk factors and metrics;
-    #   store result in churn_result
-    churn_agent = ____  # Hint: SimpleQAAgent(model=model)
-    churn_result = ____  # Hint: churn_agent.run(question=..., context=data_summary)
-
-    print(f"\n=== Structured Churn Analysis ===")
-    for key, value in churn_result.items():
-        print(f"  {key}: {str(value)[:200]}")
-
-    return segment_result, churn_result
+    # TODO: Implement structured_analysis():
+    #   1. Create SimpleQAAgent(model=model); call .run(question="What customer segments should
+    #      we target for a premium loyalty programme?", context=data_summary) → segment_result
+    #   2. Print each key: value[:200] from segment_result
+    #   3. Create a second SimpleQAAgent(model=model); call .run(question about top churn risk
+    #      factors and which metrics to track, context=data_summary) → churn_result
+    #   4. Print each key: value[:200] from churn_result; return (segment_result, churn_result)
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 segment_result, churn_result = structured_analysis()

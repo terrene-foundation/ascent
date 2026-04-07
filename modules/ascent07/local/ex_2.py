@@ -112,27 +112,23 @@ for epoch in range(epochs):
     for x, y in zip(xor_inputs, xor_targets):
         h, y_hat = forward_pass(x)
 
-        eps = 1e-8
-        loss = -(y * math.log(y_hat + eps) + (1 - y) * math.log(1 - y_hat + eps))
+        # TODO: Compute BCE loss, then backprop and update all weights.
+        # BCE loss: -(y*log(y_hat+eps) + (1-y)*log(1-y_hat+eps))
+        # Output delta: d_out = y_hat - y
+        # dW2[j] = h[j]*d_out; db2 = d_out
+        # Hidden delta: d_hidden[j] = d_out * W2[j][0] * sigmoid_derivative(h[j])
+        # Update W1[i][j] -= lr * x[i] * d_hidden[j]; b1[j] -= lr * d_hidden[j]
+        # Update W2[j][0] -= lr * dW2[j]; b2[0] -= lr * db2
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
         total_loss += loss
-
-        # Backward: output layer
-        d_out = y_hat - y
-
-        dW2 = [h[j] * d_out for j in range(2)]
-        db2 = d_out
-
-        d_hidden = [d_out * W2[j][0] * sigmoid_derivative(h[j]) for j in range(2)]
-
-        for i in range(2):
-            for j in range(2):
-                W1[i][j] -= learning_rate * x[i] * d_hidden[j]
-        for j in range(2):
-            b1[j] -= learning_rate * d_hidden[j]
-
-        for j in range(2):
-            W2[j][0] -= learning_rate * dW2[j]
-        b2[0] -= learning_rate * db2
 
     avg_loss = total_loss / 4.0
     if epoch % 1000 == 0:

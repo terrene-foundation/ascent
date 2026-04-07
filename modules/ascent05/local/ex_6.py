@@ -164,10 +164,15 @@ else:
 
 
 async def step_3_model_selector():
-    # TODO: Create a ModelSelectorAgent with model
-    agent = ____  # Hint: ModelSelectorAgent(model=model)
-
-    # TODO: Build data_characteristics string; call agent.select(data_characteristics=..., task_type="binary_classification", constraints="High interpretability required. Inference latency < 50ms. Target metric: AUC-PR."); print; return
+    # TODO: Implement step_3_model_selector():
+    #   1. Create ModelSelectorAgent(model=model)
+    #   2. Build data_characteristics string: binary classification, row count, features, 12% imbalance
+    #   3. Call agent.select(data_characteristics=..., task_type="binary_classification",
+    #      constraints="High interpretability required. Inference latency < 50ms. Target metric: AUC-PR.")
+    #   4. Print each result key: value[:200]; return result
+    ____
+    ____
+    ____
     ____
     ____
     ____

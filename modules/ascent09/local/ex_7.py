@@ -22,6 +22,8 @@ import os
 
 import polars as pl
 
+from collections import Counter
+
 from kaizen_agents.agents.specialized.react import ReActAgent
 from kailash_ml import DataExplorer
 from kailash.mcp_server import MCPServer

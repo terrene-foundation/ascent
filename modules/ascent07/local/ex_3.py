@@ -153,23 +153,15 @@ class SimpleNetwork:
         self.activation = activation
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
-        if activation == "relu":
-            scale1 = math.sqrt(2.0 / input_dim)
-            scale2 = math.sqrt(2.0 / hidden_dim)
-        else:
-            scale1 = math.sqrt(2.0 / (input_dim + hidden_dim))
-            scale2 = math.sqrt(2.0 / (hidden_dim + output_dim))
-        self.W1 = [
-            [random.gauss(0, scale1) for _ in range(hidden_dim)]
-            for _ in range(input_dim)
-        ]
-        self.b1 = [0.0] * hidden_dim
-        self.W2 = [
-            [random.gauss(0, scale2) for _ in range(output_dim)]
-            for _ in range(hidden_dim)
-        ]
-        self.b2 = [0.0] * output_dim
-        self.grad_magnitudes = []
+        # TODO: Compute scale1, scale2 using He init for "relu", Xavier otherwise.
+        # He: scale = sqrt(2/fan_in); Xavier: scale = sqrt(2/(fan_in+fan_out)).
+        # Initialise W1, b1, W2, b2, grad_magnitudes.
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
     def activate(self, z: float) -> float:
         if self.activation == "sigmoid":
@@ -224,29 +216,16 @@ for act_name in ["sigmoid", "relu", "gelu"]:
             y = Y[idx]
             z1, h1, z2, out = net.forward(x)
 
-            eps = 1e-8
-            loss = -sum(y[k] * math.log(out[k] + eps) for k in range(n_classes))
-            epoch_loss += loss
-
-            d_out = [out[k] - y[k] for k in range(n_classes)]
-
-            for j in range(net.hidden_dim):
-                for k in range(n_classes):
-                    net.W2[j][k] -= lr * d_out[k] * h1[j]
-            for k in range(n_classes):
-                net.b2[k] -= lr * d_out[k]
-
-            d_h1 = [
-                sum(d_out[k] * net.W2[j][k] for k in range(n_classes))
-                * net.activate_deriv(z1[j])
-                for j in range(net.hidden_dim)
-            ]
-
-            for i in range(len(x)):
-                for j in range(net.hidden_dim):
-                    net.W1[i][j] -= lr * d_h1[j] * x[i]
-            for j in range(net.hidden_dim):
-                net.b1[j] -= lr * d_h1[j]
+            # TODO: CE loss, output gradient d_out, backprop through W2/b2,
+            # hidden gradient d_h1 (using net.activate_deriv), update W1/b1.
+            ____
+            ____
+            ____
+            ____
+            ____
+            ____
+            ____
+            ____
 
         avg_loss = epoch_loss / train_size
         losses.append(avg_loss)

@@ -81,56 +81,29 @@ print(f"Simulated production batch: {production_data.shape}")
 
 async def setup_ml_stack():
     """Register and warm a model, return InferenceServer."""
-    # TODO: Create ConnectionManager with sqlite:///ascent05_nexus_demo.db,
-    #   await conn.initialize(), then create ModelRegistry(conn)
-    conn = ____  # Hint: ConnectionManager("sqlite:///ascent05_nexus_demo.db")
-    ____  # Hint: await conn.initialize()
-    registry = ____  # Hint: ModelRegistry(conn)
-
-    # TODO: Define a ModelSignature for credit scoring with:
-    #   input_schema: FeatureSchema(name="credit_input", entity_id_column="application_id",
-    #     features=[FeatureField(name, dtype) for 5 fields:
-    #       annual_income/float64, total_debt/float64, credit_utilisation/float64,
-    #       late_payments_12m/int64, account_age_months/int64])
-    #   output_columns=["default_probability", "risk_tier"]
-    #   output_dtypes=["float64", "utf8"], model_type="classifier"
-    signature = ModelSignature(
-        input_schema=____,  # Hint: FeatureSchema(name="credit_input", features=[FeatureField(name="annual_income", dtype="float64"), ...], entity_id_column="application_id")
-        output_columns=____,  # Hint: ["default_probability", "risk_tier"]
-        output_dtypes=____,  # Hint: ["float64", "utf8"]
-        model_type=____,  # Hint: "classifier"
-    )
-
-    # TODO: Register model "credit_default_v2" with artifact placeholder,
-    #   two MetricSpecs (auc_pr=0.62, auc_roc=0.89), and signature
-    model_version = await registry.register_model(
-        name=____,  # Hint: "credit_default_v2"
-        artifact=____,  # Hint: b"model_weights_placeholder"
-        metrics=____,  # Hint: [MetricSpec(name="auc_pr", value=0.62), MetricSpec(name="auc_roc", value=0.89)]
-        signature=____,  # Hint: signature
-    )
-
-    # TODO: Promote the model to "production" stage
-    await registry.promote_model(
-        name=____,  # Hint: "credit_default_v2"
-        version=____,  # Hint: model_version.version
-        target_stage=____,  # Hint: "production"
-        reason=____,  # Hint: "Exercise 8 deployment"
-    )
-
-    # InferenceServer wraps the registry for low-latency serving
-    # cache_size caches up to N models in memory (ONNX / raw weights)
-    server = InferenceServer(registry, cache_size=5)
-    # Note: warm_cache requires real serialised model weights. For this
-    # exercise we skip warming since we used a placeholder artifact.
-    # In production: await server.warm_cache(["credit_default_v2"])
-
-    print(f"=== ML Stack ===")
-    print(f"Model: credit_default_v2 v{model_version.version} (production)")
-    info = await server.get_model_info("credit_default_v2")
-    print(f"Model info: {info}")
-
-    return conn, registry, server
+    # TODO: Implement setup_ml_stack():
+    #   1. ConnectionManager("sqlite:///ascent05_nexus_demo.db") → await conn.initialize() → ModelRegistry(conn)
+    #   2. Build ModelSignature with FeatureSchema(name="credit_input", entity_id_column="application_id",
+    #      features=[5 FeatureFields: annual_income/float64, total_debt/float64,
+    #        credit_utilisation/float64, late_payments_12m/int64, account_age_months/int64])
+    #      output_columns=["default_probability", "risk_tier"], output_dtypes=["float64", "utf8"], model_type="classifier"
+    #   3. await registry.register_model(name="credit_default_v2", artifact=b"model_weights_placeholder",
+    #      metrics=[MetricSpec(name="auc_pr", value=0.62), MetricSpec(name="auc_roc", value=0.89)], signature=signature)
+    #   4. await registry.promote_model(name="credit_default_v2", version=..., target_stage="production", reason="Exercise 8 deployment")
+    #   5. Create InferenceServer(registry, cache_size=5); print model info; return (conn, registry, server)
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 conn, registry, inference_server = asyncio.run(setup_ml_stack())
@@ -146,17 +119,16 @@ conn, registry, inference_server = asyncio.run(setup_ml_stack())
 
 
 async def build_nexus_app(server: InferenceServer) -> Nexus:
-    # TODO: Instantiate Nexus()
-    app = ____  # Hint: Nexus()
-
-    # TODO: Register a prediction endpoint using the @app.endpoint decorator
-    #   path="/models/credit_default_v2/predict", methods=["POST"]
-    ____  # Hint: @app.endpoint("/models/credit_default_v2/predict", methods=["POST"]) async def predict_credit(request): return {"model": "credit_default_v2", "status": "registered"}
-
-    print(f"\n=== Nexus App ===")
-    print(f"Prediction endpoint registered: POST /models/credit_default_v2/predict")
-
-    return app
+    # TODO: Implement build_nexus_app():
+    #   1. Create Nexus()
+    #   2. Register a POST /models/credit_default_v2/predict endpoint using @app.endpoint decorator
+    #      Handler returns {"model": "credit_default_v2", "status": "registered"}
+    #   3. Print confirmation; return app
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -176,32 +148,21 @@ async def build_nexus_app(server: InferenceServer) -> Nexus:
 
 
 def configure_auth(app: Nexus) -> Nexus:
-    # Define RBAC roles with permission wildcards
-    rbac_roles = {
-        "admin": ["*"],  # Full access
-        "analyst": ["read:*", "predict:*"],  # Read + predict
-        "external_api": ["predict:*"],  # Predict only
-    }
-
-    # TODO: Create a NexusAuthPlugin using NexusAuthPlugin.basic_auth() with:
-    #   jwt=JWTConfig(secret=jwt_secret, algorithm="HS256",
-    #                 exempt_paths=["/health", "/docs", "/openapi.json"])
-    #   audit=AuditConfig(backend="logging", log_level="INFO", log_request_body=False)
-    auth = ____  # Hint: NexusAuthPlugin.basic_auth(jwt=JWTConfig(secret=jwt_secret, algorithm="HS256", exempt_paths=["/health", "/docs", "/openapi.json"]), audit=AuditConfig(backend="logging", log_level="INFO", log_request_body=False))
-
-    # TODO: Install the auth plugin on the app using app.add_plugin(auth)
-    ____  # Hint: app.add_plugin(auth)
-
-    print(f"\n=== Auth + Middleware Stack ===")
-    print(f"JWT:          HS256, exempt: /health /docs")
-    print(f"RBAC:         3 roles, default deny (fail-closed)")
-    print(f"RateLimiter:  60 req/min per user, burst=10")
-    print(f"Audit:        logging backend, body logging disabled (PII)")
-    print(f"\nRoles:")
-    for role, perms in rbac_roles.items():
-        print(f"  {role}: {perms}")
-
-    return app
+    # TODO: Implement configure_auth():
+    #   1. Define rbac_roles dict: admin→["*"], analyst→["read:*","predict:*"], external_api→["predict:*"]
+    #   2. Create NexusAuthPlugin.basic_auth(
+    #        jwt=JWTConfig(secret=jwt_secret, algorithm="HS256", exempt_paths=["/health", "/docs", "/openapi.json"]),
+    #        audit=AuditConfig(backend="logging", log_level="INFO", log_request_body=False))
+    #   3. app.add_plugin(auth)
+    #   4. Print middleware stack summary and role permissions; return app
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -228,54 +189,29 @@ class CreditAdvice(Signature):
 async def build_agent_endpoint(app: Nexus, server: InferenceServer) -> None:
     """Register a /predict/explain endpoint backed by an agent."""
 
-    # TODO: Create a Delegate agent with budget_usd=1.0
-    agent = ____  # Hint: Delegate(model=model_name_llm, budget_usd=1.0)
-
-    async def handle_explain_request(payload: dict) -> dict:
-        """Agent-powered credit explanation endpoint."""
-        # Get raw ML prediction first
-        features = {
-            "annual_income": payload.get("annual_income", 0),
-            "total_debt": payload.get("total_debt", 0),
-            "credit_utilisation": payload.get("credit_utilisation", 0.0),
-            "late_payments_12m": payload.get("late_payments_12m", 0),
-            "account_age_months": payload.get("account_age_months", 0),
-            "application_id": payload.get("application_id", "unknown"),
-        }
-
-        # TODO: Call server.predict with model_name="credit_default_v2" and features
-        prediction = await server.predict(
-            model_name=____,  # Hint: "credit_default_v2"
-            features=____,  # Hint: features
-        )
-
-        # Pass prediction context to agent for explanation
-        agent_prompt = (
-            f"You are a credit underwriting advisor. A model scored this application:\n"
-            f"Default probability: {prediction.prediction}\n"
-            f"Risk tier: {features}\n\n"
-            f"Provide: risk assessment, model prediction summary, recommendation "
-            f"(APPROVE/REVIEW/DENY), and a plain-language explanation."
-        )
-
-        # TODO: Stream the agent response into response_text
-        response_text = ""
-        ____  # Hint: async for event in agent.run(agent_prompt): if hasattr(event, "text"): response_text += event.text
-
-        return {
-            "default_probability": prediction.prediction,
-            "inference_time_ms": prediction.inference_time_ms,
-            "model_version": prediction.model_version,
-            "agent_explanation": response_text,
-        }
-
-    # TODO: Register handle_explain_request as a Nexus endpoint
-    #   path="/predict/explain", methods=["POST"]
-    ____  # Hint: @app.endpoint("/predict/explain", methods=["POST"]) async def predict_explain(request): return await handle_explain_request(request)
-
-    print(f"\n=== Agent Endpoint ===")
-    print(f"  POST /predict/explain — agent-powered explanation")
-    print(f"  -> raw prediction (InferenceServer) + agent reasoning (Delegate)")
+    # TODO: Implement build_agent_endpoint():
+    #   1. Create Delegate(model=model_name_llm, budget_usd=1.0)
+    #   2. Define async handle_explain_request(payload: dict) -> dict:
+    #      a. Extract 5 feature fields + application_id from payload (use .get with defaults)
+    #      b. await server.predict(model_name="credit_default_v2", features=features)
+    #      c. Build agent_prompt with prediction.prediction, features, and instructions
+    #      d. Stream agent.run(agent_prompt) → accumulate response_text
+    #      e. Return dict with default_probability, inference_time_ms, model_version, agent_explanation
+    #   3. Register @app.endpoint("/predict/explain", methods=["POST"]) calling handle_explain_request
+    #   4. Print endpoint registration confirmation
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -295,69 +231,33 @@ async def build_agent_endpoint(app: Nexus, server: InferenceServer) -> None:
 async def setup_drift_monitoring(app: Nexus) -> DriftMonitor:
     """Set up DriftMonitor and register a health endpoint."""
 
-    # Numeric feature columns to monitor
-    numeric_features = [
-        c
-        for c in reference_data.columns
-        if reference_data[c].dtype in (pl.Float64, pl.Float32, pl.Int64, pl.Int32)
-        and c != "default"
-    ][
-        :5
-    ]  # Monitor top 5 numeric features for this exercise
-
-    # TODO: Create a DriftSpec with:
-    #   feature_columns=numeric_features, psi_threshold=0.1,
-    #   ks_threshold=0.05, monitor_interval_hours=6
-    drift_spec = DriftSpec(
-        feature_columns=____,  # Hint: numeric_features
-        psi_threshold=____,  # Hint: 0.1
-        ks_threshold=____,  # Hint: 0.05
-        monitor_interval_hours=____,  # Hint: 6
-    )
-
-    # TODO: Instantiate DriftMonitor with reference_data (numeric columns only) and spec
-    monitor = DriftMonitor(
-        reference_data=____,  # Hint: reference_data.select(numeric_features)
-        spec=____,  # Hint: drift_spec
-    )
-
-    # Run drift check on simulated production batch
-    print(f"\n=== DriftMonitor ===")
-    print(f"Reference: {reference_data.height:,} rows")
-    print(f"Production batch: {production_data.height:,} rows")
-    print(f"Monitoring features: {numeric_features}")
-
-    # TODO: Call monitor.check() with the production batch (numeric columns only)
-    drift_report = await monitor.check(
-        production_data=____,  # Hint: production_data.select(numeric_features)
-    )
-
-    print(f"\nDrift Report:")
-    print(f"  Overall severity: {drift_report.overall_severity}")
-    print(f"  Features drifted: {drift_report.features_drifted}")
-    for feature, result in drift_report.feature_results.items():
-        flag = " <- ALERT" if result.is_drifted else ""
-        print(f"  {feature}: PSI={result.psi:.4f}{flag}")
-
-    # TODO: Register a GET /monitor/drift endpoint returning the drift health dict
-    async def drift_health_handler(payload: dict) -> dict:
-        report = await monitor.check(
-            production_data=production_data.select(numeric_features),
-        )
-        return {
-            "overall_severity": report.overall_severity,
-            "features_drifted": report.features_drifted,
-            "alerts": [
-                {"feature": f, "psi": r.psi, "drifted": r.is_drifted}
-                for f, r in report.feature_results.items()
-            ],
-        }
-
-    ____  # Hint: @app.endpoint("/monitor/drift", methods=["GET"]) async def monitor_drift(request): return await drift_health_handler({})
-
-    print(f"\nDrift endpoint registered: GET /monitor/drift")
-
-    return monitor
+    # TODO: Implement setup_drift_monitoring():
+    #   1. Select numeric_features: columns of reference_data with Float64/Float32/Int64/Int32 dtype
+    #      excluding "default", take first 5
+    #   2. Create DriftSpec(feature_columns=numeric_features, psi_threshold=0.1, ks_threshold=0.05, monitor_interval_hours=6)
+    #   3. Create DriftMonitor(reference_data=reference_data.select(numeric_features), spec=drift_spec)
+    #   4. Print reference/production batch sizes and monitoring features
+    #   5. await monitor.check(production_data=production_data.select(numeric_features)); print drift report
+    #      (overall_severity, features_drifted, per-feature PSI with ALERT flags)
+    #   6. Define async drift_health_handler(payload) that calls monitor.check and returns
+    #      {"overall_severity": ..., "features_drifted": ..., "alerts": [...]}
+    #   7. Register GET /monitor/drift endpoint calling drift_health_handler
+    #   8. Print confirmation; return monitor
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -126,39 +126,27 @@ ____
 
 
 def run_react_agent():
-    # TODO: Create ReActAgent(model=model)
-    agent = ____  # Hint: ReActAgent(model=model)
-
-    task = (
-        "Explore the Singapore credit scoring dataset. "
-        "Profile the data, check for high correlations, "
-        "find which features most strongly predict default, "
-        "and recommend preprocessing steps for a classification model."
-    )
-
-    tool_descriptions = "\n".join(
-        f"  {name}: {func.__doc__ or 'no description'}" for name, func in tools.items()
-    )
-    context = (
-        f"Available analysis functions:\n{tool_descriptions}\n\n"
-        f"Dataset: sg_credit_scoring.parquet with {credit.height:,} rows "
-        f"and columns: {credit.columns}"
-    )
-
-    print(f"\n=== ReActAgent Exploration ===")
-    print(f"Task: {task}")
-    print(f"Available tools: {list(tools.keys())}")
-    print(f"Budget: governed by Delegate-level budget_usd\n")
-
-    # TODO: Run agent with task=task, context=context (sync call, not async)
-    result = ____  # Hint: agent.run(task=task, context=context)
-
-    print(f"\n=== Results ===")
-    print(f"Result keys: {list(result.keys())}")
-    for key, value in result.items():
-        print(f"  {key}: {str(value)[:200]}")
-
-    return result
+    # TODO: Implement run_react_agent():
+    #   1. Create ReActAgent(model=model)
+    #   2. Build task string: explore credit dataset, profile, check correlations,
+    #      find default predictors, recommend preprocessing
+    #   3. Build tool_descriptions from tools dict (name: docstring for each)
+    #   4. Build context string with tool_descriptions, dataset row count, columns
+    #   5. Print task and available tool names
+    #   6. Call agent.run(task=task, context=context) — sync call, not async
+    #   7. Print result keys and each key: value[:200]; return result
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 react_result = run_react_agent()
