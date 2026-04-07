@@ -120,25 +120,16 @@ for epoch in range(epochs):
             )
             batch_loss += cross_entropy_loss(probs, target)
 
-            d_logits = [probs[k] - target[k] for k in range(n_classes)]
-            for j in range(hidden_size):
-                for k in range(n_classes):
-                    W2_sgd[j][k] -= lr / len(batch_idx) * h_act[j] * d_logits[k]
-            for k in range(n_classes):
-                b2_sgd[k] -= lr / len(batch_idx) * d_logits[k]
-
-            d_hidden = [
-                sum(d_logits[k] * W2_sgd[j][k] for k in range(n_classes))
-                * (1.0 if hidden[j] > 0 else 0.0)
-                for j in range(hidden_size)
-            ]
-            for i_feat in range(n_features):
-                for j in range(hidden_size):
-                    W1_sgd[i_feat][j] -= (
-                        lr / len(batch_idx) * x_row[i_feat] * d_hidden[j]
-                    )
-            for j in range(hidden_size):
-                b1_sgd[j] -= lr / len(batch_idx) * d_hidden[j]
+            # TODO: Output backprop: d_logits = probs[k]-target[k].
+            # Update W2[j][k] -= lr/batch * h_act[j]*d_logits[k]; b2[k] -= lr/batch*d_logits[k].
+            # Hidden backprop: d_hidden[j] = sum(d_logits[k]*W2[j][k])*relu_deriv(hidden[j]).
+            # Update W1[i][j] -= lr/batch*x_row[i]*d_hidden[j]; b1[j] -= lr/batch*d_hidden[j].
+            ____
+            ____
+            ____
+            ____
+            ____
+            ____
 
         epoch_loss += batch_loss / len(batch_idx)
         n_batches += 1
@@ -175,31 +166,16 @@ for epoch in range(epochs):
         gW1 = [[0.0] * hidden_size for _ in range(n_features)]
         gb1_ = [0.0] * hidden_size
 
-        for idx in batch_idx:
-            x_row = X[idx].tolist()
-            target = y[idx]
-            hidden, h_act, logits, probs = forward(
-                x_row, W1_mom, b1_mom, W2_mom, b2_mom
-            )
-            batch_loss += cross_entropy_loss(probs, target)
-
-            d_logits = [probs[k] - target[k] for k in range(n_classes)]
-            for j in range(hidden_size):
-                for k in range(n_classes):
-                    gW2[j][k] += h_act[j] * d_logits[k] / len(batch_idx)
-            for k in range(n_classes):
-                gb2[k] += d_logits[k] / len(batch_idx)
-
-            d_hidden = [
-                sum(d_logits[k] * W2_mom[j][k] for k in range(n_classes))
-                * (1.0 if hidden[j] > 0 else 0.0)
-                for j in range(hidden_size)
-            ]
-            for i_feat in range(n_features):
-                for j in range(hidden_size):
-                    gW1[i_feat][j] += x_row[i_feat] * d_hidden[j] / len(batch_idx)
-            for j in range(hidden_size):
-                gb1_[j] += d_hidden[j] / len(batch_idx)
+        # TODO: Accumulate gradients gW2, gb2, gW1, gb1_ over batch_idx (same pattern as SGD).
+        # Forward pass → CE loss → d_logits → gW2/gb2 update → d_hidden → gW1/gb1_ update.
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
         # TODO: Momentum update — v = momentum*v + grad; param -= lr*v — for all four tensors.
         for j in range(hidden_size):
@@ -268,35 +244,17 @@ for epoch in range(epochs):
         gW1_batch = [[0.0] * hidden_size for _ in range(n_features)]
         gb1_batch = [0.0] * hidden_size
 
-        for idx in batch_idx:
-            x_row = X[idx].tolist()
-            target = y[idx]
-            hidden, h_act, logits, probs = forward(
-                x_row, W1_adam, b1_adam, W2_adam, b2_adam
-            )
-            batch_loss += cross_entropy_loss(probs, target)
-
-            d_logits = [probs[k] - target[k] for k in range(n_classes)]
-            for j in range(hidden_size):
-                for k in range(n_classes):
-                    gW2[j][k] += h_act[j] * d_logits[k] / len(batch_idx)
-            for k in range(n_classes):
-                gb2[k] += d_logits[k] / len(batch_idx)
-
-            d_hidden = [
-                sum(d_logits[k] * W2_adam[j][k] for k in range(n_classes))
-                * (1.0 if hidden[j] > 0 else 0.0)
-                for j in range(hidden_size)
-            ]
-            for i_feat in range(n_features):
-                for j in range(hidden_size):
-                    gW1_batch[i_feat][j] += x_row[i_feat] * d_hidden[j] / len(batch_idx)
-            for j in range(hidden_size):
-                gb1_batch[j] += d_hidden[j] / len(batch_idx)
+        # TODO: Accumulate gradients gW2, gb2, gW1_batch, gb1_batch over batch_idx.
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
         # TODO: Adam update for W2, b2, W1, b1.
-        # For each param p with grad g: update m and v moments, apply bias correction,
-        # then p -= adam_lr * (m/bc1) / (sqrt(v/bc2) + eps). bc1=1-beta1^t, bc2=1-beta2^t.
+        # For each param p with grad g: m = b1*m+(1-b1)*g; v = b2*v+(1-b2)*g^2;
+        # p -= adam_lr*(m/bc1)/(sqrt(v/bc2)+eps). bc1=1-beta1^t, bc2=1-beta2^t.
         bc1 = 1 - beta1**t_step
         bc2 = 1 - beta2**t_step
         for j in range(hidden_size):

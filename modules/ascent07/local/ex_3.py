@@ -53,7 +53,7 @@ def sigmoid_deriv(z: float) -> float:
 
 def relu(z: float) -> float:
     """ReLU: max(0, z)."""
-    # TODO: Return max(0, z).
+    # TODO: Return max(0.0, z).
     ____
 
 
@@ -153,9 +153,8 @@ class SimpleNetwork:
         self.activation = activation
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
-        # TODO: Compute scale1, scale2 using He init for "relu", Xavier otherwise.
-        # He: scale = sqrt(2/fan_in); Xavier: scale = sqrt(2/(fan_in+fan_out)).
-        # Initialise W1, b1, W2, b2, grad_magnitudes.
+        # TODO: He init (scale=sqrt(2/fan_in)) for "relu"; Xavier (scale=sqrt(2/(fan_in+fan_out))) otherwise.
+        # Initialise W1 (input_dim×hidden_dim), b1, W2 (hidden_dim×output_dim), b2, grad_magnitudes=[].
         ____
         ____
         ____
@@ -180,9 +179,8 @@ class SimpleNetwork:
             return gelu_deriv(z)
 
     def forward(self, x: list[float]) -> tuple:
-        # TODO: Hidden layer: z1 per neuron (linear transform), h1 = activate(z1).
-        # Output layer: z2 per class (linear transform), apply stable softmax.
-        # Return (z1, h1, z2, out).
+        # TODO: Hidden: z1[j] = sum(x[i]*W1[i][j])+b1[j]; h1 = [activate(z) for z in z1].
+        # Output: z2[k] = sum(h1[j]*W2[j][k])+b2[k]; stable softmax. Return (z1, h1, z2, out).
         ____
         ____
         ____
@@ -216,8 +214,8 @@ for act_name in ["sigmoid", "relu", "gelu"]:
             y = Y[idx]
             z1, h1, z2, out = net.forward(x)
 
-            # TODO: CE loss, output gradient d_out, backprop through W2/b2,
-            # hidden gradient d_h1 (using net.activate_deriv), update W1/b1.
+            # TODO: CE loss; d_out = out[k]-y[k]; update W2/b2 with lr*d_out[k]*h1[j].
+            # d_h1[j] = sum(d_out[k]*W2[j][k])*activate_deriv(z1[j]); update W1/b1.
             ____
             ____
             ____
@@ -249,26 +247,15 @@ print(f"\nConvergence comparison plotted.")
 # TASK 5: Analyze gradient magnitudes per layer
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== Gradient Analysis ===")
-print(f"Sigmoid: max gradient = 0.25 at z=0")
-print(f"  -> In a 10-layer network: 0.25^10 = {0.25**10:.2e} (vanishing!)")
-print(f"ReLU: gradient = 1 for z>0, 0 for z<0")
-print(f"  -> No vanishing, but 'dead neurons' when z<0 permanently")
-print(f"GELU: smooth gradient, non-zero for z<0")
-print(f"  -> Best of both worlds: no vanishing, no dead neurons")
+print(
+    f"Sigmoid 0.25^10 = {0.25**10:.2e}; ReLU: no vanishing, dead neurons; GELU: smooth."
+)
 
+# TODO: For each activation, sample 1000 z~N(0,1), compute mean gradient and zero fraction.
 for act_name in ["sigmoid", "relu", "gelu"]:
-    grads = []
-    for _ in range(1000):
-        z = random.gauss(0, 1)
-        if act_name == "sigmoid":
-            grads.append(sigmoid_deriv(z))
-        elif act_name == "relu":
-            grads.append(relu_deriv(z))
-        else:
-            grads.append(gelu_deriv(z))
-    mean_grad = sum(grads) / len(grads)
-    zero_grads = sum(1 for g in grads if abs(g) < 1e-6) / len(grads)
-    print(f"\n  {act_name}: mean|grad|={mean_grad:.4f}, zero_fraction={zero_grads:.1%}")
+    ____
+    ____
+    ____
+    ____
 
 print("\n✓ Exercise 3 complete — activation functions compared across architectures")

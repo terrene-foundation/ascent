@@ -41,10 +41,7 @@ df = loader.load("ascent07", "hdb_resale_sample.parquet")
 explorer = DataExplorer()
 summary = asyncio.run(explorer.profile(df))
 
-print("=== HDB Resale Data ===")
 print(f"Shape: {df.shape}")
-print(f"Columns: {df.columns}")
-print(f"\nSample:")
 print(df.head(5))
 
 x_raw = df["floor_area_sqm"].to_list()
@@ -61,9 +58,7 @@ ____
 ____
 n = len(x_norm)
 
-print(f"\nFeature: floor_area_sqm (mean={x_mean:.1f}, std={x_std:.1f})")
-print(f"Target:  resale_price   (mean={y_mean:.0f}, std={y_std:.0f})")
-print(f"Samples: {n}")
+print(f"Feature: floor_area_sqm (mean={x_mean:.1f}, std={x_std:.1f}), Samples: {n}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -76,13 +71,11 @@ b = 0.0
 
 def forward(x_i: float, w: float, b: float) -> float:
     """Single neuron forward pass: y = wx + b."""
-    # TODO: Return the linear combination w*x_i + b.
+    # TODO: Return w * x_i + b.
     ____
 
 
 y_hat_test = forward(x_norm[0], w, b)
-print(f"\n=== Forward Pass Test ===")
-print(f"Input x={x_norm[0]:.4f}, w={w}, b={b}")
 print(f"Prediction: {y_hat_test:.4f} (expected ~0 with zero weights)")
 
 
@@ -99,9 +92,7 @@ def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
 
 predictions = [forward(xi, w, b) for xi in x_norm]
 initial_loss = mse_loss(y_norm, predictions)
-print(f"\n=== MSE Loss ===")
 print(f"Initial loss (w=0, b=0): {initial_loss:.4f}")
-print(f"This equals variance of y since predictions are all 0")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -112,31 +103,20 @@ print(f"This equals variance of y since predictions are all 0")
 
 learning_rate = 0.1
 epochs = 50
-history = {"epoch": [], "loss": [], "w": [], "b": []}
+history: dict[str, list] = {"epoch": [], "loss": [], "w": [], "b": []}
 
 for epoch in range(epochs):
-    # TODO: One gradient-descent step.
-    # Forward pass → loss → gradients dw, db → update w, b.
-    # dw = (2/n)*sum((y_pred-y_true)*x_norm);  db = (2/n)*sum(y_pred-y_true)
+    # TODO: Forward pass → mse_loss → gradients dw/db → update w/b → append to history.
+    ____
+    ____
     ____
     ____
     ____
     ____
     ____
 
-    history["epoch"].append(epoch)
-    history["loss"].append(loss)
-    history["w"].append(w)
-    history["b"].append(b)
-
-    if epoch % 10 == 0:
-        print(f"Epoch {epoch:3d}: loss={loss:.6f}, w={w:.4f}, b={b:.4f}")
-
-print(f"\nFinal: w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
-
-viz = ModelVisualizer()
-fig = viz.training_history({"loss": history["loss"]})
-print("Training curve plotted.")
+print(f"Final: w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
+ModelVisualizer().training_history({"loss": history["loss"]})
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -146,20 +126,17 @@ print("Training curve plotted.")
 # OLS closed-form: w = cov(x,y)/var(x),  b = mean(y) - w*mean(x)
 norm_df = pl.DataFrame({"x": x_norm, "y": y_norm})
 
-# TODO: Compute cov_xy and var_x via polars, derive w_ols and b_ols,
-# compute OLS predictions and ols_loss, then compare vs gradient descent.
+# TODO: Compute cov_xy via polars select; var_x via pl.col("x").var().
+# Derive w_ols = cov_xy/var_x and b_ols. Compute ols_loss and print comparison.
 ____
 ____
 ____
 ____
 ____
 
-print(f"\n=== Comparison: Gradient Descent vs OLS ===")
 print(f"GD:  w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
 print(f"OLS: w={w_ols:.4f}, b={b_ols:.4f}, loss={ols_loss:.6f}")
 print(f"Difference in w: {abs(w - w_ols):.6f}")
 print(f"Difference in b: {abs(b - b_ols):.6f}")
-print(f"\nKey insight: gradient descent converges to the OLS solution!")
-print(f"But GD scales to millions of parameters — OLS does not.")
 
 print("\n✓ Exercise 1 complete — linear regression as a single-neuron network")

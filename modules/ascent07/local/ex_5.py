@@ -81,12 +81,8 @@ def init_params(dims: list[int]) -> tuple[list, list]:
 
 weights, biases = init_params(dims)
 
-print(f"\n=== Network Architecture ===")
-for i, (d_in, d_out) in enumerate(zip(dims[:-1], dims[1:])):
-    act = "softmax" if i == len(dims) - 2 else "sigmoid"
-    print(f"  Layer {i+1}: {d_in} -> {d_out} ({act})")
 total_params = sum(dims[i] * dims[i + 1] + dims[i + 1] for i in range(len(dims) - 1))
-print(f"  Total parameters: {total_params}")
+print(f"Architecture: {dims}, total parameters: {total_params}")
 
 
 def forward(x: list[float], weights: list, biases: list) -> dict:
@@ -94,7 +90,6 @@ def forward(x: list[float], weights: list, biases: list) -> dict:
     # TODO: Build cache = {"activations": [x], "pre_activations": []}.
     # Each layer: z = linear transform (sum over inputs + bias); store in pre_activations.
     # Apply sigmoid for hidden layers, softmax for output. Append to activations.
-    # Return cache.
     ____
     ____
     ____
@@ -129,9 +124,9 @@ def backward(cache: dict, y_true: list[float], weights: list) -> tuple[list, lis
     """
     # TODO: Implement full backprop.
     # Output delta = activations[-1][k] - y_true[k] (softmax+CE simplification).
-    # Iterate layers in reverse: compute dW (outer product a_prev ⊗ delta), db = delta.
-    # Propagate delta: for each neuron j, sum W[j][k]*delta[k] over k, multiply by sigmoid'(z).
-    # Insert dW, db at front of lists so Layer 0 is first. Return (dW_list, db_list).
+    # Iterate layers in reverse: dW = outer product a_prev ⊗ delta; db = delta.
+    # Propagate delta: for j, sum W[j][k]*delta[k] over k, multiply by sigmoid'(z).
+    # Insert dW, db at front (layer 0 first). Return (dW_list, db_list).
     ____
     ____
     ____
@@ -256,7 +251,7 @@ def forward_relu(x: list[float], weights: list, biases: list) -> dict:
 
 
 def backward_relu(cache: dict, y_true: list[float], weights: list) -> tuple[list, list]:
-    """Backprop with ReLU derivative (1 if z>0 else 0, no sigmoid squashing)."""
+    """Backprop with ReLU derivative (1 if z>0 else 0)."""
     # TODO: Same structure as backward() but delta propagation uses relu_deriv = 1 if z>0 else 0.
     ____
     ____
@@ -274,7 +269,7 @@ def backward_relu(cache: dict, y_true: list[float], weights: list) -> tuple[list
 
 def he_init_params(dims: list[int]) -> tuple[list, list]:
     """He initialization: std = sqrt(2/fan_in) per layer."""
-    # TODO: For each layer pair, std = sqrt(2/dims[i]); generate W and zero b.
+    # TODO: For each layer pair, std = sqrt(2/dims[i]); generate W (gauss) and zero b.
     ____
     ____
     ____

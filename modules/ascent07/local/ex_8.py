@@ -66,17 +66,16 @@ print(f"          Sandal, Shirt, Sneaker, Bag, Ankle boot)")
 # TASK 2: Train CNN via TrainingPipeline
 # ══════════════════════════════════════════════════════════════════════
 
-# Note: using nearest-centroid classifier to demonstrate the end-to-end pipeline flow.
 from collections import Counter
 
 print(f"\n=== Training (Nearest-Centroid Classifier) ===")
 start_time = time.time()
 
 # TODO: Train nearest-centroid classifier on train_data.
-# 1. Accumulate per-class pixel sums and counts.
+# 1. Accumulate per-class pixel sums (class_sums) and counts (class_counts).
 # 2. Compute centroids = {label: [mean pixel values]}.
-# 3. Evaluate on test_data: for each sample find nearest centroid (min L2 distance).
-# 4. Compute test_accuracy = correct / len(test_labels). Assign to test_labels, pred_labels.
+# 3. Evaluate on test_data: for each sample find nearest centroid (min L2 squared distance).
+# 4. Compute test_accuracy = correct / len(test_labels).
 ____
 ____
 ____
@@ -106,17 +105,13 @@ print(f"Model trained and evaluated.")
 
 
 async def register_model():
-    # TODO: Register trained model in ModelRegistry.
-    # conn = ConnectionManager("sqlite:///capstone_models.db"); await conn.initialize()
-    # registry = ModelRegistry(conn)
+    # TODO: conn = ConnectionManager("sqlite:///capstone_models.db"); await conn.initialize().
+    # registry = ModelRegistry(conn).
     # version = await registry.register_model(name="fashion_mnist_cnn",
-    #     artifact=pickle.dumps(centroids),
-    #     metrics=[MetricSpec("test_accuracy", test_accuracy),
-    #              MetricSpec("train_time_seconds", train_time),
-    #              MetricSpec("parameters", len(centroids)*len(pixel_cols))])
+    #   artifact=pickle.dumps(centroids), metrics=[MetricSpec(...) for each metric]).
     # await registry.promote_model(name="fashion_mnist_cnn",
-    #     version=version.version, target_stage="production")
-    # Print summary; return (registry, version).
+    #   version=version.version, target_stage="production").
+    # Print registered name/version/metrics; return (registry, version).
     ____
     ____
     ____
@@ -162,24 +157,11 @@ bridge, onnx_path = asyncio.run(export_onnx())
 # TASK 5: Deploy via InferenceServer
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== InferenceServer Deployment ===")
 print(f"InferenceServer(model_path=..., port=8090) serves ONNX models over HTTP.")
-print(f"API: server.start(), server.predict(input), server.stop()")
 
-class_names = [
-    "T-shirt",
-    "Trouser",
-    "Pullover",
-    "Dress",
-    "Coat",
-    "Sandal",
-    "Shirt",
-    "Sneaker",
-    "Bag",
-    "Ankle boot",
-]
-
-# TODO: For each of the first 3 test samples, find nearest centroid and print true vs predicted.
+# TODO: Define class_names list (10 Fashion-MNIST labels in order).
+# Then for each of the first 3 test samples, find nearest centroid and print true vs predicted.
+____
 for i in range(3):
     ____
     ____
@@ -192,7 +174,7 @@ for i in range(3):
 
 print(f"\n=== Inference Speed Comparison ===")
 
-# TODO: Benchmark centroid inference. Extract n_test=100 samples, time the nearest-centroid loop.
+# TODO: Benchmark centroid inference. Extract n_test=100 samples, time nearest-centroid loop.
 n_test = min(100, test_data.height)
 ____
 ____
@@ -205,18 +187,5 @@ print(
     f"({original_time/n_test*1000:.1f}ms/prediction)"
 )
 print(f"ONNX model: typically 2-5x faster due to graph optimizations")
-print(f"\nONNX advantages:")
-print(f"  - Graph-level optimizations (operator fusion, constant folding)")
-print(f"  - Platform-native execution (CPU vectorization, GPU kernels)")
-print(f"  - No Python overhead at inference time")
-print(f"  - Single file deployment (model + weights in one .onnx)")
-
-print(f"\n=== Full Pipeline Summary ===")
-print(f"1. Data: {n_samples} Fashion-MNIST images → normalized")
-print(f"2. Training: Nearest-centroid classifier (demo; CNN in production)")
-print(f"3. Registry: ModelRegistry (versioned, promoted to production)")
-print(f"4. Export: OnnxBridge (validated, portable)")
-print(f"5. Deploy: InferenceServer (HTTP endpoint, batch support)")
-print(f"This is the Kailash DL lifecycle — from pixels to production.")
 
 print("\n✓ Exercise 8 complete — end-to-end DL pipeline with Kailash")

@@ -137,28 +137,21 @@ class SimpleCNN:
     def __init__(self, n_classes: int = 10):
         random.seed(42)
         self.n_classes = n_classes
-        self.conv1_filters = [
-            [[random.gauss(0, 0.3) for _ in range(3)] for _ in range(3)]
-            for _ in range(4)
-        ]
-        self.conv1_bias = [0.0] * 4
-        self.conv2_filters = [
-            [[random.gauss(0, 0.3) for _ in range(3)] for _ in range(3)]
-            for _ in range(8)
-        ]
-        self.conv2_bias = [0.0] * 8
-        fc_in = 8 * 7 * 7
-        self.fc_w = [
-            [random.gauss(0, 0.01) for _ in range(n_classes)] for _ in range(fc_in)
-        ]
-        self.fc_b = [0.0] * n_classes
+        # TODO: Initialize conv1_filters (4 × 3×3, gauss(0,0.3)), conv1_bias (4 zeros),
+        # conv2_filters (8 × 3×3, gauss(0,0.3)), conv2_bias (8 zeros),
+        # fc_w (8*7*7 × n_classes, gauss(0,0.01)), fc_b (n_classes zeros).
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
     def forward(self, image: list[list[float]]) -> list[float]:
         """Forward pass: conv1→relu→pool → conv2→relu→pool → flatten→fc→softmax."""
         # TODO: Conv1 block — for each of 4 filters: conv2d(padding=1) → relu_2d → max_pool2d.
-        # Conv2 block — for each of 8 filters: same sequence; input = conv1_out[f_idx % 4].
+        # Conv2 block — for each of 8 filters: same; input = conv1_out[f_idx % 4].
         # Flatten conv2_out, compute logits via fc_w/fc_b, apply stable softmax.
-        # Return class probabilities.
         ____
         ____
         ____
@@ -174,13 +167,6 @@ class SimpleCNN:
 
 cnn = SimpleCNN(n_classes=10)
 sample_probs = cnn.forward(sample_img)
-print(f"\n=== CNN Architecture ===")
-print(f"Conv1: 4 filters (3×3), stride=1, padding=1 → 28×28×4")
-print(f"Pool1: 2×2 max → 14×14×4")
-print(f"Conv2: 8 filters (3×3), stride=1, padding=1 → 14×14×8")
-print(f"Pool2: 2×2 max → 7×7×8")
-print(f"Flatten: 7×7×8 = 392")
-print(f"FC: 392 → 10 (softmax)")
 print(f"Sample prediction: class {sample_probs.index(max(sample_probs))}")
 
 
@@ -200,32 +186,22 @@ def dropout(
     ____
 
 
-print(f"\n=== Dropout Regularization ===")
-print(f"Dropout rate: 0.5 (zero out 50% of activations during training)")
-print(f"At test time: no dropout, but activations are already scaled")
-print(f"Why: prevents co-adaptation, forces redundant representations")
+print(
+    f"Dropout rate: 0.5 — zeros 50% of activations; scaled by 1/(1-rate) so test needs no change."
+)
 
 n_train_cnn = int(data.height * 0.8)
 train_cnn = data[:n_train_cnn]
 test_cnn = data[n_train_cnn:]
 
-print(f"Training set: {train_cnn.height}, Test set: {test_cnn.height}")
+# TODO: Forward pass each of the first 20 training images; compute CE loss; track train_losses.
 train_losses = []
-for epoch in range(5):
-    epoch_loss = 0.0
-    for i in range(min(20, train_cnn.height)):
-        row_pixels = train_cnn.select(pixel_cols).row(i)
-        img = to_image([v / 255.0 for v in row_pixels])
-        probs = cnn.forward(img)
-        label = int(train_cnn["label"][i])
-        eps = 1e-8
-        loss = -math.log(probs[label] + eps)
-        epoch_loss += loss
-    avg_loss = epoch_loss / min(20, train_cnn.height)
-    train_losses.append(avg_loss)
-    print(f"  Epoch {epoch}: loss={avg_loss:.4f}")
-print(f"Training complete: {len(train_losses)} epochs")
-print(f"Final loss: {train_losses[-1]:.4f}")
+____
+____
+____
+____
+____
+print(f"Training complete — final loss: {train_losses[-1]:.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -234,16 +210,10 @@ print(f"Final loss: {train_losses[-1]:.4f}")
 
 viz = ModelVisualizer()
 
-print(f"\n=== Filter Visualization ===")
-print(f"Conv1 filters (4 × 3×3):")
+# TODO: For each conv1 filter, compute flat_vals and print min/max.
 for i, filt in enumerate(cnn.conv1_filters):
-    flat_vals = [v for row in filt for v in row]
-    print(f"  Filter {i}: min={min(flat_vals):.2f}, max={max(flat_vals):.2f}")
-
-print(f"\nLearned filters detect: edges, textures, corners, gradients")
-print(
-    f"Deeper layers combine these into higher-level features (sleeves, collars, etc.)"
-)
+    ____
+    ____
 
 
 # ══════════════════════════════════════════════════════════════════════

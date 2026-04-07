@@ -45,10 +45,9 @@ print("=== XOR Truth Table ===")
 for inp, tgt in zip(xor_inputs, xor_targets):
     print(f"  {inp} -> {tgt}")
 
-print("\nWhy XOR fails with a single neuron:")
-print("  Class 0: (0,0) and (1,1) — on the diagonal")
-print("  Class 1: (0,1) and (1,0) — on the anti-diagonal")
-print("  No single line w1*x1 + w2*x2 + b = 0 separates these.")
+print(
+    "No line w1*x1+w2*x2+b=0 separates (0,0),(1,1) from (0,1),(1,0) — XOR is non-linear."
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -69,8 +68,8 @@ def sigmoid_derivative(a: float) -> float:
 
 def init_weight(fan_in: int, fan_out: int) -> list[list[float]]:
     """Xavier/Glorot initialization: uniform(-sqrt(6/(in+out)), sqrt(6/(in+out)))."""
-    # TODO: Compute Xavier limit and return (fan_in × fan_out) weight matrix.
-    # limit = sqrt(6 / (fan_in + fan_out)); entries uniform in [-limit, limit].
+    # TODO: Compute Xavier limit = sqrt(6/(fan_in+fan_out)).
+    # Return (fan_in × fan_out) matrix with entries uniform in [-limit, limit].
     ____
     ____
 
@@ -80,10 +79,7 @@ b1 = [0.0, 0.0]
 W2 = init_weight(2, 1)
 b2 = [0.0]
 
-print(f"\n=== Network Architecture ===")
-print(f"Layer 1: {2} inputs -> {2} hidden (sigmoid)")
-print(f"Layer 2: {2} hidden -> {1} output (sigmoid)")
-print(f"Total parameters: {2*2 + 2 + 2*1 + 1} = 9")
+print(f"Architecture: 2→2(sigmoid)→1(sigmoid), {2*2+2+2*1+1} parameters")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -93,8 +89,8 @@ print(f"Total parameters: {2*2 + 2 + 2*1 + 1} = 9")
 
 def forward_pass(x: list[float]) -> tuple:
     """Forward pass: 2-layer sigmoid network. Returns (h, y_hat)."""
-    # TODO: Hidden layer — for each neuron j compute z=sum(x[i]*W1[i][j])+b1[j], apply sigmoid.
-    # Output — z_out=sum(h[j]*W2[j][0])+b2[0], y_hat=sigmoid(z_out). Return (h, y_hat).
+    # TODO: Hidden layer: for j in range(2), z = sum(x[i]*W1[i][j])+b1[j], h.append(sigmoid(z)).
+    # Output: z_out = sum(h[j]*W2[j][0])+b2[0]; y_hat = sigmoid(z_out). Return (h, y_hat).
     ____
     ____
     ____
@@ -112,13 +108,11 @@ for epoch in range(epochs):
     for x, y in zip(xor_inputs, xor_targets):
         h, y_hat = forward_pass(x)
 
-        # TODO: Compute BCE loss, then backprop and update all weights.
-        # BCE loss: -(y*log(y_hat+eps) + (1-y)*log(1-y_hat+eps))
-        # Output delta: d_out = y_hat - y
-        # dW2[j] = h[j]*d_out; db2 = d_out
-        # Hidden delta: d_hidden[j] = d_out * W2[j][0] * sigmoid_derivative(h[j])
-        # Update W1[i][j] -= lr * x[i] * d_hidden[j]; b1[j] -= lr * d_hidden[j]
-        # Update W2[j][0] -= lr * dW2[j]; b2[0] -= lr * db2
+        # TODO: BCE loss = -(y*log(y_hat+eps)+(1-y)*log(1-y_hat+eps)); accumulate to total_loss.
+        # d_out = y_hat - y; dW2[j] = h[j]*d_out; db2 = d_out.
+        # d_hidden[j] = d_out*W2[j][0]*sigmoid_derivative(h[j]).
+        # Update W1[i][j] -= lr*x[i]*d_hidden[j]; b1[j] -= lr*d_hidden[j].
+        # Update W2[j][0] -= lr*dW2[j]; b2[0] -= lr*db2.
         ____
         ____
         ____
@@ -146,24 +140,15 @@ for x, y in zip(xor_inputs, xor_targets):
 # TASK 4: Visualize decision boundary with ModelVisualizer
 # ══════════════════════════════════════════════════════════════════════
 
-grid_points = []
-for gx in range(0, 101, 5):
-    for gy in range(0, 101, 5):
-        x_val = gx / 100.0
-        y_val = gy / 100.0
-        _, pred = forward_pass([x_val, y_val])
-        grid_points.append({"x1": x_val, "x2": y_val, "prediction": pred})
-
-boundary_df = pl.DataFrame(grid_points)
-viz = ModelVisualizer()
-
-xor_df = pl.DataFrame(
-    {
-        "x1": [x[0] for x in xor_inputs],
-        "x2": [x[1] for x in xor_inputs],
-        "label": xor_targets,
-    }
-)
+# TODO: Generate 21×21 grid over [0,1]×[0,1]; call forward_pass for each point.
+# Build boundary_df = pl.DataFrame(grid_points); create xor_df with x1, x2, label.
+____
+____
+____
+____
+____
+____
+____
 
 print(f"\n=== Decision Boundary ===")
 print(f"Grid points: {boundary_df.height}")
