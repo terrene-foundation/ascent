@@ -136,7 +136,7 @@ def fedavg_dp_train(
         round_models = {}
         for name, data in client_data.items():
             model = GradientBoostingClassifier(
-                n_estimators=20 * round_num,  # Progressive training
+                n_estimators=min(40, 20 * round_num),  # Progressive training, capped
                 max_depth=3,
                 random_state=42 + round_num,
                 subsample=0.8,  # Stochastic for privacy
@@ -293,7 +293,7 @@ print(f"  TASK 3: Adversarial Training + Certified Robustness")
 print(f"{'=' * 70}\n")
 
 # Train a differentiable model for adversarial training
-adv_model = GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42)
+adv_model = GradientBoostingClassifier(n_estimators=30, max_depth=4, random_state=42)
 adv_model.fit(X_train_all, y_train_all)
 
 
@@ -321,16 +321,14 @@ def fgsm_attack(model, X_samples, y_samples, epsilon, delta=1e-5):
 
 
 # Generate adversarial training examples
-n_adv = 2000
+n_adv = 500
 X_adv = fgsm_attack(adv_model, X_train_all[:n_adv], y_train_all[:n_adv], epsilon=0.1)
 
 # Retrain with augmented data
 X_robust = np.vstack([X_train_all, X_adv])
 y_robust = np.concatenate([y_train_all, y_train_all[:n_adv]])
 
-robust_model = GradientBoostingClassifier(
-    n_estimators=100, max_depth=4, random_state=42
-)
+robust_model = GradientBoostingClassifier(n_estimators=30, max_depth=4, random_state=42)
 robust_model.fit(X_robust, y_robust)
 
 robust_acc = accuracy_score(y_test_all, robust_model.predict(X_test_all))
@@ -352,7 +350,7 @@ print(f"  FGSM ASR (eps=0.1): {asr:.4f}")
 
 # Certified robustness via randomised smoothing
 rng_smooth = np.random.default_rng(42)
-n_certify = 100
+n_certify = 20
 n_noise_samples = 200
 sigma = 0.25
 target_radius = 0.1

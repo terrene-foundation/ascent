@@ -576,7 +576,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 incident_model = GradientBoostingClassifier(
-    n_estimators=100, max_depth=4, random_state=42
+    n_estimators=30, max_depth=4, random_state=42
 )
 incident_model.fit(X_train, y_train)
 

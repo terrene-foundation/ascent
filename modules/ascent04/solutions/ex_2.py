@@ -250,7 +250,7 @@ def compute_log_likelihood(
                 np.log(weights[k] + 1e-300) + dist.logpdf(X),
             )
         except Exception:
-            pass
+            log_likelihoods = np.logaddexp(log_likelihoods, np.log(weights[k] + 1e-300))
 
     return log_likelihoods.sum()
 

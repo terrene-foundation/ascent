@@ -320,7 +320,7 @@ print(f"{'=' * 70}\n")
 
 # Set up DriftMonitor
 rng = np.random.default_rng(42)
-reference_data = rng.normal(0, 1, (1000, 10))
+reference_data = rng.normal(0, 1, (200, 10))
 feature_names = [f"feature_{i}" for i in range(10)]
 
 

@@ -94,7 +94,7 @@ for name, idx in client_indices.items():
 
 def train_local_model(X_local: np.ndarray, y_local: np.ndarray) -> np.ndarray:
     """Train a local logistic regression and return weight vector."""
-    model = LogisticRegression(max_iter=200, random_state=42)
+    model = LogisticRegression(max_iter=50, random_state=42)
     model.fit(X_local, y_local)
     # Return flattened weights (coef + intercept)
     return np.concatenate([model.coef_.flatten(), model.intercept_])
@@ -125,7 +125,7 @@ def set_model_weights(model: LogisticRegression, weights: np.ndarray) -> None:
 
 
 # Run FedAvg for multiple rounds
-n_rounds = 5
+n_rounds = 3
 print(f"\n=== FedAvg Training ({n_rounds} rounds) ===")
 
 global_weights = None
@@ -134,7 +134,7 @@ for round_num in range(1, n_rounds + 1):
     for name, (X_c, y_c) in client_data.items():
         if global_weights is not None:
             # Initialize local model with global weights
-            local_model = LogisticRegression(max_iter=200, random_state=42)
+            local_model = LogisticRegression(max_iter=50, random_state=42)
             local_model.fit(X_c, y_c)
             set_model_weights(local_model, global_weights)
             # One more pass of local training
@@ -157,7 +157,7 @@ for round_num in range(1, n_rounds + 1):
     print(f"  Round {round_num}: accuracy={acc:.4f}, AUC={auc:.4f}")
 
 # Compare with centralized model
-centralized = LogisticRegression(max_iter=200, random_state=42)
+centralized = LogisticRegression(max_iter=50, random_state=42)
 centralized.fit(X, y)
 cent_acc = accuracy_score(y, centralized.predict(X))
 cent_auc = roc_auc_score(y, centralized.predict_proba(X)[:, 1])
@@ -223,7 +223,7 @@ def fedavg_dp(
     for round_num in range(1, n_rounds + 1):
         round_updates = []
         for name, (X_c, y_c) in client_data.items():
-            local_model = LogisticRegression(max_iter=200, random_state=42)
+            local_model = LogisticRegression(max_iter=50, random_state=42)
             local_model.fit(X_c, y_c)
             local_w = np.concatenate(
                 [local_model.coef_.flatten(), local_model.intercept_]
@@ -281,10 +281,10 @@ print(f"\n=== Privacy-Utility Trade-off ===")
 print(f"{'Sigma':<10} {'Epsilon':<12} {'Accuracy':<12} {'AUC':<12}")
 print("-" * 46)
 
-sigma_values = [0.1, 0.5, 1.0, 2.0, 5.0]
+sigma_values = [0.5, 1.0, 2.0]
 results = []
 for sigma in sigma_values:
-    w, eps = fedavg_dp(client_data, n_rounds=5, clip_norm=1.0, sigma=sigma)
+    w, eps = fedavg_dp(client_data, n_rounds=3, clip_norm=1.0, sigma=sigma)
     m = LogisticRegression()
     set_model_weights(m, w)
     a = accuracy_score(y, m.predict(X))

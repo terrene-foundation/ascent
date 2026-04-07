@@ -112,12 +112,12 @@ moderate_drift = result.test_data.select(feature_cols).with_columns(
     (
         (pl.col("annual_income") * 0.8).alias("annual_income")
         if "annual_income" in feature_cols
-        else pl.lit(0).alias("_placeholder_b")
+        else pl.lit(0).alias("_fallback_income")
     ),
     (
         (pl.col("total_debt") * 1.15).alias("total_debt")
         if "total_debt" in feature_cols
-        else pl.lit(0).alias("_placeholder_b2")
+        else pl.lit(0).alias("_fallback_debt")
     ),
 )
 
