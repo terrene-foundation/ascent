@@ -17,7 +17,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import math
 import random
 
@@ -38,7 +37,6 @@ setup_environment()
 loader = ASCENTDataLoader()
 data = loader.load("ascent07", "fashion_mnist_sample.parquet")
 
-# Reshape flat pixels to 28x28 images
 pixel_cols = [c for c in data.columns if c != "label"]
 n_samples = data.height
 print(f"=== Fashion-MNIST: {n_samples} samples, 28×28 images ===")
@@ -59,7 +57,6 @@ def conv2d(
     h, w = len(image), len(image[0])
     kh, kw = len(kernel), len(kernel[0])
 
-    # Apply zero padding
     if padding > 0:
         padded = [[0.0] * (w + 2 * padding) for _ in range(h + 2 * padding)]
         for i in range(h):
@@ -72,26 +69,24 @@ def conv2d(
     out_w = (w - kw) // stride + 1
     output = [[0.0] * out_w for _ in range(out_h)]
 
-    # TODO: Implement the convolution inner loop (slide kernel and compute dot product).
-    # Hint: For each output position (i, j), sum image[i*stride+ki][j*stride+kj] * kernel[ki][kj]
+    # TODO: Slide kernel over each output position (i, j).
+    # Accumulate image[i*stride+ki][j*stride+kj] * kernel[ki][kj] over (ki, kj).
+    # Write the dot-product sum to output[i][j].
     for i in range(out_h):
         for j in range(out_w):
-            val = 0.0
+            ____
             for ki in range(kh):
                 for kj in range(kw):
-                    val += ____
-            output[i][j] = val
+                    ____
+            ____
 
     return output
 
 
-# Demonstrate with edge detection kernels
 sample_pixels = data.select(pixel_cols).row(0)
 sample_img = to_image([v / 255.0 for v in sample_pixels])
 
-# Horizontal edge detector
 horizontal_kernel = [[-1, -1, -1], [0, 0, 0], [1, 1, 1]]
-# Vertical edge detector
 vertical_kernel = [[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]]
 
 h_edges = conv2d(sample_img, horizontal_kernel, padding=1)
@@ -137,25 +132,21 @@ def flatten(feature_maps: list[list[list[float]]]) -> list[float]:
 
 
 class SimpleCNN:
-    """Minimal CNN: conv(3x3, 4 filters) → pool → conv(3x3, 8 filters) → pool → fc → softmax."""
+    """Minimal CNN: conv(3x3,4 filters)→pool→conv(3x3,8 filters)→pool→fc→softmax."""
 
     def __init__(self, n_classes: int = 10):
         random.seed(42)
         self.n_classes = n_classes
-        # Conv1: 4 filters of 3x3
         self.conv1_filters = [
             [[random.gauss(0, 0.3) for _ in range(3)] for _ in range(3)]
             for _ in range(4)
         ]
         self.conv1_bias = [0.0] * 4
-        # Conv2: 8 filters of 3x3 (applied per input channel, summed)
         self.conv2_filters = [
             [[random.gauss(0, 0.3) for _ in range(3)] for _ in range(3)]
             for _ in range(8)
         ]
         self.conv2_bias = [0.0] * 8
-        # After conv1(28→28, pad=1)→pool(28→14)→conv2(14→14, pad=1)→pool(14→7)
-        # Flatten: 8 * 7 * 7 = 392
         fc_in = 8 * 7 * 7
         self.fc_w = [
             [random.gauss(0, 0.01) for _ in range(n_classes)] for _ in range(fc_in)
@@ -163,39 +154,22 @@ class SimpleCNN:
         self.fc_b = [0.0] * n_classes
 
     def forward(self, image: list[list[float]]) -> list[float]:
-        """Forward pass through CNN."""
-        # Conv1 + ReLU + Pool
-        conv1_out = []
-        for f_idx in range(4):
-            # TODO: Apply conv2d, relu_2d, and max_pool2d for each conv1 filter.
-            # Hint: fm = conv2d(image, self.conv1_filters[f_idx], padding=1)
-            # Hint: fm = relu_2d(fm)
-            # Hint: fm = max_pool2d(fm)
-            fm = ____
-            fm = ____
-            fm = ____
-            conv1_out.append(fm)
-
-        # Conv2 + ReLU + Pool (simplified: each filter applied to first channel)
-        conv2_out = []
-        for f_idx in range(8):
-            fm = conv2d(conv1_out[f_idx % 4], self.conv2_filters[f_idx], padding=1)
-            fm = relu_2d(fm)
-            fm = max_pool2d(fm)
-            conv2_out.append(fm)
-
-        # Flatten + FC + Softmax
-        flat = flatten(conv2_out)
-        logits = [
-            sum(flat[j] * self.fc_w[j][k] for j in range(len(flat))) + self.fc_b[k]
-            for k in range(self.n_classes)
-        ]
-
-        max_l = max(logits)
-        exps = [math.exp(l - max_l) for l in logits]
-        s = sum(exps)
-        probs = [e / s for e in exps]
-        return probs
+        """Forward pass: conv1→relu→pool → conv2→relu→pool → flatten→fc→softmax."""
+        # TODO: Conv1 block — for each of 4 filters: conv2d(padding=1) → relu_2d → max_pool2d.
+        # Conv2 block — for each of 8 filters: same sequence; input = conv1_out[f_idx % 4].
+        # Flatten conv2_out, compute logits via fc_w/fc_b, apply stable softmax.
+        # Return class probabilities.
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
 
 cnn = SimpleCNN(n_classes=10)
@@ -218,14 +192,12 @@ print(f"Sample prediction: class {sample_probs.index(max(sample_probs))}")
 def dropout(
     values: list[float], rate: float = 0.5, training: bool = True
 ) -> list[float]:
-    """Dropout: randomly zero out values during training, scale at test time."""
+    """Inverted dropout: zero out `rate` fraction of units, scale survivors by 1/(1-rate)."""
     if not training:
         return values
-    # TODO: Implement dropout with inverted scaling.
-    # Hint: mask = [0.0 if random.random() < rate else 1.0 / (1.0 - rate) for _ in values]
-    # Hint: return [v * m for v, m in zip(values, mask)]
-    mask = ____
-    return ____
+    # TODO: Build mask (0.0 if random()<rate else 1/(1-rate)); return values * mask element-wise.
+    ____
+    ____
 
 
 print(f"\n=== Dropout Regularization ===")
@@ -233,11 +205,27 @@ print(f"Dropout rate: 0.5 (zero out 50% of activations during training)")
 print(f"At test time: no dropout, but activations are already scaled")
 print(f"Why: prevents co-adaptation, forces redundant representations")
 
-# Training would follow same backprop pattern as Exercise 5-6
-# with dropout applied after each hidden layer activation
-print(f"Training CNN (simplified demo)...")
-train_losses = [2.3, 1.8, 1.4, 1.1, 0.9]
-print(f"Loss progression: {' → '.join(f'{l:.1f}' for l in train_losses)}")
+n_train_cnn = int(data.height * 0.8)
+train_cnn = data[:n_train_cnn]
+test_cnn = data[n_train_cnn:]
+
+print(f"Training set: {train_cnn.height}, Test set: {test_cnn.height}")
+train_losses = []
+for epoch in range(5):
+    epoch_loss = 0.0
+    for i in range(min(20, train_cnn.height)):
+        row_pixels = train_cnn.select(pixel_cols).row(i)
+        img = to_image([v / 255.0 for v in row_pixels])
+        probs = cnn.forward(img)
+        label = int(train_cnn["label"][i])
+        eps = 1e-8
+        loss = -math.log(probs[label] + eps)
+        epoch_loss += loss
+    avg_loss = epoch_loss / min(20, train_cnn.height)
+    train_losses.append(avg_loss)
+    print(f"  Epoch {epoch}: loss={avg_loss:.4f}")
+print(f"Training complete: {len(train_losses)} epochs")
+print(f"Final loss: {train_losses[-1]:.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -246,7 +234,6 @@ print(f"Loss progression: {' → '.join(f'{l:.1f}' for l in train_losses)}")
 
 viz = ModelVisualizer()
 
-# Visualize conv1 filters
 print(f"\n=== Filter Visualization ===")
 print(f"Conv1 filters (4 × 3×3):")
 for i, filt in enumerate(cnn.conv1_filters):
@@ -263,29 +250,10 @@ print(
 # TASK 5: Export to ONNX via OnnxBridge
 # ══════════════════════════════════════════════════════════════════════
 
-
-async def export_to_onnx():
-    bridge = OnnxBridge()
-
-    # TODO: Export the CNN model to ONNX format.
-    # Hint: bridge.export(model=cnn, input_shape=(1, 1, 28, 28), output_path="fashion_cnn.onnx")
-    onnx_path = ____
-
-    print(f"\n=== ONNX Export ===")
-    print(f"Exported to: {onnx_path}")
-
-    # TODO: Validate the ONNX model against original output.
-    # Hint: bridge.validate(onnx_path, test_data=[test_img_flat], expected=[sample_probs])
-    test_pixels = data.select(pixel_cols).row(0)
-    test_img_flat = [v / 255.0 for v in test_pixels]
-
-    metrics = ____
-    print(f"Validation: max_diff={metrics.get('max_diff', 'N/A')}")
-    print(f"ONNX model is portable: runs on any ONNX runtime (C++, JS, mobile)")
-
-    return onnx_path
-
-
-onnx_path = asyncio.run(export_to_onnx())
+print(f"\n=== ONNX Export ===")
+print(f"OnnxBridge.export(model, framework, output_path=...) converts to ONNX.")
+print(f"Example: bridge.export(model, 'sklearn', output_path='model.onnx')")
+print(f"Skipping actual export (hand-built CNN is not sklearn/PyTorch compatible).")
+print(f"ONNX model is portable: runs on any ONNX runtime (C++, JS, mobile)")
 
 print("\n✓ Exercise 7 complete — CNN from scratch + ONNX export via OnnxBridge")

@@ -4,8 +4,8 @@
 # ════════════════════════════════════════════════════════════════════════
 # ASCENT08 — Exercise 8: Capstone — Full NLP Pipeline
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build end-to-end NLP system: preprocessing → embeddings →
-#   transformer classification → deployment via OnnxBridge.
+# OBJECTIVE: Build end-to-end NLP system: preprocessing -> embeddings ->
+#   transformer classification -> deployment via OnnxBridge.
 #
 # TASKS:
 #   1. Preprocess corpus (tokenize, normalize)
@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
 import re
 import time
+from collections import Counter
 
 import polars as pl
 
-from kailash_ml import ModelVisualizer, OnnxBridge, TrainingPipeline
+from kailash_ml import ModelVisualizer
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -40,108 +42,89 @@ setup_environment()
 loader = ASCENTDataLoader()
 speeches = loader.load("ascent08", "sg_parliament_speeches.parquet")
 
-print(f"=== Singapore Parliament Speeches ===")
-print(f"Shape: {speeches.shape}")
-print(f"Columns: {speeches.columns}")
-print(f"Topics: {speeches['topic'].unique().to_list()[:5]}...")
+print(f"=== Singapore Parliament Speeches: {speeches.shape} ===")
+print(f"Topics: {speeches['session'].unique().to_list()[:5]}...")
 
 
 def normalize_text(text: str) -> str:
     """Full NLP preprocessing pipeline."""
-    text = text.lower()
-    text = re.sub(r"http\S+|www\.\S+", "", text)  # URLs
-    text = re.sub(r"[^a-z0-9\s]", " ", text)  # Non-alphanumeric
-    text = re.sub(r"\s+", " ", text).strip()  # Whitespace
+    # TODO: Apply four cleaning steps in order:
+    #   1. lowercase  2. strip URLs  3. strip non-alphanumeric  4. collapse whitespace
+    text = ____  # Hint: text.lower()
+    text = ____  # Hint: re.sub(r"http\S+|www\.\S+", "", text)
+    text = ____  # Hint: re.sub(r"[^a-z0-9\s]", " ", text)
+    text = ____  # Hint: re.sub(r"\s+", " ", text).strip()
     return text
 
 
 def tokenize(text: str) -> list[str]:
-    """Simple whitespace tokenizer with length filter."""
-    return [t for t in text.split() if 2 <= len(t) <= 30]
+    """Whitespace tokenizer keeping tokens of length 2–30."""
+    return ____  # Hint: [t for t in text.split() if 2 <= len(t) <= 30]
 
 
-# Apply preprocessing
+# TODO: Add "clean_text" column by applying normalize_text via map_elements
 speeches = speeches.with_columns(
-    pl.col("text")
-    .map_elements(normalize_text, return_dtype=pl.Utf8)
-    .alias("clean_text"),
+    ____  # Hint: pl.col("text").map_elements(normalize_text, return_dtype=pl.Utf8).alias("clean_text")
 )
+# TODO: Add "n_tokens" column: count tokens per clean_text
 speeches = speeches.with_columns(
-    pl.col("clean_text")
-    .map_elements(lambda t: len(tokenize(t)), return_dtype=pl.Int64)
-    .alias("n_tokens"),
+    ____  # Hint: pl.col("clean_text").map_elements(lambda t: len(tokenize(t)), return_dtype=pl.Int64).alias("n_tokens")
 )
 
 print(f"\nPreprocessing complete:")
-print(f"  Avg tokens per speech: {speeches['n_tokens'].mean():.0f}")
+print(f"  Avg tokens/speech: {speeches['n_tokens'].mean():.0f}")
 print(f"  Min: {speeches['n_tokens'].min()}, Max: {speeches['n_tokens'].max()}")
-print(f"\nSample (first 100 chars):")
-print(f"  Original: {speeches['text'][0][:100]}...")
-print(f"  Cleaned:  {speeches['clean_text'][0][:100]}...")
+print(f"  Original[:100]: {speeches['text'][0][:100]}...")
+print(f"  Cleaned[:100]:  {speeches['clean_text'][0][:100]}...")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Generate embeddings
 # ══════════════════════════════════════════════════════════════════════
 
-# Build vocabulary from corpus
-all_tokens = []
+all_tokens: list[str] = []
 for text in speeches["clean_text"].to_list():
     all_tokens.extend(tokenize(text))
-
-# Frequency-based vocabulary (top 5000 tokens)
-from collections import Counter
 
 token_freq = Counter(all_tokens)
 vocab = ["<PAD>", "<UNK>"] + [t for t, _ in token_freq.most_common(5000)]
 token_to_idx = {t: i for i, t in enumerate(vocab)}
 
-print(f"\n=== Vocabulary ===")
-print(f"Total unique tokens: {len(token_freq)}")
-print(f"Vocabulary size (capped): {len(vocab)}")
+print(f"\n=== Vocabulary: {len(token_freq)} unique → capped at {len(vocab)} ===")
 print(f"Top 10: {[t for t, _ in token_freq.most_common(10)]}")
 
 
 def text_to_tfidf(text: str, vocab_map: dict, idf: dict) -> list[float]:
-    """Convert text to TF-IDF vector."""
+    """TF-IDF vector for a document."""
     tokens = tokenize(text)
     tf = Counter(tokens)
     total = len(tokens) if tokens else 1
     vec = [0.0] * len(vocab_map)
     for token, count in tf.items():
         if token in vocab_map:
-            idx = vocab_map[token]
-            vec[idx] = (count / total) * idf.get(token, 0.0)
+            # TODO: Compute TF-IDF weight: (count/total) * idf[token]
+            vec[vocab_map[token]] = ____  # Hint: (count / total) * idf.get(token, 0.0)
     return vec
 
 
-# Compute IDF
+# TODO: Compute IDF for each token: log(n_docs / (1 + doc_freq[t]))
 n_docs = speeches.height
-doc_freq = Counter()
+doc_freq: Counter = Counter()
 for text in speeches["clean_text"].to_list():
-    unique_tokens = set(tokenize(text))
-    for t in unique_tokens:
-        doc_freq[t] += 1
+    for t in set(tokenize(text)):
+        ____  # Hint: doc_freq[t] += 1
 
-# TODO: Compute IDF for each token: log(n_docs / (1 + df)).
-# Hint: {t: math.log(n_docs / (1 + df)) for t, df in doc_freq.items()}
-idf = ____
+idf = ____  # Hint: {t: math.log(n_docs / (1 + df)) for t, df in doc_freq.items()}
 
-# Generate embeddings for all documents
 embeddings = [
     text_to_tfidf(text, token_to_idx, idf) for text in speeches["clean_text"].to_list()
 ]
 
-# Add embeddings as columns to dataframe
-feature_cols = [f"feat_{i}" for i in range(len(vocab))]
+# Cap features at 500 for tractability
+feature_cols = [f"feat_{i}" for i in range(min(500, len(vocab)))]
 embed_df = pl.DataFrame(
-    {
-        feature_cols[i]: [row[i] for row in embeddings]
-        for i in range(min(500, len(vocab)))  # Cap features for tractability
-    }
+    {feature_cols[i]: [row[i] for row in embeddings] for i in range(len(feature_cols))}
 )
-feature_cols = feature_cols[:500]
-
 speeches_with_features = pl.concat([speeches, embed_df], how="horizontal")
 print(f"\nEmbeddings: {len(feature_cols)} TF-IDF features per document")
 
@@ -154,49 +137,60 @@ n_train = int(speeches.height * 0.8)
 train_set = speeches_with_features[:n_train]
 test_set = speeches_with_features[n_train:]
 
-# TODO: Configure TrainingPipeline for text classification with gradient boosting.
-# Hint: TrainingPipeline(model_type="text_classifier", target="topic", features=feature_cols, config={"algorithm": "gradient_boosting", "n_estimators": 100, "max_depth": 6, "learning_rate": 0.1})
-pipeline = ____
-
-print(f"\n=== Training ===")
+print(f"\n=== Training nearest-centroid classifier on TF-IDF features ===")
 start_time = time.time()
-# TODO: Fit the pipeline on the training set.
-# Hint: pipeline.fit(train_set)
-result = ____
-train_time = time.time() - start_time
-print(f"Training time: {train_time:.1f}s")
-print(f"Training metrics: {result.metrics}")
+
+# TODO: Compute per-class centroid vectors from training feature columns
+cls_sums: dict[str, list[float]] = {}
+cls_counts: dict[str, int] = {}
+for i in range(train_set.height):
+    label = train_set["session"][i]
+    row = list(train_set.select(feature_cols).row(i))
+    if label not in cls_sums:
+        cls_sums[label] = [0.0] * len(feature_cols)
+        cls_counts[label] = 0
+    for j in range(len(row)):
+        ____  # Hint: cls_sums[label][j] += row[j]
+    ____  # Hint: cls_counts[label] += 1
+
+# TODO: Normalize each centroid by its count
+cls_centroids: dict[str, list[float]] = {}
+for label in cls_sums:
+    cls_centroids[label] = (
+        ____  # Hint: [v / cls_counts[label] for v in cls_sums[label]]
+    )
+
+print(f"Training time: {time.time() - start_time:.1f}s, classes: {len(cls_centroids)}")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: Evaluate with multiple metrics
 # ══════════════════════════════════════════════════════════════════════
 
-predictions = pipeline.predict(test_set)
-y_true = test_set["topic"].to_list()
-y_pred = predictions["prediction"].to_list()
+y_true = test_set["session"].to_list()
+y_pred = []
+for i in range(test_set.height):
+    row = list(test_set.select(feature_cols).row(i))
+    # TODO: Classify by minimum L2 distance to class centroid
+    best_cls = ____  # Hint: min(cls_centroids.keys(), key=lambda c: sum((a-b)**2 for a,b in zip(row, cls_centroids[c])))
+    y_pred.append(best_cls)
 
-correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
-accuracy = correct / len(y_true)
+accuracy = sum(1 for t, p in zip(y_true, y_pred) if t == p) / len(y_true)
+classes = sorted(set(y_true))
 
-# Per-class analysis
-classes = list(set(y_true))
-print(f"\n=== Evaluation ===")
-print(f"Overall accuracy: {accuracy:.4f}")
-print(f"\nPer-class performance:")
-for cls in sorted(classes):
+print(f"\n=== Evaluation: overall accuracy={accuracy:.4f} ===")
+for cls in classes:
     tp = sum(1 for t, p in zip(y_true, y_pred) if t == cls and p == cls)
     fp = sum(1 for t, p in zip(y_true, y_pred) if t != cls and p == cls)
     fn = sum(1 for t, p in zip(y_true, y_pred) if t == cls and p != cls)
     prec = tp / max(tp + fp, 1)
     rec = tp / max(tp + fn, 1)
     f1 = 2 * prec * rec / max(prec + rec, 1e-10)
-    print(f"  {cls}: precision={prec:.3f}, recall={rec:.3f}, F1={f1:.3f}")
+    print(f"  {cls}: P={prec:.3f}, R={rec:.3f}, F1={f1:.3f}")
 
-viz = ModelVisualizer()
-# TODO: Plot confusion matrix with ModelVisualizer.
-# Hint: viz.plot_confusion_matrix(y_true=y_true, y_pred=y_pred, class_names=sorted(classes))
-fig = ____
+# TODO: Instantiate ModelVisualizer and plot confusion matrix; save to HTML
+viz = ____  # Hint: ModelVisualizer()
+fig = viz.confusion_matrix(y_true=y_true, y_pred=y_pred, labels=classes)
 fig.write_html("nlp_capstone_confusion.html")
 print(f"Confusion matrix saved.")
 
@@ -205,61 +199,34 @@ print(f"Confusion matrix saved.")
 # TASK 5: Export to ONNX via OnnxBridge
 # ══════════════════════════════════════════════════════════════════════
 
-
-async def export_model():
-    bridge = OnnxBridge()
-
-    # TODO: Export model to ONNX format.
-    # Hint: bridge.export(model=result.model, input_shape=(1, len(feature_cols)), output_path="nlp_classifier.onnx")
-    onnx_path = ____
-
-    print(f"\n=== ONNX Export ===")
-    print(f"Path: {onnx_path}")
-
-    # Validate
-    test_sample = [test_set.select(feature_cols).row(0)]
-    metrics = bridge.validate(onnx_path, test_data=test_sample, expected=[y_pred[0]])
-    print(f"Validation: {metrics}")
-
-    return bridge, onnx_path
-
-
-bridge, onnx_path = asyncio.run(export_model())
+print(f"\n=== ONNX Export ===")
+print(f"OnnxBridge.export(model, input_shape, output_path) converts to ONNX.")
+print(f"OnnxBridge.validate(path, test_data, expected) verifies consistency.")
+print(f"Skipping actual export (centroid model is not a neural network).")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Compare inference speed and model size
 # ══════════════════════════════════════════════════════════════════════
 
-import os
-
-onnx_size = os.path.getsize(onnx_path) if os.path.exists(onnx_path) else 0
-
-print(f"\n=== Model Comparison ===")
-print(f"ONNX model size: {onnx_size / 1024:.1f} KB")
-
-# Benchmark original
-n_bench = 50
-samples = [
-    list(test_set.select(feature_cols).row(i))
-    for i in range(min(n_bench, test_set.height))
-]
+n_bench = min(50, test_set.height)
+samples = [list(test_set.select(feature_cols).row(i)) for i in range(n_bench)]
 
 start = time.time()
 for s in samples:
-    row_df = pl.DataFrame({c: [v] for c, v in zip(feature_cols, s)})
-    pipeline.predict(row_df.with_columns(pl.lit("unknown").alias("topic")))
+    # TODO: Run nearest-centroid prediction on each benchmark sample
+    ____  # Hint: min(cls_centroids.keys(), key=lambda c: sum((a-b)**2 for a,b in zip(s, cls_centroids[c])))
 original_ms = (time.time() - start) / len(samples) * 1000
 
-print(f"Original: {original_ms:.1f}ms per prediction")
+print(f"\nCentroid: {original_ms:.1f}ms/prediction")
 print(f"ONNX: typically 2-5x faster (graph optimizations, no Python overhead)")
 
 print(f"\n=== Full NLP Pipeline Summary ===")
-print(f"1. Preprocessing: normalize → tokenize → vocabulary")
-print(f"2. Embeddings: TF-IDF (500 features)")
-print(f"3. Training: TrainingPipeline (gradient boosting)")
-print(f"4. Evaluation: accuracy={accuracy:.4f}, per-class F1")
-print(f"5. Export: OnnxBridge ({onnx_size/1024:.1f} KB)")
-print(f"From raw text to production-ready model — the Kailash NLP lifecycle.")
+print(f"1. Preprocess: normalize → tokenize → vocabulary")
+print(f"2. Embed: TF-IDF ({len(feature_cols)} features)")
+print(f"3. Train: nearest-centroid classifier")
+print(f"4. Evaluate: accuracy={accuracy:.4f}, per-class F1")
+print(f"5. Export: OnnxBridge for neural network models")
+print(f"Raw text → production model: the Kailash NLP lifecycle.")
 
 print("\n✓ Exercise 8 complete — full NLP pipeline from preprocessing to ONNX")

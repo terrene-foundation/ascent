@@ -173,9 +173,14 @@ class TestExerciseQuality:
             pytest.skip("Local exercise missing")
         text = local.read_text(encoding="utf-8")
         todo_count = _count_todos(text)
-        assert todo_count > 0, (
-            f"{module}/local/ex_{num}.py has no TODO markers — "
-            "exercises must have blanks for students to fill"
+        blank_count = len(re.findall(r"____", text))
+        # Either explicit `# TODO:` markers or `____` blanks count as
+        # student-fillable holes. Block-stripped exercises (M9-M10) often
+        # use `# TASK N:` headers above large blank regions instead of
+        # scattering TODO markers, which is equally valid pedagogically.
+        assert todo_count > 0 or blank_count > 0, (
+            f"{module}/local/ex_{num}.py has no TODO markers or ____ blanks — "
+            "exercises must have student-fillable holes"
         )
 
     @pytest.mark.consistency

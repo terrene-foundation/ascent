@@ -8,22 +8,28 @@
 #   with GovernanceEngine, enforce operating envelopes, and verify access.
 #
 # TASKS:
-#   1. Write YAML organization definition (departments, roles, agents)
+#   1. Write YAML organization definition (departments, roles, clearances)
 #   2. Compile with GovernanceEngine
-#   3. Define operating envelopes (budget, tool access, data clearance)
+#   3. Define operating envelopes (clearance levels, knowledge access)
 #   4. Test access control decisions
 #   5. Generate governance report with decision explanations
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
 import os
 import tempfile
 
-from dotenv import load_dotenv
-
-from pact import GovernanceEngine
+from pact import (
+    ConfidentialityLevel,
+    GovernanceEngine,
+    KnowledgeItem,
+    RoleClearance,
+    TrustPostureLevel,
+    VettingStatus,
+    compile_org,
+    load_org_yaml,
+)
 
 from shared.kailash_helpers import setup_environment
 
@@ -31,159 +37,59 @@ setup_environment()
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Write YAML organization definition
+# TASK 1: Write a PACT org YAML for SG FinTech AI Division with three
+#   departments (ml_eng, risk_compliance, customer_intel), nine roles
+#   (3 heads with heads: field + 6 workers with reports_to chains),
+#   and clearances from public (customer_agent) to restricted (heads).
+#   Save to tempfile and print structure summary.
 # ══════════════════════════════════════════════════════════════════════
-
-# TODO: Write a PACT organization YAML definition.
-# Include: organization (name, jurisdiction), departments with agents (id, role, clearance),
-# delegations with D/T/R chains and envelopes, and global operating_envelopes.
-# Hint: Define at least 3 departments, 5+ agents, 4+ delegations with budget/tool/clearance limits.
-org_yaml = """
 ____
-"""
-
-# Write YAML to temp file
-org_yaml_path = os.path.join(tempfile.gettempdir(), "sg_fintech_org.yaml")
-with open(org_yaml_path, "w") as f:
-    f.write(org_yaml)
-
-print(f"=== Organization Definition ===")
-print(f"Organization: SG FinTech AI Division")
-print(f"Departments: ML Engineering, Risk & Compliance, Customer Intelligence")
-print(f"Agents: 5 (analyst, engineer, operator, 2 auditors, customer agent)")
-print(f"Delegations: 4 D/T/R chains")
-print(f"YAML written to: {org_yaml_path}")
-
+____
+____
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compile with GovernanceEngine
+# TASK 2: load_org_yaml() → compile_org() → GovernanceEngine().
+#   Build role_id → address mapping from compiled.nodes. Apply all
+#   clearances via engine.grant_clearance(addr, RoleClearance(...)).
+#   Print node count, clearance count, and the full org tree.
 # ══════════════════════════════════════════════════════════════════════
-
-
-async def compile_org():
-    # TODO: Create GovernanceEngine and compile the org YAML.
-    # Hint: GovernanceEngine(), engine.compile_org(org_yaml_path)
-    engine = ____
-    org = ____
-
-    print(f"\n=== Compiled Organization ===")
-    print(f"Agents registered: {org.n_agents}")
-    print(f"Delegations: {org.n_delegations}")
-    print(f"Departments: {org.n_departments}")
-    print(f"Compilation validates:")
-    print(f"  - Every agent has a responsible delegation chain")
-    print(f"  - No circular delegation (A→B→A)")
-    print(f"  - Clearance levels are monotonically decreasing down chains")
-    print(f"  - Budget envelopes don't exceed parent limits")
-
-    return engine, org
-
-
-engine, org = asyncio.run(compile_org())
-
+____
+____
+____
+____
+____
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Define operating envelopes
+# TASK 3: Print the clearance hierarchy and explain posture ceilings —
+#   SUPERVISED caps effective clearance at RESTRICTED regardless of role,
+#   SHARED_PLANNING caps at CONFIDENTIAL, DELEGATED has no ceiling.
 # ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Operating Envelopes ===")
-print(f"Each agent operates within strict bounds:")
-print(f"\n  data_analyst:")
-print(f"    Budget: N/A (no delegation for spending)")
-print(f"    Tools: read-only data access")
-print(f"    Clearance: internal (no PII)")
-print(f"\n  model_trainer:")
-print(f"    Budget: $100/task")
-print(f"    Tools: train, evaluate, read")
-print(f"    Clearance: confidential")
-print(f"\n  risk_assessor:")
-print(f"    Budget: $200/task")
-print(f"    Tools: read, audit, report")
-print(f"    Clearance: restricted (highest)")
-print(f"\n  customer_agent:")
-print(f"    Budget: $5/task")
-print(f"    Tools: answer, search")
-print(f"    Clearance: public (lowest)")
-
+____
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Test access control decisions
+# TASK 4: Create KnowledgeItems at PUBLIC / RESTRICTED / CONFIDENTIAL /
+#   SECRET owned by different departments. Define ≥8 test cases covering:
+#   within-dept DELEGATED (allowed), clearance exceeded (denied), posture
+#   ceiling via SUPERVISED (denied), cross-dept without KSP (denied).
+#   Call engine.check_access(role_addr, ki, posture) for each and print
+#   [OK]/[UNEXPECTED] with the denial reason.
 # ══════════════════════════════════════════════════════════════════════
-
-
-async def test_access():
-    print(f"\n=== Access Control Tests ===")
-
-    test_cases = [
-        # (agent, resource, action, expected_allowed)
-        ("model_trainer", "training_data", "read", True),
-        ("model_trainer", "production_model", "deploy", False),  # Not in allowed_tools
-        ("customer_agent", "customer_faq", "search_faq", True),
-        ("customer_agent", "training_data", "read_data", False),  # Clearance too low
-        ("risk_assessor", "model_audit_log", "audit_model", True),
-        (
-            "risk_assessor",
-            "production_model",
-            "deploy_model",
-            False,
-        ),  # Not in allowed_tools
-        ("model_deployer", "production_model", "deploy_model", True),
-        ("data_analyst", "restricted_data", "read", False),  # Clearance too low
-    ]
-
-    for agent_id, resource, action, expected in test_cases:
-        # TODO: Check access using the governance engine.
-        # Hint: engine.check_access(agent_id=..., resource=..., action=...)
-        decision = ____
-        status = "ALLOWED" if decision.allowed else "DENIED"
-        match = "✓" if decision.allowed == expected else "✗ UNEXPECTED"
-        print(f"  {match} {agent_id} → {action}({resource}): {status}")
-        if not decision.allowed:
-            print(f"      Reason: {decision.reason}")
-
-    return True
-
-
-asyncio.run(test_access())
-
+____
+____
+____
+____
+____
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Generate governance report
+# TASK 5: engine.verify_action(role_addr, "train_model") — print verdict.
+#   Print a full decision trace for one access scenario. Call
+#   engine.verify_audit_integrity() and report. Summarize D/T/R grammar
+#   and regulatory mapping (EU AI Act, AI Verify, MAS TRM).
 # ══════════════════════════════════════════════════════════════════════
+____
+____
+____
 
-
-async def generate_report():
-    print(f"\n=== Governance Report ===")
-
-    # TODO: Check a specific access decision and trace the decision chain.
-    # Hint: engine.check_access(agent_id="model_trainer", resource="training_data", action="read")
-    decision = ____
-
-    print(f"Decision trace for model_trainer → read(training_data):")
-    print(f"  1. Agent: model_trainer (role=engineer, clearance=confidential)")
-    print(f"  2. Delegation: chief_ml_officer → model_training → model_trainer")
-    print(f"  3. Envelope check:")
-    print(f"     - Tool 'read_data' in allowed_tools: YES")
-    print(f"     - Data clearance 'confidential' ≤ allowed 'confidential': YES")
-    print(f"     - Budget consumed < $100 limit: YES")
-    print(f"  4. Decision: {decision.allowed}")
-    print(f"  5. Audit: logged to immutable audit chain")
-
-    print(f"\nD/T/R Accountability Grammar:")
-    print(f"  D (Delegator): chief_ml_officer — authorizes the task")
-    print(f"  T (Task): model_training — the bounded scope of work")
-    print(f"  R (Responsible): model_trainer — executes within envelope")
-    print(f"  If model_trainer exceeds envelope → GovernanceEngine blocks")
-    print(f"  If task fails → accountability traces to chief_ml_officer")
-
-    print(f"\nRegulatory mapping:")
-    print(f"  EU AI Act: operating envelopes satisfy Art. 9 (risk management)")
-    print(f"  AI Verify: D/T/R chains satisfy accountability principle")
-    print(f"  MAS TRM: audit trails satisfy record-keeping requirements")
-
-    return decision
-
-
-asyncio.run(generate_report())
-
-print("\n✓ Exercise 6 complete — PACT governance with D/T/R and operating envelopes")
+print(
+    "\n=== Exercise 6 complete — PACT governance with D/T/R and clearance-based access ==="
+)

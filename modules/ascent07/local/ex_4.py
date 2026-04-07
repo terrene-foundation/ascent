@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 
@@ -46,15 +47,9 @@ def softmax(z: list[float]) -> list[float]:
 
 
 def cross_entropy_loss(y_true: list[float], y_pred: list[float]) -> float:
-    """Cross-entropy: -sum(y_true * log(y_pred)).
-
-    y_true: one-hot encoded label
-    y_pred: softmax probabilities
-    """
-    # TODO: Implement cross-entropy loss.
-    # Hint: eps = 1e-8; -sum(yt * math.log(yp + eps) for yt, yp in zip(y_true, y_pred))
-    eps = 1e-8
-    return ____
+    """Cross-entropy: -sum(y_true * log(y_pred + eps))."""
+    # TODO: Return negative sum of y_true[k] * log(y_pred[k] + 1e-8) over all classes.
+    ____
 
 
 def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
@@ -63,8 +58,7 @@ def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
     return sum((yt - yp) ** 2 for yt, yp in zip(y_true, y_pred)) / n
 
 
-# Demonstrate on a single example
-y_true = [0.0, 0.0, 1.0, 0.0, 0.0]  # class 2
+y_true = [0.0, 0.0, 1.0, 0.0, 0.0]
 y_confident = [0.01, 0.01, 0.95, 0.01, 0.02]
 y_uncertain = [0.15, 0.20, 0.30, 0.20, 0.15]
 y_wrong = [0.60, 0.20, 0.05, 0.10, 0.05]
@@ -99,7 +93,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent07", "mnist_sample.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 
 feature_cols = [c for c in df.columns if c != "label"]
 X = [
@@ -109,7 +103,6 @@ X = [
 y_labels = df["label"].to_list()
 n_classes = 10
 Y = [[1.0 if j == label else 0.0 for j in range(n_classes)] for label in y_labels]
-
 n_features = len(X[0])
 train_size = min(200, len(X))
 
@@ -118,78 +111,22 @@ print(f"Features: {n_features}, Train samples: {train_size}, Classes: {n_classes
 
 
 def train_with_loss(loss_type: str, epochs: int = 15) -> list[float]:
-    """Train a simple network with specified loss function."""
-    hidden = 32
-    scale = math.sqrt(2.0 / (n_features + hidden))
-    W1 = [[random.gauss(0, scale) for _ in range(hidden)] for _ in range(n_features)]
-    b1 = [0.0] * hidden
-    scale2 = math.sqrt(2.0 / (hidden + n_classes))
-    W2 = [[random.gauss(0, scale2) for _ in range(n_classes)] for _ in range(hidden)]
-    b2 = [0.0] * n_classes
-
-    lr = 0.01
-    losses = []
-
-    for epoch in range(epochs):
-        epoch_loss = 0.0
-        for idx in range(train_size):
-            x = X[idx]
-            y = Y[idx]
-
-            # Forward: hidden layer with ReLU
-            h = [
-                max(0.0, sum(x[i] * W1[i][j] for i in range(n_features)) + b1[j])
-                for j in range(hidden)
-            ]
-
-            # Forward: output with softmax
-            z_out = [
-                sum(h[j] * W2[j][k] for j in range(hidden)) + b2[k]
-                for k in range(n_classes)
-            ]
-            out = softmax(z_out)
-
-            # Loss
-            if loss_type == "ce":
-                loss = cross_entropy_loss(y, out)
-            else:
-                loss = mse_loss(y, out)
-            epoch_loss += loss
-
-            # Backpropagation: output layer gradients
-            if loss_type == "ce":
-                d_out = [out[k] - y[k] for k in range(n_classes)]
-            else:
-                d_out = [2.0 * (out[k] - y[k]) / n_classes for k in range(n_classes)]
-
-            # Update W2, b2
-            for j in range(hidden):
-                for k in range(n_classes):
-                    W2[j][k] -= lr * d_out[k] * h[j]
-            for k in range(n_classes):
-                b2[k] -= lr * d_out[k]
-
-            # Hidden layer gradients (ReLU derivative)
-            z_hidden = [
-                sum(x[i] * W1[i][j] for i in range(n_features)) + b1[j]
-                for j in range(hidden)
-            ]
-            d_h = [
-                sum(d_out[k] * W2[j][k] for k in range(n_classes))
-                * (1.0 if z_hidden[j] > 0 else 0.0)
-                for j in range(hidden)
-            ]
-
-            # Update W1, b1
-            for i in range(n_features):
-                for j in range(hidden):
-                    W1[i][j] -= lr * d_h[j] * x[i]
-            for j in range(hidden):
-                b1[j] -= lr * d_h[j]
-
-        losses.append(epoch_loss / train_size)
-
-    return losses
+    """Train a 2-layer network (Xavier init, ReLU hidden, softmax output) with specified loss."""
+    # TODO: Implement full training loop.
+    # Init: Xavier W1 (n_features→32), W2 (32→n_classes), zero biases.
+    # Each epoch: forward (ReLU hidden → softmax output), compute loss per loss_type,
+    # backprop (output delta differs: CE=(out-y), MSE=2*(out-y)/n_classes),
+    # update W2/b2 then W1/b1 (ReLU derivative). Return epoch-average losses list.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 print(f"\nTraining with MSE loss...")
@@ -198,14 +135,7 @@ print(f"Training with CrossEntropy loss...")
 ce_losses = train_with_loss("ce")
 
 viz = ModelVisualizer()
-loss_comparison = pl.DataFrame(
-    {
-        "epoch": list(range(len(mse_losses))),
-        "mse_loss": mse_losses,
-        "ce_loss": ce_losses,
-    }
-)
-fig = viz.plot_training_curves(loss_comparison)
+fig = viz.training_history({"mse_loss": mse_losses, "ce_loss": ce_losses})
 
 print(f"\n  MSE final loss:  {mse_losses[-1]:.4f}")
 print(f"  CE final loss:   {ce_losses[-1]:.4f}")
@@ -219,27 +149,17 @@ print(f"  while MSE gradient includes sigmoid derivative (can saturate).")
 
 
 def xavier_init(fan_in: int, fan_out: int) -> list[list[float]]:
-    """Xavier/Glorot: N(0, sqrt(2 / (fan_in + fan_out))).
-
-    Best for: sigmoid, tanh, GELU activations.
-    """
-    # TODO: Compute Xavier standard deviation and generate weight matrix.
-    # Hint: std = math.sqrt(2.0 / (fan_in + fan_out))
-    # Hint: return [[random.gauss(0, std) for _ in range(fan_out)] for _ in range(fan_in)]
-    std = ____
-    return ____
+    """Xavier/Glorot: N(0, sqrt(2/(fan_in+fan_out))). Best for sigmoid/tanh/GELU."""
+    # TODO: std = sqrt(2/(fan_in+fan_out)); return (fan_in×fan_out) matrix of gauss(0,std).
+    ____
+    ____
 
 
 def he_init(fan_in: int, fan_out: int) -> list[list[float]]:
-    """He/Kaiming: N(0, sqrt(2 / fan_in)).
-
-    Best for: ReLU activations (accounts for half the neurons being dead).
-    """
-    # TODO: Compute He standard deviation and generate weight matrix.
-    # Hint: std = math.sqrt(2.0 / fan_in)
-    # Hint: return [[random.gauss(0, std) for _ in range(fan_out)] for _ in range(fan_in)]
-    std = ____
-    return ____
+    """He/Kaiming: N(0, sqrt(2/fan_in)). Best for ReLU."""
+    # TODO: std = sqrt(2/fan_in); return (fan_in×fan_out) matrix of gauss(0,std).
+    ____
+    ____
 
 
 def zero_init(fan_in: int, fan_out: int) -> list[list[float]]:
@@ -247,7 +167,6 @@ def zero_init(fan_in: int, fan_out: int) -> list[list[float]]:
     return [[0.0 for _ in range(fan_out)] for _ in range(fan_in)]
 
 
-# Show the variance of initialized weights
 print(f"\n=== Initialization Comparison ===")
 for name, init_fn in [("Xavier", xavier_init), ("He", he_init), ("Zero", zero_init)]:
     W = init_fn(784, 128)
@@ -269,49 +188,32 @@ def build_deep_network(n_layers: int, init_fn) -> list[dict]:
     """Build a deep network with specified initialization."""
     layers = []
     dims = [n_features] + [64] * n_layers + [n_classes]
-
     for i in range(len(dims) - 1):
         W = init_fn(dims[i], dims[i + 1])
         b = [0.0] * dims[i + 1]
         layers.append({"W": W, "b": b, "in": dims[i], "out": dims[i + 1]})
-
     return layers
 
 
 def forward_deep(x: list[float], layers: list[dict]) -> list[list[float]]:
     """Forward pass through deep network, returning activations per layer."""
-    activations = [x]
-    current = x
-
-    for i, layer in enumerate(layers):
-        z = [
-            sum(current[j] * layer["W"][j][k] for j in range(layer["in"]))
-            + layer["b"][k]
-            for k in range(layer["out"])
-        ]
-
-        if i < len(layers) - 1:
-            current = [max(0.0, zi) for zi in z]  # ReLU
-        else:
-            current = softmax(z)  # Output
-
-        activations.append(current)
-
-    return activations
+    # TODO: Build activations list starting with [x].
+    # Each layer: linear transform z, apply ReLU for hidden layers, softmax for output.
+    # Append each layer's output to activations. Return activations.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 print(f"\n=== Deep Network (10 layers) ===")
 n_deep_layers = 10
 
 for name, init_fn in [("Xavier", xavier_init), ("He", he_init)]:
-    # TODO: Build a deep network with the given init function.
-    # Hint: build_deep_network(n_deep_layers, init_fn)
-    layers = ____
-
-    # Forward pass one sample
+    layers = build_deep_network(n_deep_layers, init_fn)
     activations = forward_deep(X[0], layers)
-
-    # Check activation magnitudes per layer
     print(f"\n  {name} init — activation magnitudes:")
     for i, act in enumerate(activations[1:], 1):
         mean_act = sum(abs(a) for a in act) / len(act)
@@ -335,15 +237,11 @@ print(f"Rule of thumb:")
 print(f"  Sigmoid/Tanh -> Xavier (accounts for both directions)")
 print(f"  ReLU/variants -> He (accounts for dead half)")
 
-# Compute theoretical gradient scaling
-print(f"\n  Xavier gradient scaling over 10 layers:")
-for layer_idx in range(1, 11):
-    scale = (2.0 / (64 + 64)) ** (layer_idx / 2)
-    print(f"    Layer {layer_idx:2d}: ~{scale:.6f}")
-
-print(f"\n  He gradient scaling over 10 layers:")
-for layer_idx in range(1, 11):
-    scale = (2.0 / 64) ** (layer_idx / 2) * (0.5 ** (layer_idx / 2))
-    print(f"    Layer {layer_idx:2d}: ~{scale:.6f}")
+# Key insight: initialization controls activation/gradient variance per layer
+# Xavier: Var(weights) = 2/(fan_in + fan_out) → keeps variance ~1.0 for tanh/sigmoid
+# He:     Var(weights) = 2/fan_in            → keeps variance ~1.0 for ReLU
+print(f"\n  Xavier (tanh): aims to keep activation variance ~1.0 at every layer")
+print(f"  He (ReLU):    aims to keep activation variance ~1.0 at every layer")
+print(f"  Wrong init:   variance compounds per layer → exponential shrink or explosion")
 
 print("\n✓ Exercise 4 complete — loss functions and initialization strategies compared")

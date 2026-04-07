@@ -31,54 +31,40 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+if not os.environ.get("OPENAI_API_KEY"):
+    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
+    print("  Set it in .env to run this exercise with real LLM calls.")
+    import sys
+
+    sys.exit(0)
+
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 print(f"LLM Model: {model}")
 
-# ── Data Loading ──────────────────────────────────────────────────────
-
 loader = ASCENTDataLoader()
 reports = loader.load("ascent09", "sg_company_reports.parquet")
+sample_docs = reports.head(10)
+print(f"Loaded {reports.height:,} documents")
 
-# TODO: Select first 10 documents as sample.
-# Hint: reports.head(10)
-sample_docs = ____
-print(f"Loaded {reports.height:,} documents for classification")
-print(f"Columns: {reports.columns}")
+CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufacturing"]
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Zero-shot classification with Delegate
 # ══════════════════════════════════════════════════════════════════════
 
-CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufacturing"]
-
 
 async def zero_shot_classify(text: str) -> str:
-    """Classify a document using zero-shot prompting."""
-    # TODO: Create a Delegate with model and cost budget.
-    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-    delegate = ____
-
-    # TODO: Build a zero-shot classification prompt with categories and text.
-    # Hint: f-string with CATEGORIES, text[:800], and instruction to respond with only the category name
-    prompt = ____
-
-    response = ""
-    async for event in delegate.run(prompt):
-        if hasattr(event, "text"):
-            response += event.text
-
-    return response.strip()
+    # TODO: Create Delegate(budget_usd=0.5). Prompt it with CATEGORIES and the
+    # text[:800], asking for ONLY the category name. Stream and return stripped response.
+    ____
+    ____
 
 
 async def run_zero_shot():
-    """Run zero-shot classification on sample documents."""
     print(f"\n=== Zero-Shot Classification ===")
     results = []
-    # TODO: Extract text column as a Python list.
-    # Hint: sample_docs.select("text").to_series().to_list()
-    texts = ____
-    for i, text in enumerate(texts[:5]):
+    for i, text in enumerate(sample_docs.select("text").to_series().to_list()[:5]):
         category = await zero_shot_classify(text)
         print(f"  Doc {i+1}: {category}")
         results.append(category)
@@ -117,38 +103,16 @@ FEW_SHOT_EXAMPLES = [
 
 
 async def few_shot_classify(text: str) -> str:
-    """Classify a document using few-shot prompting with examples."""
-    # TODO: Create a Delegate with model and cost budget.
-    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-    delegate = ____
-
-    # TODO: Build examples_text by joining each example's text and category.
-    # Hint: "\n".join(f'Text: "{ex["text"]}"\nCategory: {ex["category"]}\n' for ex in FEW_SHOT_EXAMPLES)
-    examples_text = ____
-
-    prompt = f"""Classify Singapore company reports into categories. Here are examples:
-
-{examples_text}
-Now classify this report:
-Text: "{text[:800]}"
-Category:"""
-
-    response = ""
-    # TODO: Stream the response from delegate.run(prompt).
-    # Hint: async for event in delegate.run(prompt): if hasattr(event, "text"): response += event.text
+    # TODO: Format FEW_SHOT_EXAMPLES as 'Text: "..."\nCategory: ...' prefix.
+    # Create Delegate(budget_usd=0.5), stream response, return stripped category.
     ____
-
-    return response.strip()
+    ____
 
 
 async def run_few_shot():
-    """Run few-shot classification on sample documents."""
     print(f"\n=== Few-Shot Classification ===")
     results = []
-    # TODO: Extract text column as a Python list.
-    # Hint: sample_docs.select("text").to_series().to_list()
-    texts = ____
-    for i, text in enumerate(texts[:5]):
+    for i, text in enumerate(sample_docs.select("text").to_series().to_list()[:5]):
         category = await few_shot_classify(text)
         print(f"  Doc {i+1}: {category}")
         results.append(category)
@@ -163,38 +127,20 @@ few_shot_results = asyncio.run(run_few_shot())
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def cot_classify(text: str) -> str:
-    """Classify using chain-of-thought reasoning."""
-    # TODO: Create a Delegate with model and cost budget.
-    # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-    delegate = ____
-
-    # TODO: Write a CoT prompt that instructs step-by-step reasoning before classification.
-    # Hint: Include CATEGORIES, steps (identify key terms, match to category, state final classification), and text[:800]
-    prompt = ____
-
-    response = ""
-    # TODO: Stream the response from delegate.run(prompt).
-    # Hint: async for event in delegate.run(prompt): if hasattr(event, "text"): response += event.text
+async def cot_classify(text: str) -> tuple[str, str]:
+    # TODO: Build a CoT prompt instructing: (1) identify key terms, (2) match
+    # to category, (3) state final classification. Create Delegate(budget_usd=0.5),
+    # stream full response. Return (full_reasoning, last_non_empty_line).
     ____
-
-    # Extract final category from reasoning
-    lines = response.strip().split("\n")
-    final_category = lines[-1].strip() if lines else "Unknown"
-    return response.strip(), final_category
+    ____
 
 
 async def run_cot():
-    """Run chain-of-thought classification."""
     print(f"\n=== Chain-of-Thought Classification ===")
     results = []
-    # TODO: Extract text column as a Python list.
-    # Hint: sample_docs.select("text").to_series().to_list()
-    texts = ____
-    for i, text in enumerate(texts[:3]):
+    for i, text in enumerate(sample_docs.select("text").to_series().to_list()[:3]):
         reasoning, category = await cot_classify(text)
-        print(f"\n  Doc {i+1} reasoning (excerpt): {reasoning[:200]}...")
-        print(f"  Final: {category}")
+        print(f"  Doc {i+1} reasoning: {reasoning[:150]}... → {category}")
         results.append(category)
     return results
 
@@ -206,48 +152,19 @@ cot_results = asyncio.run(run_cot())
 # TASK 4: Custom Signature for structured extraction
 # ══════════════════════════════════════════════════════════════════════
 
-
-class ReportExtraction(Signature):
-    """Extract structured information from a company report."""
-
-    report_text: str = InputField(description="Company report text excerpt")
-
-    # TODO: Define OutputField for category (one of the 5 categories)
-    category: str = ____
-    # TODO: Define OutputField for key_entities (list of named entities)
-    key_entities: list[str] = ____
-    # TODO: Define OutputField for financial_metrics (list of figures/percentages)
-    financial_metrics: list[str] = ____
-    # TODO: Define OutputField for sentiment (positive/negative/neutral)
-    sentiment: str = ____
-    # TODO: Define OutputField for confidence (0-1 float)
-    # Hint: OutputField(description="Classification confidence 0-1")
-    confidence: float = ____
+# TODO: Define ReportExtraction(Signature) with:
+#   InputField:  report_text (str)
+#   OutputFields: category (str), key_entities (list[str]),
+#                 financial_metrics (list[str]), sentiment (str), confidence (float)
+# Precise field descriptions drive output quality — the Signature is the LLM contract.
+____
 
 
 async def structured_extract():
-    """Use SimpleQAAgent for structured extraction."""
-    # TODO: Create SimpleQAAgent with ReportExtraction signature, model, and cost budget.
-    # Hint: SimpleQAAgent(signature=ReportExtraction, model=model, max_llm_cost_usd=1.0)
-    agent = ____
-
-    print(f"\n=== Structured Extraction (Signature) ===")
-    # TODO: Extract text column as a Python list.
-    # Hint: sample_docs.select("text").to_series().to_list()
-    texts = ____
-    results = []
-    for i, text in enumerate(texts[:3]):
-        # TODO: Run the agent with report_text input.
-        # Hint: await agent.run(report_text=text[:800])
-        result = ____
-        print(f"\n  Doc {i+1}:")
-        print(f"    Category: {result.category}")
-        print(f"    Entities: {result.key_entities[:5]}")
-        print(f"    Metrics: {result.financial_metrics[:3]}")
-        print(f"    Sentiment: {result.sentiment}")
-        print(f"    Confidence: {result.confidence}")
-        results.append(result)
-    return results
+    # TODO: Create SimpleQAAgent(signature=ReportExtraction, model=model, budget_usd=1.0).
+    # Run it on the first 3 documents and print the structured fields.
+    ____
+    ____
 
 
 structured_results = asyncio.run(structured_extract())
@@ -277,13 +194,10 @@ comparison = pl.DataFrame(
         ],
     }
 )
-
 print(f"\n=== Strategy Comparison ===")
 print(comparison)
-print(f"\nKey insights:")
-print(f"  Zero-shot: fast, no examples needed, may hallucinate categories")
-print(f"  Few-shot: more consistent, requires curated examples")
-print(f"  CoT: best for ambiguous cases, slower and more expensive")
-print(f"  Signature: guarantees structure, best for pipelines")
+print(
+    f"  Zero-shot: fast; Few-shot: consistent; CoT: best for ambiguous; Signature: structured"
+)
 
 print("\n✓ Exercise 2 complete — prompt engineering strategies compared")

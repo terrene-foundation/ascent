@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 
 import polars as pl
@@ -38,7 +39,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent07", "hdb_resale_sample.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 
 print("=== HDB Resale Data ===")
 print(f"Shape: {df.shape}")
@@ -46,26 +47,18 @@ print(f"Columns: {df.columns}")
 print(f"\nSample:")
 print(df.head(5))
 
-# Use floor_area_sqm as feature (x), resale_price as target (y)
 x_raw = df["floor_area_sqm"].to_list()
 y_raw = df["resale_price"].to_list()
 
-# Normalize for stable gradient descent
-x_mean, x_std = (
-    sum(x_raw) / len(x_raw),
-    (sum((xi - sum(x_raw) / len(x_raw)) ** 2 for xi in x_raw) / len(x_raw)) ** 0.5,
-)
-y_mean, y_std = (
-    sum(y_raw) / len(y_raw),
-    (sum((yi - sum(y_raw) / len(y_raw)) ** 2 for yi in y_raw) / len(y_raw)) ** 0.5,
-)
-
-# TODO: Z-normalize x values using x_mean and x_std.
-# Hint: [(xi - x_mean) / x_std for xi in x_raw]
-x_norm = ____
-# TODO: Z-normalize y values using y_mean and y_std.
-# Hint: [(yi - y_mean) / y_std for yi in y_raw]
-y_norm = ____
+# TODO: Compute mean and std for x_raw and y_raw, then z-normalise both.
+# x_mean = mean of x_raw; x_std = sqrt(mean of squared deviations from mean)
+# x_norm = [(xi - x_mean) / x_std for xi in x_raw]; same for y.
+____
+____
+____
+____
+____
+____
 n = len(x_norm)
 
 print(f"\nFeature: floor_area_sqm (mean={x_mean:.1f}, std={x_std:.1f})")
@@ -77,19 +70,16 @@ print(f"Samples: {n}")
 # TASK 2: Implement forward pass (y = wx + b)
 # ══════════════════════════════════════════════════════════════════════
 
-# Single neuron: y_hat = w * x + b
-w = 0.0  # weight (initially zero)
-b = 0.0  # bias (initially zero)
+w = 0.0
+b = 0.0
 
 
 def forward(x_i: float, w: float, b: float) -> float:
     """Single neuron forward pass: y = wx + b."""
-    # TODO: Implement the linear forward pass.
-    # Hint: return w * x_i + b
-    return ____
+    # TODO: Return the linear combination w*x_i + b.
+    ____
 
 
-# Test forward pass
 y_hat_test = forward(x_norm[0], w, b)
 print(f"\n=== Forward Pass Test ===")
 print(f"Input x={x_norm[0]:.4f}, w={w}, b={b}")
@@ -103,15 +93,11 @@ print(f"Prediction: {y_hat_test:.4f} (expected ~0 with zero weights)")
 
 def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
     """Mean Squared Error: L = (1/n) * sum((y - y_hat)^2)."""
-    # TODO: Compute the MSE loss over all samples.
-    # Hint: sum((yt - yp) ** 2 for yt, yp in zip(y_true, y_pred)) / len(y_true)
-    return ____
+    # TODO: Return sum of squared differences divided by len(y_true).
+    ____
 
 
-# Compute initial loss (should be high with zero weights)
-# TODO: Generate predictions for all samples using the forward function.
-# Hint: [forward(xi, w, b) for xi in x_norm]
-predictions = ____
+predictions = [forward(xi, w, b) for xi in x_norm]
 initial_loss = mse_loss(y_norm, predictions)
 print(f"\n=== MSE Loss ===")
 print(f"Initial loss (w=0, b=0): {initial_loss:.4f}")
@@ -122,39 +108,22 @@ print(f"This equals variance of y since predictions are all 0")
 # TASK 4: Implement gradient descent manually
 # ══════════════════════════════════════════════════════════════════════
 
-# Gradients of MSE w.r.t. w and b:
-#   dL/dw = (2/n) * sum((y_hat - y) * x)
-#   dL/db = (2/n) * sum(y_hat - y)
+# dL/dw = (2/n)*sum((y_hat-y)*x);  dL/db = (2/n)*sum(y_hat-y)
 
 learning_rate = 0.1
 epochs = 50
 history = {"epoch": [], "loss": [], "w": [], "b": []}
 
 for epoch in range(epochs):
-    # Forward pass for all samples
-    # TODO: Compute predictions for all normalized samples.
-    # Hint: [forward(xi, w, b) for xi in x_norm]
-    y_pred = ____
+    # TODO: One gradient-descent step.
+    # Forward pass → loss → gradients dw, db → update w, b.
+    # dw = (2/n)*sum((y_pred-y_true)*x_norm);  db = (2/n)*sum(y_pred-y_true)
+    ____
+    ____
+    ____
+    ____
+    ____
 
-    # TODO: Compute MSE loss between true values and predictions.
-    # Hint: mse_loss(y_norm, y_pred)
-    loss = ____
-
-    # TODO: Compute gradient of loss w.r.t. weight w.
-    # Hint: (2.0 / n) * sum((yp - yt) * xi for yp, yt, xi in zip(y_pred, y_norm, x_norm))
-    dw = ____
-
-    # TODO: Compute gradient of loss w.r.t. bias b.
-    # Hint: (2.0 / n) * sum(yp - yt for yp, yt in zip(y_pred, y_norm))
-    db = ____
-
-    # TODO: Update parameters using gradient descent.
-    # Hint: w = w - learning_rate * dw
-    w = ____
-    # Hint: b = b - learning_rate * db
-    b = ____
-
-    # Record history
     history["epoch"].append(epoch)
     history["loss"].append(loss)
     history["w"].append(w)
@@ -165,12 +134,8 @@ for epoch in range(epochs):
 
 print(f"\nFinal: w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
 
-# Visualize training curve
 viz = ModelVisualizer()
-history_df = pl.DataFrame(history)
-# TODO: Plot training curves using ModelVisualizer.
-# Hint: viz.plot_training_curves(history_df)
-fig = ____
+fig = viz.training_history({"loss": history["loss"]})
 print("Training curve plotted.")
 
 
@@ -178,26 +143,16 @@ print("Training curve plotted.")
 # TASK 5: Compare with polars-native OLS solution
 # ══════════════════════════════════════════════════════════════════════
 
-# OLS closed-form: w = cov(x,y) / var(x), b = mean(y) - w * mean(x)
+# OLS closed-form: w = cov(x,y)/var(x),  b = mean(y) - w*mean(x)
 norm_df = pl.DataFrame({"x": x_norm, "y": y_norm})
 
-# TODO: Compute covariance of x and y using polars.
-# Hint: norm_df.select(((pl.col("x") - pl.col("x").mean()) * (pl.col("y") - pl.col("y").mean())).mean()).item()
-cov_xy = ____
-
-# TODO: Compute variance of x using polars.
-# Hint: norm_df.select(pl.col("x").var()).item()
-var_x = ____
-
-# TODO: Compute OLS weight from covariance and variance.
-# Hint: cov_xy / var_x
-w_ols = ____
-# TODO: Compute OLS bias from means.
-# Hint: sum(y_norm) / n - w_ols * (sum(x_norm) / n)
-b_ols = ____
-
-y_pred_ols = [w_ols * xi + b_ols for xi in x_norm]
-ols_loss = mse_loss(y_norm, y_pred_ols)
+# TODO: Compute cov_xy and var_x via polars, derive w_ols and b_ols,
+# compute OLS predictions and ols_loss, then compare vs gradient descent.
+____
+____
+____
+____
+____
 
 print(f"\n=== Comparison: Gradient Descent vs OLS ===")
 print(f"GD:  w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")

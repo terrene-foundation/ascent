@@ -48,12 +48,10 @@ X = [
 y_labels = df["label"].to_list()
 n_classes = 10
 Y = [[1.0 if j == label else 0.0 for j in range(n_classes)] for label in y_labels]
-
 n_features = len(X[0])
 print(f"=== MNIST Data Loaded ===")
 print(f"Features: {n_features}, Samples: {len(X)}, Classes: {n_classes}")
 
-# Architecture: input(784) -> hidden1(64) -> hidden2(32) -> output(10)
 dims = [n_features, 64, 32, n_classes]
 
 
@@ -69,7 +67,6 @@ def softmax(z: list[float]) -> list[float]:
     return [e / total for e in exp_z]
 
 
-# Initialize weights with Xavier
 def init_params(dims: list[int]) -> tuple[list, list]:
     weights = []
     biases = []
@@ -94,34 +91,20 @@ print(f"  Total parameters: {total_params}")
 
 def forward(x: list[float], weights: list, biases: list) -> dict:
     """Full forward pass, caching all intermediates for backprop."""
-    cache = {"activations": [x], "pre_activations": []}
-    current = x
-
-    for layer_idx in range(len(weights)):
-        W = weights[layer_idx]
-        b = biases[layer_idx]
-        d_in = len(current)
-        d_out = len(b)
-
-        # TODO: Compute the linear transformation z = Wx + b for every output
-        #       neuron k. For each k, sum current[j] * W[j][k] over all j,
-        #       then add b[k].
-        z = ____  # Hint: list comprehension over k in range(d_out)
-        cache["pre_activations"].append(z)
-
-        # TODO: Apply the activation function.
-        #       Hidden layers use sigmoid; the final layer uses softmax.
-        if layer_idx < len(weights) - 1:
-            current = ____  # Hint: [sigmoid(zi) for zi in z]
-        else:
-            current = ____  # Hint: softmax(z)
-
-        cache["activations"].append(current)
-
-    return cache
+    # TODO: Build cache = {"activations": [x], "pre_activations": []}.
+    # Each layer: z = linear transform (sum over inputs + bias); store in pre_activations.
+    # Apply sigmoid for hidden layers, softmax for output. Append to activations.
+    # Return cache.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
-# Test forward pass
 cache = forward(X[0], weights, biases)
 output = cache["activations"][-1]
 predicted_class = output.index(max(output))
@@ -144,53 +127,26 @@ def backward(cache: dict, y_true: list[float], weights: list) -> tuple[list, lis
       dL/db_l = delta_l
       delta_{l-1} = (W_l^T @ delta_l) * sigma'(z_{l-1})
     """
-    activations = cache["activations"]
-    pre_activations = cache["pre_activations"]
-    n_layers = len(weights)
-
-    dW_list = []
-    db_list = []
-
-    # TODO: Compute the output delta — the error signal at the final layer.
-    #       For softmax + cross-entropy this simplifies to y_pred - y_true.
-    delta = ____  # Hint: list comprehension over k in range(len(y_true))
-
-    for layer_idx in range(n_layers - 1, -1, -1):
-        a_prev = activations[layer_idx]  # activation from previous layer
-        d_in = len(a_prev)
-        d_out = len(delta)
-
-        # TODO: Compute dW = outer product of a_prev and delta.
-        #       dW[j][k] = a_prev[j] * delta[k]  (chain rule for weights)
-        dW = ____  # Hint: nested list comp [[a_prev[j]*delta[k] for k ...] for j ...]
-
-        # TODO: The bias gradient equals delta directly.
-        db = ____  # Hint: list(delta)
-
-        dW_list.insert(0, dW)
-        db_list.insert(0, db)
-
-        # Propagate delta to previous layer (if not the first layer)
-        if layer_idx > 0:
-            W = weights[layer_idx]
-            # delta_prev = W^T @ delta * sigmoid'(z)
-            z_prev = pre_activations[layer_idx - 1]
-            delta_new = []
-            for j in range(d_in):
-                # TODO: Propagate the error back through neuron j.
-                #       Step 1: accumulate W[j][k] * delta[k] over all k
-                #               (this is W^T @ delta for row j).
-                #       Step 2: multiply by sigmoid'(z_prev[j]) = sig*(1-sig).
-                grad_sum = ____  # Hint: sum(W[j][k] * delta[k] for k in range(d_out))
-                sig = sigmoid(z_prev[j])
-                sig_deriv = ____  # Hint: sig * (1.0 - sig)
-                delta_new.append(grad_sum * sig_deriv)
-            delta = delta_new
-
-    return dW_list, db_list
+    # TODO: Implement full backprop.
+    # Output delta = activations[-1][k] - y_true[k] (softmax+CE simplification).
+    # Iterate layers in reverse: compute dW (outer product a_prev ⊗ delta), db = delta.
+    # Propagate delta: for each neuron j, sum W[j][k]*delta[k] over k, multiply by sigmoid'(z).
+    # Insert dW, db at front of lists so Layer 0 is first. Return (dW_list, db_list).
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
-# Test backward pass
 cache = forward(X[0], weights, biases)
 dW_list, db_list = backward(cache, Y[0], weights)
 
@@ -213,8 +169,7 @@ def compute_loss(x: list[float], y: list[float], weights: list, biases: list) ->
     cache = forward(x, weights, biases)
     output = cache["activations"][-1]
     eps = 1e-8
-    # TODO: Compute cross-entropy loss: -sum(y[k] * log(output[k] + eps)).
-    return ____  # Hint: -sum(y[k] * math.log(output[k] + eps) for k in range(len(y)))
+    return -sum(y[k] * math.log(output[k] + eps) for k in range(len(y)))
 
 
 def numerical_gradient_check(
@@ -225,33 +180,22 @@ def numerical_gradient_check(
     dW_analytical, db_analytical = backward(cache, y, weights)
 
     max_rel_error = 0.0
-    checks = 0
-
-    # Check a few weights from each layer
     for layer_idx in range(len(weights)):
         for i in range(min(3, len(weights[layer_idx]))):
             for j in range(min(3, len(weights[layer_idx][0]))):
                 original = weights[layer_idx][i][j]
-
                 weights[layer_idx][i][j] = original + epsilon
                 loss_plus = compute_loss(x, y, weights, biases)
-
                 weights[layer_idx][i][j] = original - epsilon
                 loss_minus = compute_loss(x, y, weights, biases)
+                weights[layer_idx][i][j] = original
 
-                weights[layer_idx][i][j] = original  # restore
-
-                # TODO: Compute the numerical gradient using the central finite
-                #       difference formula: (f(w+eps) - f(w-eps)) / (2*eps).
-                numerical = ____  # Hint: (loss_plus - loss_minus) / (2.0 * epsilon)
+                # TODO: numerical = central finite difference; rel_error = |num-ana|/max(|num|+|ana|,1e-8)
+                numerical = ____
                 analytical = dW_analytical[layer_idx][i][j]
-
-                # TODO: Compute the relative error between numerical and analytical
-                #       gradients. Use |num - ana| / max(|num| + |ana|, 1e-8).
-                denom = ____  # Hint: max(abs(numerical) + abs(analytical), 1e-8)
-                rel_error = ____  # Hint: abs(numerical - analytical) / denom
+                denom = ____
+                rel_error = ____
                 max_rel_error = max(max_rel_error, rel_error)
-                checks += 1
 
     return max_rel_error
 
@@ -269,7 +213,6 @@ print(f"  (< 1e-5 means backprop is correctly implemented)")
 
 print(f"\n=== Vanishing Gradients with Sigmoid ===")
 
-# Build progressively deeper networks
 for depth in [3, 5, 8, 12]:
     deep_dims = [n_features] + [64] * depth + [n_classes]
     deep_w, deep_b = init_params(deep_dims)
@@ -300,85 +243,44 @@ def relu(z: float) -> float:
 
 
 def forward_relu(x: list[float], weights: list, biases: list) -> dict:
-    """Forward pass with ReLU activations (except output)."""
-    cache = {"activations": [x], "pre_activations": []}
-    current = x
-
-    for layer_idx in range(len(weights)):
-        W = weights[layer_idx]
-        b = biases[layer_idx]
-        d_in = len(current)
-        d_out = len(b)
-
-        # TODO: Compute the linear transformation z = Wx + b (same pattern
-        #       as forward(), but this function uses relu instead of sigmoid).
-        z = ____  # Hint: [sum(current[j]*W[j][k] for j in range(d_in))+b[k] for k ...]
-        cache["pre_activations"].append(z)
-
-        # TODO: Apply activation: relu for hidden layers, softmax for output.
-        if layer_idx < len(weights) - 1:
-            current = ____  # Hint: [relu(zi) for zi in z]
-        else:
-            current = ____  # Hint: softmax(z)
-
-        cache["activations"].append(current)
-
-    return cache
+    """Forward pass with ReLU (hidden) + softmax (output), caching intermediates."""
+    # TODO: Same structure as forward() but use relu for hidden layers.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 def backward_relu(cache: dict, y_true: list[float], weights: list) -> tuple[list, list]:
-    """Backprop with ReLU."""
-    activations = cache["activations"]
-    pre_activations = cache["pre_activations"]
-    n_layers = len(weights)
-
-    dW_list = []
-    db_list = []
-
-    # TODO: Initialise delta at the output layer (same formula as backward()).
-    delta = ____  # Hint: [activations[-1][k] - y_true[k] for k in range(len(y_true))]
-
-    for layer_idx in range(n_layers - 1, -1, -1):
-        a_prev = activations[layer_idx]
-        d_in = len(a_prev)
-        d_out = len(delta)
-
-        # TODO: Compute weight and bias gradients (same as backward()).
-        dW = ____  # Hint: [[a_prev[j]*delta[k] for k in range(d_out)] for j in range(d_in)]
-        db = ____  # Hint: list(delta)
-        dW_list.insert(0, dW)
-        db_list.insert(0, db)
-
-        if layer_idx > 0:
-            W = weights[layer_idx]
-            z_prev = pre_activations[layer_idx - 1]
-            delta_new = []
-            for j in range(d_in):
-                grad_sum = sum(W[j][k] * delta[k] for k in range(d_out))
-                # TODO: ReLU derivative: 1 if z_prev[j] > 0, else 0.
-                #       Unlike sigmoid, there is no squashing — gradient passes
-                #       through unchanged for active neurons.
-                relu_deriv = ____  # Hint: 1.0 if z_prev[j] > 0 else 0.0
-                delta_new.append(grad_sum * relu_deriv)
-            delta = delta_new
-
-    return dW_list, db_list
+    """Backprop with ReLU derivative (1 if z>0 else 0, no sigmoid squashing)."""
+    # TODO: Same structure as backward() but delta propagation uses relu_deriv = 1 if z>0 else 0.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 def he_init_params(dims: list[int]) -> tuple[list, list]:
-    """He initialization for ReLU networks."""
-    weights = []
-    biases = []
-    for i in range(len(dims) - 1):
-        # TODO: Compute He standard deviation: sqrt(2 / fan_in).
-        #       Xavier used (fan_in + fan_out); He uses only fan_in because
-        #       ReLU zeros half the neurons, so we need 2x the variance.
-        std = ____  # Hint: math.sqrt(2.0 / dims[i])
-        W = [[random.gauss(0, std) for _ in range(dims[i + 1])] for _ in range(dims[i])]
-        b = [0.0] * dims[i + 1]
-        weights.append(W)
-        biases.append(b)
-    return weights, biases
+    """He initialization: std = sqrt(2/fan_in) per layer."""
+    # TODO: For each layer pair, std = sqrt(2/dims[i]); generate W and zero b.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 print(f"\n=== ReLU + He Init: Gradient Flow ===")

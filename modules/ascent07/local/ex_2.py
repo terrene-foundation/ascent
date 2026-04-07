@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 
@@ -37,7 +38,6 @@ random.seed(42)
 # TASK 1: Show XOR is not linearly separable
 # ══════════════════════════════════════════════════════════════════════
 
-# XOR truth table
 xor_inputs = [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]
 xor_targets = [0.0, 1.0, 1.0, 0.0]
 
@@ -45,8 +45,6 @@ print("=== XOR Truth Table ===")
 for inp, tgt in zip(xor_inputs, xor_targets):
     print(f"  {inp} -> {tgt}")
 
-# Try single-layer (linear) solution: y = w1*x1 + w2*x2 + b
-# No single line can separate (0,0),(1,1) from (0,1),(1,0)
 print("\nWhy XOR fails with a single neuron:")
 print("  Class 0: (0,0) and (1,1) — on the diagonal")
 print("  Class 1: (0,1) and (1,0) — on the anti-diagonal")
@@ -60,7 +58,7 @@ print("  No single line w1*x1 + w2*x2 + b = 0 separates these.")
 
 def sigmoid(z: float) -> float:
     """Sigmoid activation: 1 / (1 + e^(-z))."""
-    z = max(-500, min(500, z))  # clip to prevent overflow
+    z = max(-500, min(500, z))
     return 1.0 / (1.0 + math.exp(-z))
 
 
@@ -69,24 +67,17 @@ def sigmoid_derivative(a: float) -> float:
     return a * (1.0 - a)
 
 
-# Network architecture: 2 inputs -> 2 hidden neurons -> 1 output
-# Layer 1: W1 (2x2), b1 (2,)
-# Layer 2: W2 (1x2), b2 (1,)
-
-
-# Xavier initialization
 def init_weight(fan_in: int, fan_out: int) -> list[list[float]]:
     """Xavier/Glorot initialization: uniform(-sqrt(6/(in+out)), sqrt(6/(in+out)))."""
-    # TODO: Compute the Xavier limit and generate random weights.
-    # Hint: limit = math.sqrt(6.0 / (fan_in + fan_out))
-    # Hint: return [[random.uniform(-limit, limit) for _ in range(fan_out)] for _ in range(fan_in)]
-    limit = ____
-    return ____
+    # TODO: Compute Xavier limit and return (fan_in × fan_out) weight matrix.
+    # limit = sqrt(6 / (fan_in + fan_out)); entries uniform in [-limit, limit].
+    ____
+    ____
 
 
-W1 = init_weight(2, 2)  # 2 inputs -> 2 hidden
+W1 = init_weight(2, 2)
 b1 = [0.0, 0.0]
-W2 = init_weight(2, 1)  # 2 hidden -> 1 output
+W2 = init_weight(2, 1)
 b2 = [0.0]
 
 print(f"\n=== Network Architecture ===")
@@ -101,22 +92,14 @@ print(f"Total parameters: {2*2 + 2 + 2*1 + 1} = 9")
 
 
 def forward_pass(x: list[float]) -> tuple:
-    """Forward pass through 2-layer network."""
-    # Hidden layer
-    h = []
-    for j in range(2):
-        # TODO: Compute the pre-activation sum for hidden neuron j.
-        # Hint: z = sum(x[i] * W1[i][j] for i in range(2)) + b1[j]
-        z = ____
-        h.append(sigmoid(z))
-
-    # Output layer
-    # TODO: Compute the pre-activation for the output neuron.
-    # Hint: z_out = sum(h[j] * W2[j][0] for j in range(2)) + b2[0]
-    z_out = ____
-    y_hat = sigmoid(z_out)
-
-    return h, y_hat
+    """Forward pass: 2-layer sigmoid network. Returns (h, y_hat)."""
+    # TODO: Hidden layer — for each neuron j compute z=sum(x[i]*W1[i][j])+b1[j], apply sigmoid.
+    # Output — z_out=sum(h[j]*W2[j][0])+b2[0], y_hat=sigmoid(z_out). Return (h, y_hat).
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 learning_rate = 1.0
@@ -127,34 +110,26 @@ for epoch in range(epochs):
     total_loss = 0.0
 
     for x, y in zip(xor_inputs, xor_targets):
-        # Forward
         h, y_hat = forward_pass(x)
 
-        # Binary cross-entropy loss (per sample)
         eps = 1e-8
-        # TODO: Compute the binary cross-entropy loss.
-        # Hint: -(y * math.log(y_hat + eps) + (1 - y) * math.log(1 - y_hat + eps))
-        loss = ____
+        loss = -(y * math.log(y_hat + eps) + (1 - y) * math.log(1 - y_hat + eps))
         total_loss += loss
 
         # Backward: output layer
-        d_out = y_hat - y  # dL/dz_out for BCE + sigmoid
+        d_out = y_hat - y
 
-        # Gradients for W2, b2
         dW2 = [h[j] * d_out for j in range(2)]
         db2 = d_out
 
-        # Backward: hidden layer
         d_hidden = [d_out * W2[j][0] * sigmoid_derivative(h[j]) for j in range(2)]
 
-        # Gradients for W1, b1
         for i in range(2):
             for j in range(2):
                 W1[i][j] -= learning_rate * x[i] * d_hidden[j]
         for j in range(2):
             b1[j] -= learning_rate * d_hidden[j]
 
-        # Update W2, b2
         for j in range(2):
             W2[j][0] -= learning_rate * dW2[j]
         b2[0] -= learning_rate * db2
@@ -165,7 +140,6 @@ for epoch in range(epochs):
         history["loss"].append(avg_loss)
         print(f"Epoch {epoch:5d}: loss={avg_loss:.6f}")
 
-# Final predictions
 print(f"\n=== Trained XOR Predictions ===")
 for x, y in zip(xor_inputs, xor_targets):
     _, y_hat = forward_pass(x)
@@ -176,9 +150,7 @@ for x, y in zip(xor_inputs, xor_targets):
 # TASK 4: Visualize decision boundary with ModelVisualizer
 # ══════════════════════════════════════════════════════════════════════
 
-# Generate grid for decision boundary
 grid_points = []
-grid_preds = []
 for gx in range(0, 101, 5):
     for gy in range(0, 101, 5):
         x_val = gx / 100.0
@@ -189,7 +161,6 @@ for gx in range(0, 101, 5):
 boundary_df = pl.DataFrame(grid_points)
 viz = ModelVisualizer()
 
-# Prepare data for visualization
 xor_df = pl.DataFrame(
     {
         "x1": [x[0] for x in xor_inputs],
@@ -202,10 +173,6 @@ print(f"\n=== Decision Boundary ===")
 print(f"Grid points: {boundary_df.height}")
 print(f"Boundary shows how hidden layer creates non-linear separation")
 
-# The hidden layer maps:
-# (0,0) -> (h1, h2) in one region
-# (1,1) -> (h1, h2) in same region  (both low or both high)
-# (0,1) and (1,0) -> different region
 print(f"\nHidden representations:")
 for x, y in zip(xor_inputs, xor_targets):
     h, y_hat = forward_pass(x)
@@ -219,17 +186,14 @@ for x, y in zip(xor_inputs, xor_targets):
 loader = ASCENTDataLoader()
 spirals_df = loader.load("ascent07", "synthetic_spirals.parquet")
 
-# TODO: Analyze the spirals dataset with DataExplorer.
-# Hint: explorer = DataExplorer(); spiral_summary = explorer.analyze(spirals_df)
-explorer = ____
-spiral_summary = ____
+explorer = DataExplorer()
+spiral_summary = asyncio.run(explorer.profile(spirals_df))
 
 print(f"\n=== Synthetic Spirals Dataset ===")
 print(f"Shape: {spirals_df.shape}")
 print(f"Columns: {spirals_df.columns}")
 print(f"Classes: {spirals_df['label'].unique().sort().to_list()}")
 
-# Count per class
 class_counts = spirals_df.group_by("label").len().sort("label")
 print(f"Samples per class:")
 print(class_counts)

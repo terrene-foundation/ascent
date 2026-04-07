@@ -18,12 +18,15 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import pickle
+import re
+from collections import Counter
 
 import polars as pl
 
-from kailash.infrastructure import ConnectionManager
-from kailash_ml import AutoMLEngine, ModelRegistry, ModelVisualizer
+from kailash.db.connection import ConnectionManager
+from kailash_ml import ModelRegistry, ModelVisualizer
 from kailash_ml.types import MetricSpec
 
 from shared import ASCENTDataLoader
@@ -39,125 +42,124 @@ setup_environment()
 loader = ASCENTDataLoader()
 reviews = loader.load("ascent08", "sg_product_reviews.parquet")
 
-print(f"=== Singapore Product Reviews ===")
-print(f"Shape: {reviews.shape}")
+print(f"=== Singapore Product Reviews: {reviews.shape} ===")
 print(f"Columns: {reviews.columns}")
 
-# TODO: Compute label distribution via group_by and agg.
-# Hint: reviews.group_by("rating").agg(pl.len().alias("count")).sort("rating")
-label_counts = ____
+label_counts = reviews.group_by("rating").agg(pl.len().alias("count")).sort("rating")
 print(f"\nRating distribution:")
 for row in label_counts.iter_rows():
     print(f"  Rating {row[0]}: {row[1]} reviews")
 
-# Binary classification: positive (4-5) vs negative (1-2)
-# TODO: Create a binary sentiment column using pl.when/then/otherwise.
-# Hint: reviews.with_columns(pl.when(pl.col("rating") >= 4).then(pl.lit("positive")).otherwise(pl.lit("negative")).alias("sentiment"))
-reviews = ____
+# TODO: Add "sentiment" column — "positive" when rating >= 4, else "negative"
+reviews = reviews.with_columns(
+    ____  # Hint: pl.when(pl.col("rating") >= 4).then(pl.lit("positive")).otherwise(pl.lit("negative")).alias("sentiment")
+)
 
-# Train/test split
-n_train = int(reviews.height * 0.8)
-# TODO: Slice reviews into train and test sets.
-# Hint: reviews[:n_train]
-train_reviews = ____
-# Hint: reviews[n_train:]
-test_reviews = ____
+# TODO: Split 80% train / 20% test
+n_train = ____  # Hint: int(reviews.height * 0.8)
+train_reviews = ____  # Hint: reviews[:n_train]
+test_reviews = ____  # Hint: reviews[n_train:]
 
-print(f"\nBinary sentiment: positive (rating >= 4) vs negative (rating <= 2)")
-print(f"Train: {train_reviews.height}, Test: {test_reviews.height}")
-
-# Transfer learning insight
+print(f"\nTrain: {train_reviews.height}, Test: {test_reviews.height}")
 print(f"\n=== Transfer Learning ===")
-print(f"Pre-trained transformers already understand language structure,")
-print(f"grammar, and general semantics from training on billions of tokens.")
-print(f"Fine-tuning adapts this knowledge to our specific domain (Singapore")
-print(f"product reviews) with relatively few examples.")
+print(f"Pre-trained transformers understand language from billions of tokens.")
+print(f"Fine-tuning adapts to Singapore product reviews with fewer examples.")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Configure AutoMLEngine for text classification
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Configure AutoMLEngine for text classification on sentiment.
-# Hint: AutoMLEngine(task="text_classification", target="sentiment", text_column="text", max_trials=10, optimization_metric="f1", time_budget_seconds=300)
-engine = ____
-
 print(f"\n=== AutoMLEngine Configuration ===")
-print(f"Task: text_classification")
-print(f"Target: sentiment (positive/negative)")
-print(f"Text column: text")
-print(f"Max trials: 10")
-print(f"Optimization: F1 score")
-print(f"AutoMLEngine automatically tries:")
-print(f"  - TF-IDF + LogisticRegression")
-print(f"  - TF-IDF + SVM")
-print(f"  - Transformer embeddings + classifier")
-print(f"  - Various hyperparameter combinations")
+print(f"AutoMLEngine(pipeline, search) automates model selection across")
+print(f"algorithms, hyperparameters, and text representations.")
+print(f"Building TF-IDF + nearest-centroid classifier below.")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: Fine-tune on domain-specific data
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== Fine-tuning ===")
-# TODO: Fit the engine on training data.
-# Hint: engine.fit(train_reviews)
-result = ____
+print(f"\n=== Training TF-IDF Classifier ===")
 
-print(f"Best model: {result.best_model_name}")
-print(f"Best F1: {result.best_score:.4f}")
-print(f"Trials completed: {result.n_trials}")
 
-# Leaderboard
-print(f"\nLeaderboard:")
-for i, trial in enumerate(result.leaderboard[:5]):
-    print(f"  {i+1}. {trial['model']}: F1={trial['score']:.4f}")
+def tokenize_text(text: str) -> list[str]:
+    return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
+
+
+# TODO: Count document-level token frequencies across training set
+all_train_tokens: Counter = Counter()
+for text in train_reviews["review_text"].to_list():
+    ____  # Hint: all_train_tokens.update(set(tokenize_text(text)))
+
+# TODO: Build vocabulary (top 1000) and IDF lookup
+tfidf_vocab = ____  # Hint: [w for w, c in all_train_tokens.most_common(1000)]
+tfidf_idx = {w: i for i, w in enumerate(tfidf_vocab)}
+tfidf_idf = ____  # Hint: {w: math.log(train_reviews.height / (1 + c)) for w, c in all_train_tokens.items()}
+
+
+def text_to_vec(text: str) -> list[float]:
+    tokens = tokenize_text(text)
+    tf = Counter(tokens)
+    total = len(tokens) if tokens else 1
+    vec = [0.0] * len(tfidf_vocab)
+    for t, count in tf.items():
+        if t in tfidf_idx:
+            vec[tfidf_idx[t]] = (count / total) * tfidf_idf.get(t, 0.0)
+    return vec
+
+
+# TODO: Compute per-class centroid vectors from training data
+class_vecs: dict[str, list[float]] = {}
+class_cts: dict[str, int] = {}
+for i in range(train_reviews.height):
+    label = train_reviews["sentiment"][i]
+    vec = text_to_vec(train_reviews["review_text"][i])
+    if label not in class_vecs:
+        class_vecs[label] = [0.0] * len(tfidf_vocab)
+        class_cts[label] = 0
+    for j in range(len(vec)):
+        ____  # Hint: class_vecs[label][j] += vec[j]
+    ____  # Hint: class_cts[label] += 1
+
+# TODO: Normalize each centroid
+for label in class_vecs:
+    class_vecs[label] = ____  # Hint: [v / class_cts[label] for v in class_vecs[label]]
+
+print(f"Vocab: {len(tfidf_vocab)}, Classes: {list(class_vecs.keys())}")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: Evaluate with confusion matrix
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Generate predictions on test data.
-# Hint: engine.predict(test_reviews)
-predictions = ____
 y_true = test_reviews["sentiment"].to_list()
-y_pred = predictions["prediction"].to_list()
+y_pred = []
+for text in test_reviews["review_text"].to_list():
+    vec = text_to_vec(text)
+    # TODO: Predict class with minimum L2 distance to class centroid
+    best_label = ____  # Hint: min(class_vecs.keys(), key=lambda c: sum((a-b)**2 for a,b in zip(vec, class_vecs[c])))
+    y_pred.append(best_label)
 
-# Accuracy
 correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
 accuracy = correct / len(y_true)
-
-# Per-class metrics
-# TODO: Count true positives.
-# Hint: sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "positive")
-tp = ____
-# TODO: Count false positives.
-# Hint: sum(1 for t, p in zip(y_true, y_pred) if t == "negative" and p == "positive")
-fp = ____
-# TODO: Count false negatives.
-# Hint: sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "negative")
-fn = ____
-# TODO: Compute precision from tp and fp.
-# Hint: tp / max(tp + fp, 1)
-precision = ____
-# TODO: Compute recall from tp and fn.
-# Hint: tp / max(tp + fn, 1)
-recall = ____
-# TODO: Compute F1 score from precision and recall.
-# Hint: 2 * precision * recall / max(precision + recall, 1e-10)
-f1 = ____
+tp = sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "positive")
+fp = sum(1 for t, p in zip(y_true, y_pred) if t == "negative" and p == "positive")
+fn = sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "negative")
+precision = tp / max(tp + fp, 1)
+recall = tp / max(tp + fn, 1)
+f1 = 2 * precision * recall / max(precision + recall, 1e-10)
 
 print(f"\n=== Test Evaluation ===")
-print(f"Accuracy: {accuracy:.4f}")
-print(f"Precision: {precision:.4f}")
-print(f"Recall: {recall:.4f}")
-print(f"F1: {f1:.4f}")
+print(
+    f"Accuracy={accuracy:.4f}, Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}"
+)
 
-viz = ModelVisualizer()
-# TODO: Plot confusion matrix with ModelVisualizer.
-# Hint: viz.plot_confusion_matrix(y_true=y_true, y_pred=y_pred, class_names=["negative", "positive"])
-fig = ____
+# TODO: Instantiate ModelVisualizer and plot confusion matrix; save to HTML
+viz = ____  # Hint: ModelVisualizer()
+fig = viz.confusion_matrix(
+    y_true=y_true, y_pred=y_pred, labels=["negative", "positive"]
+)
 fig.write_html("sentiment_confusion_matrix.html")
 print(f"Confusion matrix saved to sentiment_confusion_matrix.html")
 
@@ -168,40 +170,42 @@ print(f"Confusion matrix saved to sentiment_confusion_matrix.html")
 
 
 async def register_best():
-    conn = ConnectionManager("sqlite:///nlp_models.db")
+    # TODO: Initialize ConnectionManager and ModelRegistry
+    conn = ____  # Hint: ConnectionManager("sqlite:///nlp_models.db")
     await conn.initialize()
+    registry = ____  # Hint: ModelRegistry(conn)
 
-    # TODO: Create a ModelRegistry and initialize it.
-    # Hint: ModelRegistry(conn)
-    registry = ____
-    await registry.initialize()
+    # TODO: Register model with all four metrics
+    version = await registry.register_model(
+        name="sg_sentiment_classifier",
+        artifact=pickle.dumps(class_vecs),
+        metrics=[
+            ____,  # Hint: MetricSpec(name="f1", value=f1)
+            ____,  # Hint: MetricSpec(name="accuracy", value=accuracy)
+            ____,  # Hint: MetricSpec(name="precision", value=precision)
+            ____,  # Hint: MetricSpec(name="recall", value=recall)
+        ],
+    )
 
-    # TODO: Register the model with name, artifact, and metrics.
-    # Hint: registry.register_model(name="sg_sentiment_classifier", artifact=pickle.dumps(result.best_model), metrics=[MetricSpec(name="f1", value=f1), MetricSpec(name="accuracy", value=accuracy), MetricSpec(name="precision", value=precision), MetricSpec(name="recall", value=recall)])
-    version = await ____
-
-    # TODO: Promote the model to production stage.
-    # Hint: registry.promote_model(name="sg_sentiment_classifier", version=version.version, target_stage="production")
-    await ____
+    # TODO: Promote the registered version to "production" stage
+    await registry.promote_model(
+        name="sg_sentiment_classifier",
+        version=____,  # Hint: version.version
+        target_stage="production",
+    )
 
     print(f"\n=== ModelRegistry ===")
-    print(f"Registered: sg_sentiment_classifier v{version.version}")
-    print(f"Stage: production")
-    print(f"Metrics: F1={f1:.4f}, accuracy={accuracy:.4f}")
-
-    # List all models
+    print(f"Registered sg_sentiment_classifier v{version.version} → production")
+    print(f"F1={f1:.4f}, accuracy={accuracy:.4f}")
     models = await registry.list_models()
-    print(f"Total registered models: {len(models)}")
-
+    print(f"Total registered: {len(models)}")
     return registry
 
 
 registry = asyncio.run(register_best())
 
 print(f"\n=== Transfer Learning Summary ===")
-print(f"Pre-trained transformers provide powerful text representations")
-print(f"that can be fine-tuned with relatively few domain-specific examples.")
-print(f"AutoMLEngine automates the search across model architectures")
-print(f"and hyperparameters, finding the best approach for your data.")
+print(f"Pre-trained representations + domain fine-tuning = strong baselines")
+print(f"AutoMLEngine automates architecture and hyperparameter search.")
 
 print("\n✓ Exercise 7 complete — transformer transfer learning with AutoMLEngine")

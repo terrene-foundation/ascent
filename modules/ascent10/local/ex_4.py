@@ -22,32 +22,26 @@ import random
 
 import polars as pl
 
-from kailash_ml import ModelVisualizer, RLTrainer
+from kailash_ml import ModelVisualizer
+from kailash_ml.rl.trainer import RLTrainer, RLTrainingConfig, RLTrainingResult
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define inventory environment
-# ══════════════════════════════════════════════════════════════════════
-
 loader = ASCENTDataLoader()
 demand_data = loader.load("ascent10", "inventory_demand.parquet")
 
-print(f"=== Inventory Management Environment ===")
-print(f"Demand data: {demand_data.shape}")
 
-
+# ══════════════════════════════════════════════════════════════════════
+# TASK 1: Complete InventoryEnv.step() — apply order (clip to max_order,
+#   cap stock at max_stock), sample demand from pattern + N(0,3), compute
+#   reward = revenue - holding - stockout_penalty - order_cost, advance
+#   self.day. Return (next_state, reward, done).
+# ══════════════════════════════════════════════════════════════════════
 class InventoryEnv:
-    """Simple inventory management environment.
-
-    State: (current_stock, day_of_week, avg_recent_demand)
-    Action: order_quantity (0 to max_order)
-    Reward: revenue from sales - holding cost - stockout penalty - order cost
-    """
+    """State: (stock_ratio, day_of_week, avg_demand). Action: order qty."""
 
     def __init__(
         self,
@@ -78,175 +72,56 @@ class InventoryEnv:
 
     def _get_state(self) -> list[float]:
         avg_demand = sum(self.demand_pattern[max(0, self.day - 7) : self.day + 1]) / 7
-        return [
-            self.stock / self.max_stock,
-            (self.day % 7) / 6.0,
-            avg_demand / 50.0,
-        ]
+        return [self.stock / self.max_stock, (self.day % 7) / 6.0, avg_demand / 50.0]
 
     def step(self, action: int) -> tuple[list[float], float, bool]:
-        # TODO: Implement one step of the environment.
-        # 1. Apply order (capped at max_order, stock capped at max_stock)
-        # 2. Sample demand from demand_pattern with Gaussian noise
-        # 3. Calculate reward components: revenue, holding, stockout, order cost
-        # 4. Update stock and advance day
-        # Hint: sold = min(stock, demand), reward = revenue - holding - stockout - order_expense
-
-        # Apply order
-        order_qty = ____
-        self.stock = ____
-
-        # Demand arrives
-        demand_idx = self.day % len(self.demand_pattern)
-        demand = ____
-
-        # Calculate reward components
-        sold = ____
-        revenue = ____
-        holding = ____
-        stockout = ____
-        order_expense = ____
-
-        reward = ____
-        self.stock = ____
-        self.day += 1
-        self.total_reward += reward
-
-        done = self.day >= len(self.demand_pattern)
-        return self._get_state(), reward, done
+        ____
 
 
-# Create environment with demand patterns from data
-demand_values = demand_data["demand"].to_list()[:90]  # 90 days
+demand_values = demand_data["demand"].to_list()[:90]
 env = InventoryEnv(demand_pattern=demand_values)
+print(f"=== Inventory Env: max_stock={env.max_stock}, max_order={env.max_order} ===")
 
-state = env.reset()
-print(f"State space: [stock_ratio, day_of_week, avg_demand]")
-print(f"Action space: order quantity (0 to {env.max_order})")
-print(f"Initial state: {state}")
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Build RLTrainingConfig for PPO (lr=3e-4, gamma=0.99,
+#   clip_range=0.2, gae_lambda=0.95, batch_size=64, timesteps=50000).
+#   Print key params and the PPO clipped-objective formula.
+# ══════════════════════════════════════════════════════════════════════
+____
+____
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Print reward shaping breakdown — revenue, holding cost,
+#   stockout penalty, order cost — and explain the newsvendor trade-off.
+# ══════════════════════════════════════════════════════════════════════
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Configure RLTrainer with PPO
+# TASK 4: Evaluate heuristic_policy over 10 episodes, compute avg reward.
+#   Implement improved_policy (demand-adaptive reorder), evaluate 10 eps,
+#   compute improvement %. Print comparison.
 # ══════════════════════════════════════════════════════════════════════
-
-# TODO: Create RLTrainer with PPO algorithm and appropriate hyperparameters.
-# Hint: RLTrainer(algorithm="ppo", clip_epsilon=0.2, gae_lambda=0.95, ...)
-trainer = ____
-
-print(f"\n=== PPO Configuration ===")
-print(f"Algorithm: Proximal Policy Optimization")
-print(f"Key hyperparameters:")
-print(f"  gamma={trainer.gamma}: discount factor (0.99 = long-term planning)")
-print(f"  clip_epsilon={trainer.clip_epsilon}: limits policy change per update")
-print(f"  gae_lambda={trainer.gae_lambda}: GAE bias-variance trade-off")
-print(f"  learning_rate={trainer.learning_rate}")
-print(f"\nPPO objective: maximize reward while staying close to the old policy")
-print(f"L_CLIP = min(r(θ)A, clip(r(θ), 1-ε, 1+ε)A)")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Implement reward function with penalties
-# ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Reward Shaping ===")
-print(f"Revenue:          +${env.unit_price}/unit sold")
-print(f"Holding cost:     -${env.holding_cost}/unit/day (penalizes overstocking)")
-print(
-    f"Stockout penalty: -${env.stockout_penalty}/unit missed (penalizes understocking)"
-)
-print(
-    f"Order cost:       -${env.order_cost}/unit ordered (penalizes frequent ordering)"
-)
-print(f"\nThe agent must balance: order enough to meet demand, but not so much")
-print(f"that holding costs eat into profits. This is the newsvendor problem.")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Train and compare vs heuristic baseline
-# ══════════════════════════════════════════════════════════════════════
-
-
-# TODO: Implement a heuristic (s, S) policy.
-# Hint: If stock below 40% of target, order up to target; else order 0.
 def heuristic_policy(state: list[float], target_ratio: float = 0.6) -> int:
-    """Simple (s, S) policy: if stock below s, order up to S."""
-    current_stock_ratio = state[0]
-    target_stock = ____
-    current_stock = ____
-    if ____:
-        return ____
+    """Simple (s, S) policy: order up to target when stock below 40% of target."""
+    current_stock = int(state[0] * env.max_stock)
+    target_stock = int(target_ratio * env.max_stock)
+    if current_stock < target_stock * 0.4:
+        return min(target_stock - current_stock, env.max_order)
     return 0
 
 
-# Evaluate heuristic
-random.seed(42)
-heuristic_rewards = []
-for episode in range(10):
-    state = env.reset()
-    episode_reward = 0.0
-    while True:
-        action = heuristic_policy(state)
-        state, reward, done = env.step(action)
-        episode_reward += reward
-        if done:
-            break
-    heuristic_rewards.append(episode_reward)
-
-avg_heuristic = sum(heuristic_rewards) / len(heuristic_rewards)
-print(f"\n=== Heuristic Baseline ===")
-print(f"Policy: order up to 60% capacity when stock falls below 24%")
-print(f"Average reward over 10 episodes: ${avg_heuristic:.2f}")
-
-# TODO: Train PPO agent.
-# Hint: trainer.train()
-print(f"\n=== PPO Training ===")
-result = ____
-print(f"Training complete:")
-print(f"  Episodes: {result.n_episodes}")
-print(f"  Final avg reward: ${result.avg_reward:.2f}")
-print(f"  Best episode reward: ${result.best_reward:.2f}")
-
-# TODO: Evaluate PPO policy over 10 episodes.
-# Hint: Loop episodes, use result.policy(state) for actions.
-ppo_rewards = []
-for episode in range(10):
-    state = env.reset()
-    episode_reward = 0.0
-    while True:
-        action = ____
-        state, reward, done = env.step(action)
-        episode_reward += reward
-        if done:
-            break
-    ppo_rewards.append(episode_reward)
-
-avg_ppo = sum(ppo_rewards) / len(ppo_rewards)
-improvement = ((avg_ppo - avg_heuristic) / abs(avg_heuristic)) * 100
-
-print(f"\n=== Comparison ===")
-print(f"Heuristic avg reward: ${avg_heuristic:.2f}")
-print(f"PPO avg reward:       ${avg_ppo:.2f}")
-print(f"Improvement:          {improvement:+.1f}%")
-
+____
+____
+____
+____
+____
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Analyze policy behavior
+# TASK 5: Analyze policy behavior — for stock ratios [0.1, 0.3, 0.5,
+#   0.7, 0.9] print what improved_policy orders. Explain the pattern.
 # ══════════════════════════════════════════════════════════════════════
-
-viz = ModelVisualizer()
-
-print(f"\n=== Policy Analysis ===")
-# TODO: Test policy at different stock levels and print order decisions.
-# Hint: Create state = [stock_ratio, 0.5, 0.3], call result.policy(state).
-for stock_ratio in [0.1, 0.3, 0.5, 0.7, 0.9]:
-    state = ____
-    action = ____
-    print(f"  Stock={stock_ratio*100:.0f}%: order {action} units")
-
-print(f"\nPolicy behavior:")
-print(f"  Low stock → large orders (prevent stockouts)")
-print(f"  High stock → small/no orders (minimize holding costs)")
-print(f"  PPO learns the optimal reorder point adaptively")
+____
+____
 
 print("\n✓ Exercise 4 complete — PPO inventory management vs heuristic baseline")
