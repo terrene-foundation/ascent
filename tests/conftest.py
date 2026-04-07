@@ -38,6 +38,7 @@ MODULES = [f"ascent{i:02d}" for i in range(1, 11)]
 
 # Exercises known to timeout (>120s) — heavy computation, not bugs
 SLOW_EXERCISES: set[tuple[str, int]] = {
+    ("ascent03", 7),  # HyperparameterSearch + TrainingPipeline + LightGBM
     ("ascent03", 8),  # Production Pipeline capstone
     ("ascent04", 1),  # Clustering with AutoML
     ("ascent04", 7),  # DL intro (torch training)
