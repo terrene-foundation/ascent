@@ -5,25 +5,37 @@
 # ASCENT06 — Exercise 5: AI Governance with PACT
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Define a realistic organization in YAML, compile it, and
-#   create a GovernanceEngine. Verify access decisions.
+#   create a GovernanceEngine. Grant clearances, set envelopes, and
+#   verify action decisions.
 #
 # TASKS:
-#   1. Define organization structure in YAML (3 departments, 8 roles)
-#   2. Compile organization with compile_org()
-#   3. Create GovernanceEngine
-#   4. Test access decisions: can_access(), explain_access()
-#   5. Verify monotonic tightening and fail-closed behavior
+#   1. Define organization structure in YAML (departments, teams, roles)
+#   2. Load and compile organization with load_org_yaml / compile_org
+#   3. Create GovernanceEngine and grant clearances
+#   4. Set operating envelopes and verify actions
+#   5. Demonstrate frozen GovernanceContext
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
 import tempfile
 from pathlib import Path
 
+from kailash.trust import ConfidentialityLevel
 from pact import GovernanceEngine, GovernanceContext
-from pact import Address, RoleEnvelope, TaskEnvelope
 from pact import compile_org, load_org_yaml
+from pact.governance import (
+    ClearanceSpec,
+    RoleClearance,
+    RoleEnvelope,
+)
+from kailash.trust.pact.config import (
+    ConstraintEnvelopeConfig,
+    OperationalConstraintConfig,
+    TemporalConstraintConfig,
+    DataAccessConstraintConfig,
+    CommunicationConstraintConfig,
+)
 
 from shared.kailash_helpers import setup_environment
 
@@ -33,245 +45,281 @@ setup_environment()
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Define organization in YAML
 # ══════════════════════════════════════════════════════════════════════
+#
+# PACT YAML schema (top-level keys):
+#   org_id (str, required) — unique org identifier
+#   name (str, required) — human-readable org name
+#   departments (list of {id, name})
+#   teams (list of {id, name})
+#   roles (list of {id, name, reports_to?, is_primary_for_unit?, agent?})
+#   clearances (list of {role, level, compartments?, nda_signed?})
+#   envelopes (list of {target, defined_by, financial?, operational?})
+#
+# Clearance levels: public, restricted, confidential, secret, top_secret
 
 org_yaml = """
-organization:
-  name: "ASCENT Credit Bureau"
-  version: "1.0"
+org_id: ascent_credit_bureau
+name: "ASCENT Credit Bureau"
 
-  departments:
-    - name: "data_science"
-      description: "ML model development and research"
-      teams:
-        - name: "modeling"
-          roles:
-            - name: "senior_data_scientist"
-              permissions:
-                data_access: ["credit_data", "feature_store", "experiment_logs"]
-                tools: ["training_pipeline", "hyperparameter_search", "model_registry"]
-                max_cost_usd: 50.0
-                can_deploy: false
-            - name: "junior_data_scientist"
-              permissions:
-                data_access: ["credit_data", "feature_store"]
-                tools: ["training_pipeline"]
-                max_cost_usd: 10.0
-                can_deploy: false
-        - name: "mlops"
-          roles:
-            - name: "ml_engineer"
-              permissions:
-                data_access: ["credit_data", "feature_store", "model_artifacts", "production_logs"]
-                tools: ["training_pipeline", "model_registry", "inference_server", "drift_monitor"]
-                max_cost_usd: 100.0
-                can_deploy: true
+departments:
+  - id: data_science
+    name: "Data Science"
+  - id: risk
+    name: "Risk Management"
+  - id: operations
+    name: "Operations"
 
-    - name: "risk"
-      description: "Model risk management and compliance"
-      teams:
-        - name: "model_validation"
-          roles:
-            - name: "model_validator"
-              permissions:
-                data_access: ["credit_data", "experiment_logs", "model_artifacts", "audit_logs"]
-                tools: ["model_registry", "drift_monitor"]
-                max_cost_usd: 20.0
-                can_deploy: false
-                can_approve_production: true
-            - name: "compliance_officer"
-              permissions:
-                data_access: ["audit_logs", "governance_reports"]
-                tools: []
-                max_cost_usd: 5.0
-                can_deploy: false
-                can_approve_production: false
+teams:
+  - id: modeling
+    name: "Modeling Team"
+  - id: mlops
+    name: "MLOps Team"
+  - id: model_validation
+    name: "Model Validation"
+  - id: serving
+    name: "Serving"
 
-    - name: "operations"
-      description: "Production systems and customer-facing"
-      teams:
-        - name: "serving"
-          roles:
-            - name: "sre"
-              permissions:
-                data_access: ["production_logs", "model_artifacts"]
-                tools: ["inference_server", "drift_monitor"]
-                max_cost_usd: 200.0
-                can_deploy: true
-            - name: "customer_service"
-              permissions:
-                data_access: ["credit_decisions"]
-                tools: ["inference_server"]
-                max_cost_usd: 1.0
-                can_deploy: false
+roles:
+  # Data Science department
+  - id: senior_data_scientist
+    name: "Senior Data Scientist"
+    is_primary_for_unit: data_science
+  - id: junior_data_scientist
+    name: "Junior Data Scientist"
+    reports_to: senior_data_scientist
+  - id: ml_engineer
+    name: "ML Engineer"
+    is_primary_for_unit: mlops
 
-  policies:
-    - name: "model_promotion"
-      description: "Models require validator approval before production"
-      rule: "promote_to_production requires model_validator.can_approve_production"
-    - name: "data_classification"
-      description: "Credit data is Confidential; audit logs are Restricted"
-      classifications:
-        credit_data: "confidential"
-        audit_logs: "restricted"
-        production_logs: "internal"
-        credit_decisions: "confidential"
+  # Risk department
+  - id: model_validator
+    name: "Model Validator"
+    is_primary_for_unit: risk
+  - id: compliance_officer
+    name: "Compliance Officer"
+    reports_to: model_validator
+
+  # Operations department
+  - id: sre
+    name: "Site Reliability Engineer"
+    is_primary_for_unit: operations
+  - id: customer_service
+    name: "Customer Service Agent"
+    reports_to: sre
+    agent: true
+
+clearances:
+  - role: senior_data_scientist
+    level: secret
+    compartments: [credit_data, feature_store]
+  - role: junior_data_scientist
+    level: confidential
+    compartments: [credit_data]
+  - role: ml_engineer
+    level: secret
+    compartments: [credit_data, feature_store, model_artifacts]
+  - role: model_validator
+    level: top_secret
+    compartments: [credit_data, audit_logs, model_artifacts]
+    nda_signed: true
+  - role: compliance_officer
+    level: confidential
+    compartments: [audit_logs]
+  - role: sre
+    level: secret
+    compartments: [production_logs, model_artifacts]
+  - role: customer_service
+    level: restricted
+    compartments: [credit_decisions]
 """
 
 # Write to temp file
 org_file = Path(tempfile.mktemp(suffix=".yaml"))
 org_file.write_text(org_yaml)
 print(f"=== Organization YAML ===")
+print(f"Org ID: ascent_credit_bureau")
 print(f"Departments: 3 (data_science, risk, operations)")
-print(f"Roles: 6 unique roles across 5 teams")
+print(f"Teams: 4 (modeling, mlops, model_validation, serving)")
+print(f"Roles: 7 unique roles")
+print(f"Clearances: 7 (levels restricted → top_secret)")
 print(f"Written to: {org_file}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compile organization
+# TASK 2: Load and compile organization
 # ══════════════════════════════════════════════════════════════════════
 
-org = load_org_yaml(str(org_file))
-compiled = compile_org(org)
+loaded_org = load_org_yaml(str(org_file))
 
-print(f"\n=== Compiled Organization ===")
-print(f"Valid: {compiled.valid}")
-if compiled.errors:
-    print(f"Errors: {compiled.errors}")
-if compiled.warnings:
-    print(f"Warnings: {compiled.warnings}")
-print(f"Departments: {[d.name for d in compiled.departments]}")
-print(f"Total roles: {compiled.total_roles}")
+print(f"\n=== LoadedOrg ===")
+print(f"Org ID: {loaded_org.org_definition.org_id}")
+print(f"Name: {loaded_org.org_definition.name}")
+print(f"Departments: {len(loaded_org.org_definition.departments)}")
+print(f"Teams: {len(loaded_org.org_definition.teams)}")
+print(f"Roles: {len(loaded_org.org_definition.roles)}")
+print(f"Clearance specs: {len(loaded_org.clearances)}")
 
+compiled = compile_org(loaded_org.org_definition)
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Create GovernanceEngine
-# ══════════════════════════════════════════════════════════════════════
+print(f"\n=== CompiledOrg (D/T/R Addresses) ===")
+print(f"Org ID: {compiled.org_id}")
+print(f"Total nodes: {len(compiled.nodes)}")
 
-
-async def setup_governance():
-    engine = GovernanceEngine(compiled)
-
-    print(f"\n=== GovernanceEngine ===")
-    print(f"Organization: {compiled.name}")
-    print(f"Enforcement mode: fail-closed (deny on error)")
-
-    return engine
-
-
-engine = asyncio.run(setup_governance())
+# Build role_id → address lookup
+role_addr = {}
+for addr, node in compiled.nodes.items():
+    if node.role_definition is not None and not node.is_vacant:
+        role_addr[node.node_id] = addr
+        print(f"  {addr:<8} {node.node_type.value} — {node.name} (id={node.node_id})")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Test access decisions
+# TASK 3: Create GovernanceEngine and grant clearances
 # ══════════════════════════════════════════════════════════════════════
 
+engine = GovernanceEngine(loaded_org.org_definition)
 
-async def test_access():
-    # D/T/R addressing: Department/Team/Role
-    senior_ds = Address("data_science", "modeling", "senior_data_scientist")
-    junior_ds = Address("data_science", "modeling", "junior_data_scientist")
-    ml_eng = Address("data_science", "mlops", "ml_engineer")
-    validator = Address("risk", "model_validation", "model_validator")
-    cust_svc = Address("operations", "serving", "customer_service")
+# Grant clearances from the YAML-parsed specs
+# ClearanceSpec has: role_id, level, compartments, nda_signed
+# GovernanceEngine.grant_clearance() takes (role_address, RoleClearance)
+level_map = {
+    "public": ConfidentialityLevel.PUBLIC,
+    "restricted": ConfidentialityLevel.RESTRICTED,
+    "confidential": ConfidentialityLevel.CONFIDENTIAL,
+    "secret": ConfidentialityLevel.SECRET,
+    "top_secret": ConfidentialityLevel.TOP_SECRET,
+}
 
-    # Test cases
-    test_cases = [
-        (senior_ds, "credit_data", True, "Senior DS can access credit data"),
-        (
-            junior_ds,
-            "experiment_logs",
-            False,
-            "Junior DS cannot access experiment logs",
-        ),
-        (ml_eng, "production_logs", True, "ML Engineer can access production logs"),
-        (validator, "audit_logs", True, "Validator can access audit logs"),
-        (
-            cust_svc,
-            "credit_data",
-            False,
-            "Customer service cannot access raw credit data",
-        ),
-        (cust_svc, "credit_decisions", True, "Customer service can access decisions"),
-    ]
+print(f"\n=== Clearances Granted ===")
+for cs in loaded_org.clearances:
+    if cs.role_id in role_addr:
+        addr = role_addr[cs.role_id]
+        clearance = RoleClearance(
+            role_address=addr,
+            max_clearance=level_map[cs.level],
+            compartments=frozenset(cs.compartments),
+            granted_by_role_address="system_init",
+            nda_signed=cs.nda_signed,
+        )
+        engine.grant_clearance(addr, clearance)
+        print(
+            f"  {cs.role_id:<25} → {cs.level:<12} compartments={sorted(cs.compartments)}"
+        )
 
-    print(f"\n=== Access Control Tests ===")
-    for address, resource, expected, description in test_cases:
-        decision = await engine.can_access(address, resource)
-        status = "✓" if decision == expected else "✗ UNEXPECTED"
-        print(f"  {status} {description}")
-        print(f"     {address} → {resource}: {'ALLOW' if decision else 'DENY'}")
+# Set operating envelopes programmatically
+print(f"\n=== Envelopes Set ===")
+envelope_defs = [
+    (
+        "senior_data_scientist",
+        "model_validator",
+        ["train_model", "evaluate_model", "profile_data"],
+    ),
+    (
+        "junior_data_scientist",
+        "senior_data_scientist",
+        ["profile_data", "evaluate_model"],
+    ),
+    (
+        "ml_engineer",
+        "model_validator",
+        ["train_model", "evaluate_model", "deploy_model", "monitor_drift"],
+    ),
+    ("customer_service", "sre", ["query_prediction"]),
+]
 
-    # Explain access
-    print(f"\n=== Access Explanations ===")
-    explanation = await engine.explain_access(junior_ds, "production_logs")
-    print(f"Junior DS → production_logs:")
-    print(f"  Decision: {explanation.decision}")
-    print(f"  Reason: {explanation.reason}")
-    print(f"  Chain: {explanation.chain}")
+for target_id, definer_id, actions in envelope_defs:
+    if target_id in role_addr and definer_id in role_addr:
+        import uuid
 
+        envelope = RoleEnvelope(
+            id=f"env-{uuid.uuid4().hex[:8]}",
+            defining_role_address=role_addr[definer_id],
+            target_role_address=role_addr[target_id],
+            envelope=ConstraintEnvelopeConfig(
+                id=f"constraint-{target_id}",
+                operational=OperationalConstraintConfig(
+                    allowed_actions=actions,
+                ),
+                temporal=TemporalConstraintConfig(),
+                data_access=DataAccessConstraintConfig(),
+                communication=CommunicationConstraintConfig(),
+            ),
+        )
+        engine.set_role_envelope(envelope)
+        print(f"  {target_id:<25} defined_by={definer_id:<25} actions={actions}")
 
-asyncio.run(test_access())
+print(f"\n=== GovernanceEngine Ready ===")
+print(f"Organization: {loaded_org.org_definition.name}")
+print(f"Enforcement mode: fail-closed (deny on error)")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Monotonic tightening and fail-closed
+# TASK 4: Verify actions
 # ══════════════════════════════════════════════════════════════════════
 
+print(f"\n=== Action Verification ===")
+test_cases = [
+    ("senior_data_scientist", "train_model", "Senior DS can train models"),
+    ("junior_data_scientist", "train_model", "Junior DS cannot train models"),
+    ("ml_engineer", "deploy_model", "ML Engineer can deploy models"),
+    ("customer_service", "train_model", "Customer service cannot train"),
+    ("customer_service", "query_prediction", "Customer service can query"),
+]
 
-async def test_monotonic_tightening():
+for role_id, action, description in test_cases:
+    if role_id in role_addr:
+        verdict = engine.verify_action(role_addr[role_id], action)
+        print(f"  {description}")
+        print(f"    {role_id} → {action}: {verdict.level} ({verdict.reason})")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Frozen GovernanceContext
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Governance Contexts ===")
+for role_id in ["senior_data_scientist", "ml_engineer", "customer_service"]:
+    if role_id in role_addr:
+        ctx = engine.get_context(role_addr[role_id])
+        print(f"\n  {role_id}:")
+        print(f"    Address: {ctx.role_address}")
+        print(f"    Posture: {ctx.posture}")
+        print(f"    Clearance: {ctx.effective_clearance_level}")
+        print(f"    Compartments: {ctx.compartments}")
+        print(f"    Allowed actions: {ctx.allowed_actions}")
+
+print(f"\n=== Frozen Context Properties ===")
+print(
     """
-    Monotonic tightening: child envelopes CANNOT exceed parent.
-    If parent budget is $50, child cannot have $100.
-    """
-    parent_envelope = RoleEnvelope(
-        address=Address("data_science", "modeling", "senior_data_scientist"),
-        max_cost_usd=50.0,
-        data_access=["credit_data", "feature_store"],
-    )
+GovernanceContext is a frozen dataclass:
+  - Agents receive a SNAPSHOT, NOT the engine itself
+  - Agents cannot call grant_clearance() or set_role_envelope()
+  - Context is immutable — modifications raise FrozenInstanceError
 
-    # Try to create child task with higher budget (should be tightened)
-    child_task = TaskEnvelope(
-        parent=parent_envelope,
-        max_cost_usd=100.0,  # Exceeds parent — will be clamped to 50
-        data_access=[
-            "credit_data",
-            "feature_store",
-            "production_logs",
-        ],  # Exceeds parent
-    )
+WHY frozen?
+  1. Agents cannot escalate their own privileges
+  2. Context is immutable proof of what was authorized
+  3. Monotonic tightening is guaranteed (child <= parent)
+  4. AuditChain can verify context was not tampered with
 
-    print(f"\n=== Monotonic Tightening ===")
-    print(f"Parent budget: ${parent_envelope.max_cost_usd}")
-    print(f"Child requested: ${100.0}")
-    print(f"Child actual:   ${child_task.effective_max_cost_usd}")
-    print(f"  → Tightened to parent's limit")
-    print(f"\nParent data access: {parent_envelope.data_access}")
-    print(f"Child requested:    {['credit_data', 'feature_store', 'production_logs']}")
-    print(f"Child actual:       {child_task.effective_data_access}")
-    print(f"  → production_logs removed (not in parent's scope)")
+Attack prevention:
+  - Agent modifies its clearance: FrozenInstanceError
+  - Agent accesses data outside scope: fail-closed DENY
+  - Governance engine error: fail-closed DENY (not ALLOW)
+"""
+)
 
-    # Test fail-closed: what happens on governance error
-    print(f"\n=== Fail-Closed Behavior ===")
-    print(f"If GovernanceEngine encounters an error during access check:")
-    print(f"  → Access is DENIED (not allowed)")
-    print(f"  → Error is logged to AuditChain")
-    print(f"  → This prevents privilege escalation through bugs")
-
-    # GovernanceContext is frozen
-    ml_eng = Address("data_science", "mlops", "ml_engineer")
-    context = await engine.create_context(ml_eng)
-    print(f"\n=== Frozen GovernanceContext ===")
-    print(f"Context for ML Engineer:")
-    print(f"  max_cost_usd: {context.max_cost_usd}")
-    print(f"  data_access: {context.data_access}")
-    print(f"  can_deploy: {context.can_deploy}")
-    print(f"\n  context.max_cost_usd = 999  # Raises FrozenInstanceError!")
-    print(f"  → Agents RECEIVE governance but CANNOT modify it")
-
-
-asyncio.run(test_monotonic_tightening())
+# Demonstrate immutability
+if "senior_data_scientist" in role_addr:
+    ctx = engine.get_context(role_addr["senior_data_scientist"])
+    try:
+        ctx.role_address = "hacked"
+        print("ERROR: Should have raised!")
+    except (AttributeError, TypeError) as e:
+        print(f"Attempted modification blocked: {type(e).__name__}")
+        print(f"  GovernanceContext is immutable — agents cannot self-modify")
 
 # Clean up
 org_file.unlink()
 
-print("\n✓ Exercise 5 complete — PACT governance setup with access control")
+print("\n✓ Exercise 5 complete — PACT governance setup with YAML org definition")

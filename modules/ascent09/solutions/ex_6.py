@@ -23,14 +23,20 @@ import os
 import polars as pl
 
 from kaizen import InputField, OutputField, Signature
-from kaizen.core import BaseAgent
-from kaizen.orchestration.pipeline import Pipeline
-from kaizen_agents import Delegate
+from kaizen_agents import Delegate, Pipeline
+from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
+
+if not os.environ.get("OPENAI_API_KEY"):
+    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
+    print("  Set it in .env to run this exercise with real LLM calls.")
+    import sys
+
+    sys.exit(0)
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 
@@ -83,34 +89,9 @@ class TechnicalAnalysisSignature(Signature):
     scalability: str = OutputField(description="Scalability assessment")
 
 
-class FinancialAgent(BaseAgent):
-    signature = FinancialAnalysisSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 1.0
-    description = (
-        "Specialist in financial analysis: revenue, profitability, risk factors"
-    )
-
-
-class LegalAgent(BaseAgent):
-    signature = LegalAnalysisSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 1.0
-    description = "Specialist in legal analysis: compliance, regulation, legal risk"
-
-
-class TechnicalAgent(BaseAgent):
-    signature = TechnicalAnalysisSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 1.0
-    description = (
-        "Specialist in technical analysis: architecture, scalability, feasibility"
-    )
-
-
-financial_agent = FinancialAgent()
-legal_agent = LegalAgent()
-technical_agent = TechnicalAgent()
+financial_agent = SimpleQAAgent(model=model)
+legal_agent = SimpleQAAgent(model=model)
+technical_agent = SimpleQAAgent(model=model)
 
 print(f"\n=== Specialist Agents ===")
 print(f"  1. FinancialAgent: revenue, risk, profitability")
@@ -153,16 +134,7 @@ class SupervisorSignature(Signature):
     action_items: list[str] = OutputField(description="Prioritized action items")
 
 
-class SupervisorAgent(BaseAgent):
-    signature = SupervisorSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL")
-    max_llm_cost_usd = 2.0
-    description = (
-        "Supervisor that synthesizes specialist analyses into actionable decisions"
-    )
-
-
-supervisor = SupervisorAgent()
+supervisor = SimpleQAAgent(model=model)
 
 print(f"\n=== Supervisor Pattern ===")
 print(f"1. Router dispatches query to appropriate specialist")
@@ -184,40 +156,38 @@ async def multi_agent_analysis():
     print(f"Question: {question}")
 
     # Step 1: Run specialists in parallel
-    financial_result = await financial_agent.run(
-        document=doc, question="Analyse the financial health and revenue potential"
+    doc_excerpt = doc[:2000]
+    financial_result = financial_agent.run(
+        f"Analyse the financial health and revenue potential of this document:\n\n{doc_excerpt}"
     )
-    legal_result = await legal_agent.run(
-        document=doc, question="Identify compliance risks and regulatory requirements"
+    legal_result = legal_agent.run(
+        f"Identify compliance risks and regulatory requirements in this document:\n\n{doc_excerpt}"
     )
-    technical_result = await technical_agent.run(
-        document=doc, question="Assess technical feasibility and scalability"
+    technical_result = technical_agent.run(
+        f"Assess technical feasibility and scalability from this document:\n\n{doc_excerpt}"
     )
+
+    fin_text = str(financial_result)[:300]
+    leg_text = str(legal_result)[:300]
+    tech_text = str(technical_result)[:300]
 
     print(f"\n--- Financial Analysis ---")
-    print(f"Revenue insights: {financial_result.revenue_insights[:200]}...")
-    print(f"Risk factors: {financial_result.risk_factors[:3]}")
+    print(f"Result: {fin_text}...")
 
     print(f"\n--- Legal Analysis ---")
-    print(f"Compliance issues: {legal_result.compliance_issues[:3]}")
-    print(f"Legal risk: {legal_result.legal_risk[:200]}...")
+    print(f"Result: {leg_text}...")
 
     print(f"\n--- Technical Analysis ---")
-    print(f"Assessment: {technical_result.tech_assessment[:200]}...")
-    print(f"Scalability: {technical_result.scalability[:200]}...")
+    print(f"Result: {tech_text}...")
 
     # Step 2: Supervisor synthesizes
-    supervisor_result = await supervisor.run(
-        document=doc,
-        financial_analysis=financial_result.revenue_insights,
-        legal_analysis=str(legal_result.compliance_issues),
-        technical_analysis=technical_result.tech_assessment,
+    supervisor_result = supervisor.run(
+        f"Synthesize these specialist analyses into an executive summary with risk rating:\n\n"
+        f"Financial: {fin_text}\n\nLegal: {leg_text}\n\nTechnical: {tech_text}"
     )
 
     print(f"\n--- Supervisor Summary ---")
-    print(f"Executive summary: {supervisor_result.executive_summary[:300]}...")
-    print(f"Overall risk: {supervisor_result.overall_risk}")
-    print(f"Action items: {supervisor_result.action_items}")
+    print(f"Result: {str(supervisor_result)[:400]}...")
 
     return supervisor_result
 
@@ -232,7 +202,7 @@ multi_result = asyncio.run(multi_agent_analysis())
 
 async def single_agent_comparison():
     doc = reports["text"][0]
-    delegate = Delegate(model=model, max_llm_cost_usd=3.0)
+    delegate = Delegate(model=model, budget_usd=3.0)
 
     print(f"\n=== Single-Agent Comparison ===")
     response = ""
@@ -240,8 +210,8 @@ async def single_agent_comparison():
         f"Analyse this business document from financial, legal, and technical perspectives. "
         f"Provide an executive summary with risk assessment.\n\n{doc[:2000]}"
     ):
-        if hasattr(event, "content"):
-            response += event.content
+        if hasattr(event, "text"):
+            response += event.text
 
     print(f"Single-agent response: {response[:400]}...")
     return response

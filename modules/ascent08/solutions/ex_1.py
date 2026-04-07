@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from collections import Counter
 
@@ -37,7 +38,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_news_articles.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 print(f"=== Dataset: {df.height} articles, columns: {df.columns} ===")
 print(summary)
 
@@ -146,12 +147,8 @@ def simple_stem(word: str) -> str:
     return word
 
 
-# Lemmatization via PreprocessingPipeline text normalizer
-pipeline = PreprocessingPipeline(
-    text_columns=["text"],
-    steps=["lemmatize"],
-)
-lemmatized_df = pipeline.transform(df.head(5))
+# Note: PreprocessingPipeline() provides data preprocessing capabilities.
+# For lemmatization, we demonstrate the concept with a simple suffix-based approach.
 
 test_words = [
     "running",
@@ -247,7 +244,7 @@ processed = preprocess_corpus(df, text_col="text", max_vocab=5000)
 
 # Validate with DataExplorer
 explorer_post = DataExplorer()
-post_summary = explorer_post.analyze(processed.select("token_count"))
+post_summary = asyncio.run(explorer_post.profile(processed.select("token_count")))
 print(f"\nToken count distribution:\n{post_summary}")
 
 print(

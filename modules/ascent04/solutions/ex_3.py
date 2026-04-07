@@ -33,6 +33,7 @@ from shared import ASCENTDataLoader
 
 try:
     import umap as umap_lib
+
     UMAP_AVAILABLE = True
 except ImportError:
     UMAP_AVAILABLE = False
@@ -96,7 +97,9 @@ cumulative_evr = np.cumsum(explained_variance_ratio)
 
 print(f"Total variance (should ≈ n_features={n_features}): {total_variance:.2f}")
 print(f"\nTop 10 Principal Components:")
-print(f"{'PC':>4} {'Singular Value':>16} {'Expl. Var':>12} {'Expl. Var %':>12} {'Cumulative %':>14}")
+print(
+    f"{'PC':>4} {'Singular Value':>16} {'Expl. Var':>12} {'Expl. Var %':>12} {'Cumulative %':>14}"
+)
 print("─" * 62)
 for i in range(min(10, n_features)):
     print(
@@ -166,7 +169,8 @@ print("\nSaved: ex3_scree_plot.html")
 # |Loading| close to 1 → feature j strongly drives PC_k
 # |Loading| close to 0 → feature j barely contributes to PC_k
 
-loadings = Vt[:n_components_to_inspect := min(5, n_features), :].T  # (n_features, n_pcs)
+n_components_to_inspect = min(5, n_features)
+loadings = Vt[:n_components_to_inspect, :].T  # (n_features, n_pcs)
 
 print(f"\n=== PCA Loadings (top {n_components_to_inspect} PCs) ===")
 print(f"{'Feature':<30}", end="")
@@ -211,7 +215,7 @@ print(f"\n=== Reconstruction Error ===")
 print(f"{'Components':>12} {'MSE':>12} {'% Variance Retained':>22}")
 print("─" * 50)
 for k, mse in zip(n_components_range[::3], reconstruction_errors[::3]):
-    pct_retained = 1.0 - mse / np.mean(X ** 2)
+    pct_retained = 1.0 - mse / np.mean(X**2)
     print(f"{k:>12} {mse:>12.4f} {pct_retained:>21.2%}")
 
 fig_recon = viz.training_history(
@@ -262,6 +266,7 @@ print(f"{'Perplexity':>12} {'KL Divergence':>16} {'Time':>8}")
 print("─" * 40)
 
 import time
+
 tsne_results = {}
 for perplexity in [5, 30, 50]:
     t0 = time.time()
@@ -283,6 +288,7 @@ for perplexity in [5, 30, 50]:
 
     # Cluster quality in the embedding
     from sklearn.cluster import KMeans
+
     km = KMeans(n_clusters=4, random_state=42, n_init=5)
     labels_2d = km.fit_predict(embedding)
     sil = silhouette_score(embedding, labels_2d) if len(set(labels_2d)) > 1 else -1.0
@@ -329,9 +335,9 @@ print(f"\n=== UMAP Hyperparameter Comparison ===")
 
 if UMAP_AVAILABLE:
     umap_configs = [
-        {"n_neighbors": 5,  "min_dist": 0.1,  "label": "local (n_nbrs=5)"},
-        {"n_neighbors": 15, "min_dist": 0.1,  "label": "default (n_nbrs=15)"},
-        {"n_neighbors": 50, "min_dist": 0.5,  "label": "global (n_nbrs=50)"},
+        {"n_neighbors": 5, "min_dist": 0.1, "label": "local (n_nbrs=5)"},
+        {"n_neighbors": 15, "min_dist": 0.1, "label": "default (n_nbrs=15)"},
+        {"n_neighbors": 50, "min_dist": 0.5, "label": "global (n_nbrs=50)"},
     ]
 
     umap_results = {}
@@ -346,13 +352,17 @@ if UMAP_AVAILABLE:
         )
         # Fit on subsample, then transform full dataset (out-of-sample extension)
         reducer.fit(X_pca[idx_tsne])
-        embedding_full = reducer.transform(X_pca)   # All samples
+        embedding_full = reducer.transform(X_pca)  # All samples
         elapsed = time.time() - t0
 
         km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(
             embedding_full
         )
-        sil = silhouette_score(embedding_full, km_labels) if len(set(km_labels)) > 1 else -1.0
+        sil = (
+            silhouette_score(embedding_full, km_labels)
+            if len(set(km_labels)) > 1
+            else -1.0
+        )
 
         umap_results[cfg["label"]] = {
             "embedding": embedding_full,
@@ -366,17 +376,23 @@ if UMAP_AVAILABLE:
     print("  without refitting the entire model")
     print("\nUMAP vs t-SNE decision guide:")
     print("  Use t-SNE:  exploratory visualisation, understanding local clusters")
-    print("  Use UMAP:   need out-of-sample transform, large datasets, global structure")
+    print(
+        "  Use UMAP:   need out-of-sample transform, large datasets, global structure"
+    )
 
 else:
     # PCA fallback for environments without umap-learn
     pca_2d = PCA(n_components=2, random_state=42)
     embedding_2d = pca_2d.fit_transform(X_pca)
-    km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(embedding_2d)
+    km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(
+        embedding_2d
+    )
     sil = silhouette_score(embedding_2d, km_labels) if len(set(km_labels)) > 1 else -1.0
     print(f"  PCA 2D fallback: silhouette={sil:.4f}")
 
-    umap_results = {"PCA 2D": {"embedding": embedding_2d, "silhouette": sil, "time": 0.0}}
+    umap_results = {
+        "PCA 2D": {"embedding": embedding_2d, "silhouette": sil, "time": 0.0}
+    }
 
     print("\nInstall umap-learn to run UMAP: pip install umap-learn")
     print("UMAP benefits: preserves global structure, out-of-sample transform")
@@ -387,7 +403,8 @@ else:
 # ══════════════════════════════════════════════════════════════════════
 
 print(f"\n=== Dimensionality Reduction Method Comparison ===")
-print(f"""
+print(
+    f"""
 ┌──────────────────┬─────────────┬──────────────┬───────────────┬──────────────┐
 │ Method           │ Linear?     │ Global Struct│ Out-of-Sample │ Speed        │
 ├──────────────────┼─────────────┼──────────────┼───────────────┼──────────────┤
@@ -402,7 +419,8 @@ Practical Recommendations:
   3. t-SNE for exploration: visualise cluster structure in 2D
   4. UMAP for production embedding: out-of-sample transform available
   5. Report n_components chosen and % variance retained
-""")
+"""
+)
 
 # Visualise PCA 2D projection
 pca_2d_final = PCA(n_components=2, random_state=42)
@@ -412,14 +430,18 @@ fig_pca2d = viz.training_history(
     {"PC2 vs PC1": X_pca_2d[:, 1].tolist()},
     x_label="PC1 Score",
 )
-fig_pca2d.update_layout(title=f"PCA 2D Projection ({explained_variance_ratio[:2].sum():.1%} variance)")
+fig_pca2d.update_layout(
+    title=f"PCA 2D Projection ({explained_variance_ratio[:2].sum():.1%} variance)"
+)
 fig_pca2d.write_html("ex3_pca_2d.html")
 
 # Method silhouette comparison
 method_silhouettes = {}
 for perp, res in tsne_results.items():
     km_l = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(res["embedding"])
-    method_silhouettes[f"t-SNE p={perp}"] = {"Silhouette": silhouette_score(res["embedding"], km_l)}
+    method_silhouettes[f"t-SNE p={perp}"] = {
+        "Silhouette": silhouette_score(res["embedding"], km_l)
+    }
 
 for label, res in umap_results.items():
     method_silhouettes[f"UMAP {label}"] = {"Silhouette": res["silhouette"]}
@@ -430,7 +452,9 @@ method_silhouettes[f"PCA {n_for_embedding}d"] = {
 }
 
 fig_methods = viz.metric_comparison(method_silhouettes)
-fig_methods.update_layout(title="Dimensionality Reduction: 2D Cluster Quality Comparison")
+fig_methods.update_layout(
+    title="Dimensionality Reduction: 2D Cluster Quality Comparison"
+)
 fig_methods.write_html("ex3_method_comparison.html")
 print("Saved: ex3_scree_plot.html, ex3_reconstruction_error.html")
 print("Saved: ex3_pca_2d.html, ex3_method_comparison.html")

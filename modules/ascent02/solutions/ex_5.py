@@ -171,7 +171,7 @@ prob_treatment_better = 1 - stats.norm.cdf(0, loc=lift_adj, scale=se_lift)
 # For Normal: E[max(-Z, 0)] where Z ~ N(lift_adj, se_lift²)
 # = se_lift * φ(-lift_adj/se_lift) - lift_adj * Φ(-lift_adj/se_lift)
 z_ratio = -lift_adj / se_lift
-expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) + lift_adj * stats.norm.cdf(
+expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) - lift_adj * stats.norm.cdf(
     z_ratio
 )
 expected_loss_control = se_lift * stats.norm.pdf(-z_ratio) - lift_adj * stats.norm.cdf(
@@ -289,23 +289,10 @@ async def log_ab_analysis():
     conn = ConnectionManager("sqlite:///ascent02_experiments.db")
     await conn.initialize()
     tracker = ExperimentTracker(conn)
-    await tracker.initialize()
 
-    experiments = await tracker.list_experiments()
-    # Find the M2 experiment or create new
-    exp_id = None
-    for exp in experiments:
-        if exp.get("name") == "ascent02_healthcare_features":
-            exp_id = exp["id"]
-            break
-    if not exp_id:
-        exp_id = await tracker.create_experiment(
-            name="ascent02_ab_test_analysis",
-            description="A/B test analysis with CUPED and Bayesian methods",
-            tags=["ascent02", "ab-test", "cuped", "bayesian"],
-        )
-
-    async with tracker.run(exp_id, run_name="ecommerce_ab_cuped_bayesian") as run:
+    async with tracker.run(
+        "ascent02_ab_test_analysis", run_name="ecommerce_ab_cuped_bayesian"
+    ) as run:
         await run.log_params(
             {
                 "method": "CUPED + Bayesian",

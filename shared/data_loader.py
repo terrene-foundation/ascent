@@ -24,6 +24,10 @@ _MODULES = {
     "ascent05",
     "ascent06",
     "ascent06-dl",
+    "ascent07",
+    "ascent08",
+    "ascent09",
+    "ascent10",
     "ascent_assessment",
 }
 
@@ -101,17 +105,6 @@ def _read_file(path: Path) -> pl.DataFrame:
         return pl.read_parquet(path)
     elif suffix == ".json":
         return pl.read_json(path)
-    elif suffix in (".p", ".pickle", ".pkl"):
-        import pickle
-
-        with open(path, "rb") as f:
-            obj = pickle.load(f)  # noqa: S301
-        if isinstance(obj, pl.DataFrame):
-            return obj
-        raise TypeError(
-            f"Cannot convert pickle object of type {type(obj)} to polars DataFrame. "
-            f"Convert the pickle to parquet upstream: pl.from_pandas(obj).write_parquet('out.parquet')"
-        )
     else:
         raise ValueError(
             f"Unsupported file format: {suffix}. Use .csv, .parquet, or .json"

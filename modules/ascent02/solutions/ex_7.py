@@ -74,7 +74,7 @@ print(patient_vitals.head(20))
 # Check recording frequency
 if patient_vitals.height > 1:
     time_diffs = patient_vitals.with_columns(
-        (pl.col("recorded_at").diff()).alias("time_gap")
+        (pl.col("recorded_at").str.to_datetime().diff()).alias("time_gap")
     )
     print(f"\nTime gaps between readings:")
     print(time_diffs.select("vital_name", "time_gap").head(10))
@@ -91,7 +91,6 @@ async def setup_tracking():
     await conn.initialize()
 
     tracker = ExperimentTracker(conn)
-    await tracker.initialize()
 
     # Create the Module 2 experiment
     experiment_id = await tracker.create_experiment(

@@ -340,18 +340,15 @@ for e in event_study:
 
 
 async def log_did_analysis():
+    import math
+
     conn = ConnectionManager("sqlite:///ascent02_experiments.db")
     await conn.initialize()
     tracker = ExperimentTracker(conn)
-    await tracker.initialize()
 
-    exp_id = await tracker.create_experiment(
-        name="ascent02_causal_inference",
-        description="Causal inference on Singapore housing cooling measures",
-        tags=["ascent02", "causal", "did"],
-    )
-
-    async with tracker.run(exp_id, run_name="did_cooling_measure_absd_2022") as run:
+    async with tracker.run(
+        "ascent02_causal_inference", run_name="did_cooling_measure_absd_2022"
+    ) as run:
         await run.log_params(
             {
                 "method": "Difference-in-Differences",
@@ -361,16 +358,18 @@ async def log_did_analysis():
                 "window_months": "12",
             }
         )
-        await run.log_metrics(
-            {
-                "did_estimate": float(did_coef),
-                "did_se": float(did_se),
-                "did_p_value": float(did_p),
-                "placebo_p_value": float(p_placebo),
-                "n_treatment": float(did_data.filter(pl.col("treated") == 1).height),
-                "n_control": float(did_data.filter(pl.col("treated") == 0).height),
-            }
-        )
+        # Filter out NaN/Inf values — log_metric requires finite values
+        raw_metrics = {
+            "did_estimate": float(did_coef),
+            "did_se": float(did_se),
+            "did_p_value": float(did_p),
+            "placebo_p_value": float(p_placebo),
+            "n_treatment": float(did_data.filter(pl.col("treated") == 1).height),
+            "n_control": float(did_data.filter(pl.col("treated") == 0).height),
+        }
+        finite_metrics = {k: v for k, v in raw_metrics.items() if math.isfinite(v)}
+        if finite_metrics:
+            await run.log_metrics(finite_metrics)
         await run.set_tag("method", "did")
     print(f"\nLogged DiD run")
     await conn.close()

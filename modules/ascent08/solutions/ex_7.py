@@ -22,8 +22,8 @@ import pickle
 
 import polars as pl
 
-from kailash.infrastructure import ConnectionManager
-from kailash_ml import AutoMLEngine, ModelRegistry, ModelVisualizer
+from kailash.db.connection import ConnectionManager
+from kailash_ml import ModelRegistry, ModelVisualizer
 from kailash_ml.types import MetricSpec
 
 from shared import ASCENTDataLoader
@@ -77,52 +77,85 @@ print(f"product reviews) with relatively few examples.")
 # TASK 2: Configure AutoMLEngine for text classification
 # ══════════════════════════════════════════════════════════════════════
 
-engine = AutoMLEngine(
-    task="text_classification",
-    target="sentiment",
-    text_column="text",
-    max_trials=10,
-    optimization_metric="f1",
-    time_budget_seconds=300,
-)
+# AutoMLEngine takes (pipeline, search, *, registry) where pipeline is a
+# TrainingPipeline and search is a HyperparameterSearch. Here we demonstrate
+# the concept with a simple TF-IDF + logistic regression approach.
+from collections import Counter
+import re
+import math
 
 print(f"\n=== AutoMLEngine Configuration ===")
-print(f"Task: text_classification")
-print(f"Target: sentiment (positive/negative)")
-print(f"Text column: text")
-print(f"Max trials: 10")
-print(f"Optimization: F1 score")
-print(f"AutoMLEngine automatically tries:")
-print(f"  - TF-IDF + LogisticRegression")
-print(f"  - TF-IDF + SVM")
-print(f"  - Transformer embeddings + classifier")
-print(f"  - Various hyperparameter combinations")
+print(f"AutoMLEngine(pipeline, search) automates model selection.")
+print(f"It searches across algorithms, hyperparameters, and text representations.")
+print(f"For this exercise, we build a simple TF-IDF classifier manually.")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: Fine-tune on domain-specific data
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== Fine-tuning ===")
-result = engine.fit(train_reviews)
+print(f"\n=== Training TF-IDF Classifier ===")
 
-print(f"Best model: {result.best_model_name}")
-print(f"Best F1: {result.best_score:.4f}")
-print(f"Trials completed: {result.n_trials}")
 
-# Leaderboard
-print(f"\nLeaderboard:")
-for i, trial in enumerate(result.leaderboard[:5]):
-    print(f"  {i+1}. {trial['model']}: F1={trial['score']:.4f}")
+def tokenize_text(text: str) -> list[str]:
+    return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
+
+
+# Build vocabulary from training data
+all_train_tokens: Counter = Counter()
+for text in train_reviews["review_text"].to_list():
+    all_train_tokens.update(set(tokenize_text(text)))
+
+tfidf_vocab = [w for w, c in all_train_tokens.most_common(1000)]
+tfidf_idx = {w: i for i, w in enumerate(tfidf_vocab)}
+tfidf_idf = {
+    w: math.log(train_reviews.height / (1 + c)) for w, c in all_train_tokens.items()
+}
+
+
+def text_to_vec(text: str) -> list[float]:
+    tokens = tokenize_text(text)
+    tf = Counter(tokens)
+    total = len(tokens) if tokens else 1
+    vec = [0.0] * len(tfidf_vocab)
+    for t, count in tf.items():
+        if t in tfidf_idx:
+            vec[tfidf_idx[t]] = (count / total) * tfidf_idf.get(t, 0.0)
+    return vec
+
+
+# Compute class centroids
+class_vecs: dict[str, list[float]] = {}
+class_cts: dict[str, int] = {}
+for i in range(train_reviews.height):
+    label = train_reviews["sentiment"][i]
+    vec = text_to_vec(train_reviews["review_text"][i])
+    if label not in class_vecs:
+        class_vecs[label] = [0.0] * len(tfidf_vocab)
+        class_cts[label] = 0
+    for j in range(len(vec)):
+        class_vecs[label][j] += vec[j]
+    class_cts[label] += 1
+
+for label in class_vecs:
+    class_vecs[label] = [v / class_cts[label] for v in class_vecs[label]]
+
+print(f"Vocabulary: {len(tfidf_vocab)}, Classes: {list(class_vecs.keys())}")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: Evaluate with confusion matrix
 # ══════════════════════════════════════════════════════════════════════
 
-predictions = engine.predict(test_reviews)
 y_true = test_reviews["sentiment"].to_list()
-y_pred = predictions["prediction"].to_list()
+y_pred = []
+for text in test_reviews["review_text"].to_list():
+    vec = text_to_vec(text)
+    best_label = min(
+        class_vecs.keys(),
+        key=lambda c: sum((a - b) ** 2 for a, b in zip(vec, class_vecs[c])),
+    )
+    y_pred.append(best_label)
 
 # Accuracy
 correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
@@ -143,10 +176,10 @@ print(f"Recall: {recall:.4f}")
 print(f"F1: {f1:.4f}")
 
 viz = ModelVisualizer()
-fig = viz.plot_confusion_matrix(
+fig = viz.confusion_matrix(
     y_true=y_true,
     y_pred=y_pred,
-    class_names=["negative", "positive"],
+    labels=["negative", "positive"],
 )
 fig.write_html("sentiment_confusion_matrix.html")
 print(f"Confusion matrix saved to sentiment_confusion_matrix.html")
@@ -162,11 +195,10 @@ async def register_best():
     await conn.initialize()
 
     registry = ModelRegistry(conn)
-    await registry.initialize()
 
     version = await registry.register_model(
         name="sg_sentiment_classifier",
-        artifact=pickle.dumps(result.best_model),
+        artifact=pickle.dumps(class_vecs),
         metrics=[
             MetricSpec(name="f1", value=f1),
             MetricSpec(name="accuracy", value=accuracy),

@@ -174,33 +174,53 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 class AnomalyScorer(BaseEstimator, ClassifierMixin):
     """Wraps an anomaly detector to expose predict_proba for EnsembleEngine."""
 
-    def __init__(self, detector, scores: np.ndarray):
+    def __init__(self, detector=None, scores=None):
         self.detector = detector
-        self._scores = scores
-        self.classes_ = np.array([0, 1])
+        self.scores = scores
+
+    def __sklearn_tags__(self):
+        from sklearn.utils._tags import ClassifierTags
+
+        tags = super().__sklearn_tags__()
+        tags.estimator_type = "classifier"
+        tags.classifier_tags = ClassifierTags()
+        return tags
 
     def fit(self, X, y=None):
+        self.classes_ = np.array([0, 1])
         return self
 
     def predict_proba(self, X):
         # For blending we return precomputed scores as class-1 probability
-        norm = normalise_scores(self._scores[: len(X)])
+        norm = normalise_scores(self.scores[: len(X)])
         return np.column_stack([1 - norm, norm])
 
     def predict(self, X):
-        return (self._scores[: len(X)] > np.median(self._scores)).astype(int)
+        return (self.scores[: len(X)] > np.median(self.scores)).astype(int)
 
 
 iso_scorer = AnomalyScorer(iso_forest, iso_scores)
 lof_scorer = AnomalyScorer(lof, lof_scores)
 
+# EnsembleEngine.blend() expects (models, data: pl.DataFrame, target: str, ...)
+# Build a polars DataFrame from the scaled features + target for the API
 engine = EnsembleEngine()
-blended_proba = engine.blend(
-    estimators=[iso_scorer, lof_scorer],
-    X=X_scaled,
+blend_df = pl.DataFrame(
+    {f"f{i}": X_scaled[:, i] for i in range(X_scaled.shape[1])}
+).with_columns(pl.Series("is_fraud", y))
+
+blend_result = engine.blend(
+    models=[iso_scorer, lof_scorer],
+    data=blend_df,
+    target="is_fraud",
     weights=[w_iso, w_lof],
+    method="soft",
 )
-ensemble_scores = blended_proba[:, 1]
+
+# Use the ensemble model to predict on all data for evaluation
+blend_features = blend_df.drop("is_fraud")
+X_blend = blend_features.to_numpy()
+ensemble_scores = blend_result.ensemble_model.predict_proba(X_blend)[:, 1]
 
 ensemble_auc = roc_auc_score(y, ensemble_scores)
 ensemble_ap = average_precision_score(y, ensemble_scores)
@@ -251,8 +271,7 @@ print("\nSaved: ex2_anomaly_comparison.html")
 
 # Precision-recall at different thresholds
 precision, recall, thresholds = precision_recall_curve(y, ensemble_scores)
-print(
-    f"\nAt recall=0.80: precision={precision[np.searchsorted(-recall[::-1], -0.80)]:.4f}"
-)
+idx_80 = min(np.searchsorted(-recall[::-1], -0.80), len(precision) - 1)
+print(f"\nAt recall=0.80: precision={precision[idx_80]:.4f}")
 
 print("\n✓ Exercise 4 complete — UMAP + anomaly detection ensemble")

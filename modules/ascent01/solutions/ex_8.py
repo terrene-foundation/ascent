@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 
 import polars as pl
+import plotly.express as px
 from kailash_ml import DataExplorer, ModelVisualizer, PreprocessingPipeline
 from kailash_ml.engines.data_explorer import AlertConfig
 
@@ -186,15 +187,15 @@ for lng_col in lng_cols:
         print(f"GPS filter ({lng_col}): removed {removed:,} out-of-bounds rows")
 
 # Step 3b: Remove fare outliers
-if "fare" in taxi_clean.columns:
+if "fare_sgd" in taxi_clean.columns:
     before = taxi_clean.height
-    taxi_clean = taxi_clean.filter(pl.col("fare") > 0)
+    taxi_clean = taxi_clean.filter(pl.col("fare_sgd") > 0)
     print(f"Negative fare filter: removed {before - taxi_clean.height:,} rows")
 
     # 99.9th percentile cap — values above this are almost certainly data errors
-    fare_p999 = taxi_clean["fare"].quantile(0.999)
+    fare_p999 = taxi_clean["fare_sgd"].quantile(0.999)
     before = taxi_clean.height
-    taxi_clean = taxi_clean.filter(pl.col("fare") <= fare_p999)
+    taxi_clean = taxi_clean.filter(pl.col("fare_sgd") <= fare_p999)
     print(
         f"Extreme fare cap (>{fare_p999:.0f}): removed {before - taxi_clean.height:,} rows"
     )
@@ -323,9 +324,9 @@ if lat_cols and lng_cols and len(lat_cols) >= 2 and len(lng_cols) >= 2:
             )
 
 # Fare per km — normalised efficiency metric
-if "fare" in taxi_clean.columns and "haversine_km" in taxi_clean.columns:
+if "fare_sgd" in taxi_clean.columns and "haversine_km" in taxi_clean.columns:
     taxi_clean = taxi_clean.with_columns(
-        (pl.col("fare") / pl.col("haversine_km")).alias("fare_per_km")
+        (pl.col("fare_sgd") / pl.col("haversine_km")).alias("fare_per_km")
     )
 
 new_cols = [c for c in taxi_clean.columns if c not in taxi_raw.columns]
@@ -349,7 +350,7 @@ print(taxi_clean.select(new_cols).head(5))
 
 # Select feature columns: exclude raw coordinates, raw datetimes, and the target
 exclude = set(
-    ["fare", "fare_per_km"]  # target and derivative of target
+    ["fare_sgd", "fare_per_km", "trip_id"]  # target, derivative, and ID column
     + datetime_cols  # raw datetimes — use extracted features instead
     + lat_cols
     + lng_cols  # raw coordinates — use haversine instead
@@ -378,15 +379,15 @@ for col in feature_cols:
 # Work with a sample — PreprocessingPipeline is synchronous
 taxi_sample = taxi_clean.sample(n=min(50_000, taxi_clean.height), seed=42)
 
-if "fare" in taxi_sample.columns:
+if "fare_sgd" in taxi_sample.columns:
     pipeline_df = taxi_sample.select(
-        [c for c in feature_cols if c in taxi_sample.columns] + ["fare"]
+        [c for c in feature_cols if c in taxi_sample.columns] + ["fare_sgd"]
     )
 
     pipeline = PreprocessingPipeline()
     result = pipeline.setup(
         data=pipeline_df,
-        target="fare",
+        target="fare_sgd",
         train_size=0.8,
         seed=42,
         normalize=True,
@@ -414,23 +415,27 @@ viz = ModelVisualizer()
 
 # Fare distribution — compare before and after cleaning
 raw_fares = (
-    taxi_raw["fare"].drop_nulls().to_list() if "fare" in taxi_raw.columns else []
+    taxi_raw["fare_sgd"].drop_nulls().to_list()
+    if "fare_sgd" in taxi_raw.columns
+    else []
 )
 clean_fares = (
-    taxi_clean["fare"].drop_nulls().to_list() if "fare" in taxi_clean.columns else []
+    taxi_clean["fare_sgd"].drop_nulls().to_list()
+    if "fare_sgd" in taxi_clean.columns
+    else []
 )
 
 if clean_fares:
-    fig_dist = viz.feature_distribution(
-        values=clean_fares,
-        feature_name="Fare (S$) — Cleaned",
+    # ModelVisualizer covers ML evaluation charts; for EDA histograms, use Plotly
+    fig_dist = px.histogram(
+        x=clean_fares, nbins=80, title="Taxi Fare Distribution (After Cleaning)"
     )
-    fig_dist.update_layout(title="Taxi Fare Distribution (After Cleaning)")
+    fig_dist.update_layout(xaxis_title="Fare (S$)", yaxis_title="Count")
     fig_dist.write_html("ex8_fare_distribution.html")
     print("\nSaved: ex8_fare_distribution.html")
 
 # Trip metrics by time period
-if "time_period" in taxi_clean.columns and "fare" in taxi_clean.columns:
+if "time_period" in taxi_clean.columns and "fare_sgd" in taxi_clean.columns:
     periods = ["morning_peak", "evening_peak", "off_peak", "late_night"]
     time_metrics: dict[str, dict[str, float]] = {}
 
@@ -438,7 +443,7 @@ if "time_period" in taxi_clean.columns and "fare" in taxi_clean.columns:
         subset = taxi_clean.filter(pl.col("time_period") == period)
         if subset.height > 0:
             time_metrics[period] = {
-                "avg_fare": float(subset["fare"].mean() or 0),
+                "avg_fare": float(subset["fare_sgd"].mean() or 0),
                 "avg_distance_km": (
                     float(subset["haversine_km"].mean() or 0)
                     if "haversine_km" in subset.columns
@@ -460,8 +465,8 @@ if "hour_of_day" in taxi_clean.columns:
         .agg(
             pl.len().alias("trip_count"),
             (
-                pl.col("fare").mean().alias("avg_fare")
-                if "fare" in taxi_clean.columns
+                pl.col("fare_sgd").mean().alias("avg_fare")
+                if "fare_sgd" in taxi_clean.columns
                 else pl.lit(0.0).alias("avg_fare")
             ),
         )
@@ -469,25 +474,27 @@ if "hour_of_day" in taxi_clean.columns:
     )
 
     fig_hourly = viz.training_history(
-        history={"Trip Volume": hourly["trip_count"].to_list()},
+        metrics={"Trip Volume": hourly["trip_count"].to_list()},
         x_label="Hour of Day",
-        y_label="Number of Trips",
     )
-    fig_hourly.update_layout(title="Taxi Trip Volume by Hour of Day")
+    fig_hourly.update_layout(
+        title="Taxi Trip Volume by Hour of Day", yaxis_title="Number of Trips"
+    )
     fig_hourly.write_html("ex8_hourly_volume.html")
     print("Saved: ex8_hourly_volume.html")
 
-# Feature importances — if PreprocessingPipeline ran, show feature list
+# Feature list — if PreprocessingPipeline ran, show what it prepared
+# (viz.feature_importance requires a trained model; we use Plotly here
+# since we don't have one yet — real importances come in M3)
 if result is not None:
     all_features = result.numeric_columns + result.categorical_columns
-    # Use a uniform importance placeholder so students can see the bar chart
-    # (real importances come in M3 after training a model)
-    uniform = {f: 1.0 / len(all_features) for f in all_features}
-    fig_feats = viz.feature_importance(
-        importance_dict=uniform,
+    fig_feats = px.bar(
+        x=[1.0 / len(all_features)] * len(all_features),
+        y=all_features,
+        orientation="h",
         title="Features Prepared by PreprocessingPipeline",
+        labels={"x": "(Uniform — real importances computed in M3)", "y": "Feature"},
     )
-    fig_feats.update_layout(xaxis_title="(Uniform — real importances computed in M3)")
     fig_feats.write_html("ex8_feature_list.html")
     print("Saved: ex8_feature_list.html")
 

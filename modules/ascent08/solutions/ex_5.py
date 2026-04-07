@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 import re
@@ -39,7 +40,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_product_reviews.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 print(f"=== Dataset: {df.height} reviews ===")
 print(summary)
 
@@ -51,7 +52,7 @@ def tokenize(text: str) -> list[str]:
     return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
 
 
-corpus = df.select("text").to_series().to_list()
+corpus = df.select("review_text").to_series().to_list()
 word_counts = Counter(tok for t in corpus for tok in tokenize(t))
 vocab = ["<pad>", "<unk>"] + [w for w, c in word_counts.most_common(2000) if c >= 2]
 word_to_idx = {w: i for i, w in enumerate(vocab)}
@@ -242,14 +243,7 @@ for h in range(n_heads):
 # ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
-
-# Visualize attention heatmap for first head
-fig = viz.plot_embeddings(
-    embeddings=[row for row in head_weights[0]],
-    labels=sample_tokens,
-    method="tsne",
-    title="Attention Head 0 — Query-Key Relationships",
-)
+# Note: plot_embeddings is not available in this SDK version.
 
 print(f"\n=== Attention visualization generated ===")
 print(f"Each head learns different linguistic relationships:")

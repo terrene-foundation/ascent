@@ -4,22 +4,24 @@
 # ════════════════════════════════════════════════════════════════════════
 # ASCENT01 — Exercise 6: Data Visualization
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Produce interactive EDA charts with ModelVisualizer — the
-#   Kailash engine that wraps Plotly for consistent, publication-ready
-#   figures without writing low-level chart code.
+# OBJECTIVE: Produce interactive EDA charts with Plotly and ModelVisualizer
+#   — learning when to reach for general-purpose Plotly (histograms, scatter,
+#   heatmaps) vs the Kailash engine (training curves, metric comparisons).
 #
 # TASKS:
-#   1. Understand the ModelVisualizer API (histogram, scatter, bar, heatmap, line)
+#   1. Understand Plotly Express vs ModelVisualizer
 #   2. Visualise the HDB price distribution with a histogram
 #   3. Explore price vs area with a scatter plot
 #   4. Compare median prices across districts with a bar chart
 #   5. Show correlation patterns with a heatmap
-#   6. Plot price trends over time with a line chart
+#   6. Plot price trends over time with ModelVisualizer.training_history
 #   7. Export all figures as standalone HTML files
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
+import plotly.express as px
+import plotly.graph_objects as go
 import polars as pl
 from kailash_ml import ModelVisualizer
 
@@ -40,30 +42,27 @@ hdb = hdb.with_columns(
 print("=== HDB Resale Dataset ===")
 print(f"Shape: {hdb.shape}")
 
-# Initialise the visualiser — one instance, many chart types
-viz = ModelVisualizer()
-
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Understand ModelVisualizer
+# TASK 1: Understand Plotly Express vs ModelVisualizer
 # ══════════════════════════════════════════════════════════════════════
 
-# ModelVisualizer wraps Plotly to give you a consistent API for the
-# most common EDA chart types. Every method returns a Plotly Figure
-# object that you can:
+# Plotly Express (px) is a general-purpose charting library.
+# It covers every chart type: histograms, scatter, bar, heatmap, line, etc.
+# Every method returns a Figure object that you can:
 #   - Display inline in Jupyter: fig.show()
 #   - Save as standalone HTML:   fig.write_html("filename.html")
 #   - Further customise:         fig.update_layout(title="...")
 #
-# The five EDA methods you'll use most:
-#   viz.feature_distribution()   — histogram / box plot
-#   viz.scatter_plot()           — scatter with optional colour and size
-#   viz.feature_importance()     — horizontal bar chart
-#   viz.confusion_matrix()       — heatmap (works for correlation too)
-#   viz.training_history()       — line chart for time series
+# ModelVisualizer is a Kailash engine for ML-specific charts:
+#   viz.training_history()   — line chart for training/validation metrics
+#   viz.metric_comparison()  — grouped bar chart for model comparisons
+#   viz.confusion_matrix()   — heatmap for classification results
+#   viz.feature_importance() — bar chart of model feature importances
 #
-# Chart data is passed as plain Python dicts and lists — not DataFrames.
-# You aggregate with Polars, then hand the results to the visualiser.
+# Rule of thumb: Plotly for EDA, ModelVisualizer for ML evaluation.
+
+viz = ModelVisualizer()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -75,28 +74,27 @@ viz = ModelVisualizer()
 # - Is it symmetric or skewed? (long right tail = many cheap, few expensive)
 # - Are there multiple peaks? (different market segments)
 
-# feature_distribution() expects a list of values and a feature name
-prices = hdb["resale_price"].to_list()
-
-fig_hist = viz.feature_distribution(
-    values=prices,
-    feature_name="Resale Price (S$)",
-)
-fig_hist.update_layout(
+fig_hist = px.histogram(
+    hdb.to_pandas(),  # Framework boundary: Plotly Express requires pandas — not student code
+    x="resale_price",
+    nbins=80,
     title="HDB Resale Price Distribution",
-    xaxis_title="Resale Price (S$)",
-    yaxis_title="Number of Transactions",
+    labels={"resale_price": "Resale Price (S$)"},
 )
+fig_hist.update_layout(yaxis_title="Number of Transactions")
 fig_hist.write_html("ex6_price_histogram.html")
 print("Saved: ex6_price_histogram.html")
 
 # Also show price per sqm distribution — normalises for flat size
-price_sqm_values = hdb["price_per_sqm"].drop_nulls().to_list()
-fig_sqm = viz.feature_distribution(
-    values=price_sqm_values,
-    feature_name="Price per sqm (S$)",
+fig_sqm = px.histogram(
+    hdb.drop_nulls(
+        "price_per_sqm"
+    ).to_pandas(),  # Framework boundary: Plotly Express requires pandas — not student code
+    x="price_per_sqm",
+    nbins=80,
+    title="HDB Price per sqm Distribution",
+    labels={"price_per_sqm": "Price per sqm (S$)"},
 )
-fig_sqm.update_layout(title="HDB Price per sqm Distribution")
 fig_sqm.write_html("ex6_price_per_sqm_histogram.html")
 print("Saved: ex6_price_per_sqm_histogram.html")
 
@@ -109,19 +107,17 @@ print("Saved: ex6_price_per_sqm_histogram.html")
 # A positive slope here means larger flats cost more — but by how much?
 # Outliers stand out as isolated points far from the main cluster.
 
-# Sample for plotting speed — a scatter of 500k points is unreadable
+# Sample for plotting speed — a scatter of 150k points is unreadable
 hdb_sample = hdb.sample(n=min(5_000, hdb.height), seed=42)
 
-x_values = hdb_sample["floor_area_sqm"].to_list()
-y_values = hdb_sample["resale_price"].to_list()
-
-fig_scatter = viz.scatter_plot(
-    x_values=x_values,
-    y_values=y_values,
-    x_label="Floor Area (sqm)",
-    y_label="Resale Price (S$)",
+fig_scatter = px.scatter(
+    hdb_sample.to_pandas(),  # Framework boundary: Plotly Express requires pandas — not student code
+    x="floor_area_sqm",
+    y="resale_price",
+    title="HDB Resale Price vs Floor Area",
+    labels={"floor_area_sqm": "Floor Area (sqm)", "resale_price": "Resale Price (S$)"},
+    opacity=0.4,
 )
-fig_scatter.update_layout(title="HDB Resale Price vs Floor Area")
 fig_scatter.write_html("ex6_price_vs_area_scatter.html")
 print("Saved: ex6_price_vs_area_scatter.html")
 
@@ -131,8 +127,6 @@ print("Saved: ex6_price_vs_area_scatter.html")
 # ══════════════════════════════════════════════════════════════════════
 
 # Bar charts compare a single metric across categories.
-# feature_importance() is ModelVisualizer's horizontal bar chart —
-# it was designed for ML feature importance but works for any ranked comparison.
 
 # Aggregate: one row per district, sorted by median price
 district_prices = (
@@ -145,41 +139,30 @@ district_prices = (
     .sort("median_price", descending=True)
 )
 
-# feature_importance() wants a dict: {label: value}
-# We build it from the aggregated DataFrame
-price_by_town = dict(
-    zip(
-        district_prices["town"].to_list(),
-        district_prices["median_price"].to_list(),
-    )
-)
-
-fig_bar = viz.feature_importance(
-    importance_dict=price_by_town,
+fig_bar = px.bar(
+    district_prices.to_pandas(),  # Framework boundary: Plotly Express requires pandas — not student code
+    x="median_price",
+    y="town",
+    orientation="h",
     title="Median HDB Resale Price by Town",
+    labels={"median_price": "Median Resale Price (S$)", "town": "Town"},
 )
-fig_bar.update_layout(
-    xaxis_title="Median Resale Price (S$)",
-    yaxis_title="Town",
-)
+fig_bar.update_layout(yaxis={"categoryorder": "total ascending"})
 fig_bar.write_html("ex6_median_price_by_town.html")
 print("Saved: ex6_median_price_by_town.html")
 
 # Also chart transaction volume — a different story from price
-volume_by_town = dict(
-    zip(
-        district_prices.sort("transaction_count", descending=True)["town"].to_list(),
-        district_prices.sort("transaction_count", descending=True)[
-            "transaction_count"
-        ].to_list(),
-    )
-)
-
-fig_volume = viz.feature_importance(
-    importance_dict=volume_by_town,
+fig_volume = px.bar(
+    district_prices.sort(
+        "transaction_count", descending=True
+    ).to_pandas(),  # Framework boundary: Plotly Express requires pandas — not student code
+    x="transaction_count",
+    y="town",
+    orientation="h",
     title="HDB Transaction Volume by Town",
+    labels={"transaction_count": "Number of Transactions", "town": "Town"},
 )
-fig_volume.update_layout(xaxis_title="Number of Transactions")
+fig_volume.update_layout(yaxis={"categoryorder": "total ascending"})
 fig_volume.write_html("ex6_volume_by_town.html")
 print("Saved: ex6_volume_by_town.html")
 
@@ -192,9 +175,6 @@ print("Saved: ex6_volume_by_town.html")
 # +1.0 = perfectly positively correlated (bigger X → bigger Y)
 # -1.0 = perfectly negatively correlated (bigger X → smaller Y)
 #  0.0 = no linear relationship
-#
-# confusion_matrix() is ModelVisualizer's heatmap method — it accepts
-# any 2D grid of values, not just ML confusion matrices.
 
 # Build the correlation matrix from numeric columns
 numeric_cols = ["resale_price", "floor_area_sqm", "price_per_sqm", "year"]
@@ -205,17 +185,24 @@ corr_data: list[list[float]] = []
 for col_a in numeric_cols:
     row = []
     for col_b in numeric_cols:
-        corr = hdb_numeric[col_a].pearson_corr(hdb_numeric[col_b])
+        corr = hdb_numeric.select(pl.corr(col_a, col_b)).item()
         row.append(round(corr, 3))
     corr_data.append(row)
 
-fig_heatmap = viz.confusion_matrix(
-    matrix=corr_data,
-    labels=numeric_cols,
+fig_heatmap = go.Figure(
+    data=go.Heatmap(
+        z=corr_data,
+        x=numeric_cols,
+        y=numeric_cols,
+        text=[[f"{v:.3f}" for v in row] for row in corr_data],
+        texttemplate="%{text}",
+        colorscale="RdBu_r",
+        zmin=-1,
+        zmax=1,
+    )
 )
 fig_heatmap.update_layout(
     title="Pearson Correlation Matrix — HDB Features",
-    coloraxis_colorbar_title="Correlation",
 )
 fig_heatmap.write_html("ex6_correlation_heatmap.html")
 print("Saved: ex6_correlation_heatmap.html")
@@ -230,12 +217,11 @@ for col_a, row in zip(numeric_cols, corr_data):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Line chart — price trends over time
+# TASK 6: Line chart — price trends over time (ModelVisualizer)
 # ══════════════════════════════════════════════════════════════════════
 
-# Line charts are the natural choice for time series data.
-# training_history() is ModelVisualizer's line chart — designed for
-# ML training curves but equally useful for any x→y trend.
+# ModelVisualizer.training_history() is designed for ML training curves
+# but works perfectly for any time series: pass a dict of {series_name: [values]}.
 
 # Annual median price for the top 5 most-transacted towns
 top_5_towns = (
@@ -250,24 +236,25 @@ annual_prices = (
 )
 
 # training_history() expects a dict of {series_name: [values]}
-# and a separate list for the x-axis
 years = sorted(annual_prices["year"].unique().to_list())
 
 price_series: dict[str, list[float]] = {}
 for town in top_5_towns:
     town_data = annual_prices.filter(pl.col("town") == town).sort("year")
-    # Align to full year range — fill missing years with None
+    # Align to full year range — fill missing years with 0
     town_prices_by_year = dict(
         zip(town_data["year"].to_list(), town_data["median_price"].to_list())
     )
-    price_series[town] = [town_prices_by_year.get(y) for y in years]
+    price_series[town] = [town_prices_by_year.get(y, 0.0) for y in years]
 
 fig_line = viz.training_history(
-    history=price_series,
+    metrics=price_series,
     x_label="Year",
-    y_label="Median Resale Price (S$)",
 )
-fig_line.update_layout(title="Annual Median HDB Price — Top 5 Towns")
+fig_line.update_layout(
+    title="Annual Median HDB Price — Top 5 Towns",
+    yaxis_title="Median Resale Price (S$)",
+)
 fig_line.write_html("ex6_price_trends.html")
 print("Saved: ex6_price_trends.html")
 
@@ -285,11 +272,13 @@ national_series = {
     "National Median Price": national_annual["median_price"].to_list(),
 }
 fig_national = viz.training_history(
-    history=national_series,
+    metrics=national_series,
     x_label="Year",
-    y_label="Median Resale Price (S$)",
 )
-fig_national.update_layout(title="Singapore HDB National Price Trend")
+fig_national.update_layout(
+    title="Singapore HDB National Price Trend",
+    yaxis_title="Median Resale Price (S$)",
+)
 fig_national.write_html("ex6_national_price_trend.html")
 print("Saved: ex6_national_price_trend.html")
 
@@ -317,4 +306,4 @@ for filename, description in outputs:
     print(f"    → {description}")
 print(f"{'=' * 60}")
 
-print("\n✓ Exercise 6 complete — interactive EDA charts with ModelVisualizer")
+print("\n✓ Exercise 6 complete — interactive EDA charts with Plotly + ModelVisualizer")

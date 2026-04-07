@@ -33,6 +33,9 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 
 
 # ── Prepare clustering context from M4 ───────────────────────────────
@@ -85,11 +88,7 @@ class ClusterInterpretation(Signature):
 
 
 async def cot_analysis():
-    cot_agent = ChainOfThoughtAgent(
-        signature=ClusterInterpretation,
-        model=model,
-        max_llm_cost_usd=2.0,
-    )
+    cot_agent = ChainOfThoughtAgent(model=model)
 
     questions = [
         "Why did Cluster 2 form separately from Cluster 0? Both have low revenue.",
@@ -99,18 +98,19 @@ async def cot_analysis():
 
     results = []
     for q in questions:
-        result = await cot_agent.run(
-            cluster_data=cluster_summary,
-            question=q,
+        result = cot_agent.run(
+            problem=q,
+            context=cluster_summary,
         )
 
         print(f"\n=== Q: {q} ===")
-        print(f"Reasoning steps ({len(result.reasoning_steps)}):")
-        for i, step in enumerate(result.reasoning_steps):
-            print(f"  {i+1}. {step}")
-        print(f"\nInterpretation: {result.interpretation}")
-        print(f"Confidence: {result.confidence}")
-        print(f"Actions: {result.actionable_insights}")
+        # ChainOfThoughtAgent returns a dict with reasoning steps
+        reasoning = result.get("reasoning_steps", result.get("reasoning", ""))
+        answer = result.get("answer", result.get("interpretation", ""))
+        confidence = result.get("confidence", "N/A")
+        print(f"Reasoning: {str(reasoning)[:300]}")
+        print(f"Answer: {str(answer)[:300]}")
+        print(f"Confidence: {confidence}")
         results.append(result)
 
     return results
@@ -125,7 +125,7 @@ cot_results = asyncio.run(cot_analysis())
 
 
 async def direct_analysis():
-    delegate = Delegate(model=model, max_llm_cost_usd=1.0)
+    delegate = Delegate(model=model, budget_usd=1.0)
 
     question = (
         "Why did Cluster 2 form separately from Cluster 0? Both have low revenue."
@@ -153,8 +153,11 @@ direct_answer = asyncio.run(direct_analysis())
 # ══════════════════════════════════════════════════════════════════════
 
 print(f"\n=== CoT vs Direct Comparison ===")
-print(f"CoT reasoning steps: {len(cot_results[0].reasoning_steps)}")
-print(f"CoT has structured output: segments, confidence, actions")
+cot_reasoning = cot_results[0].get(
+    "reasoning_steps", cot_results[0].get("reasoning", "")
+)
+print(f"CoT reasoning: {str(cot_reasoning)[:200]}")
+print(f"CoT has structured output: reasoning chain, answer, confidence")
 print(f"Direct is free-form text: no guaranteed structure")
 print()
 print("Key insight: CoT forces the model to SHOW its work.")

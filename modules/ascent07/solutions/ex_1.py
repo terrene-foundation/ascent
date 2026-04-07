@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 
 import polars as pl
@@ -38,7 +39,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent07", "hdb_resale_sample.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 
 print("=== HDB Resale Data ===")
 print(f"Shape: {df.shape}")
@@ -148,8 +149,7 @@ print(f"\nFinal: w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
 
 # Visualize training curve
 viz = ModelVisualizer()
-history_df = pl.DataFrame(history)
-fig = viz.plot_training_curves(history_df)
+fig = viz.training_history({"loss": history["loss"]})
 print("Training curve plotted.")
 
 

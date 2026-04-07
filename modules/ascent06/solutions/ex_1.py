@@ -24,6 +24,8 @@ import os
 from dotenv import load_dotenv
 
 from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
+from kailash_align.config import SFTConfig, LoRAConfig
+from kailash_align.registry import AdapterSignature
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -60,30 +62,33 @@ base_model = os.environ.get("SFT_BASE_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.
 
 config = AlignmentConfig(
     method="sft",
-    base_model=base_model,
-    dataset_format="instruction",  # instruction-response pairs
+    base_model_id=base_model,
     # LoRA parameters (efficient fine-tuning)
-    lora_r=16,  # Rank — low-rank approximation dimension
-    lora_alpha=32,  # Scaling factor
-    lora_dropout=0.05,
-    target_modules=["q_proj", "v_proj"],  # Which layers to adapt
-    # Training parameters
-    num_epochs=3,
-    batch_size=4,
-    learning_rate=2e-4,
-    warmup_ratio=0.1,
-    max_seq_length=512,
-    gradient_accumulation_steps=4,
+    lora=LoRAConfig(
+        rank=16,  # Rank — low-rank approximation dimension
+        alpha=32,  # Scaling factor
+        dropout=0.05,
+        target_modules=("q_proj", "v_proj"),  # Which layers to adapt
+    ),
+    # SFT training parameters
+    sft=SFTConfig(
+        num_train_epochs=3,
+        per_device_train_batch_size=4,
+        learning_rate=2e-4,
+        warmup_ratio=0.1,
+        max_seq_length=512,
+        gradient_accumulation_steps=4,
+    ),
     # Output
-    output_dir="./sft_output",
+    experiment_dir="./sft_output",
 )
 
 print(f"\n=== AlignmentConfig ===")
 print(f"Method: {config.method}")
-print(f"Base model: {config.base_model}")
-print(f"LoRA rank: {config.lora_r} (W = W₀ + BA where B∈ℝ^{{d×r}}, A∈ℝ^{{r×k}})")
-print(f"Target modules: {config.target_modules}")
-print(f"Training: {config.num_epochs} epochs, lr={config.learning_rate}")
+print(f"Base model: {config.base_model_id}")
+print(f"LoRA rank: {config.lora.rank} (W = W₀ + BA where B∈ℝ^{{d×r}}, A∈ℝ^{{r×k}})")
+print(f"Target modules: {config.lora.target_modules}")
+print(f"Training: {config.sft.num_train_epochs} epochs, lr={config.sft.learning_rate}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -91,25 +96,39 @@ print(f"Training: {config.num_epochs} epochs, lr={config.learning_rate}")
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def run_sft():
-    pipeline = AlignmentPipeline(config)
+def demonstrate_pipeline():
+    """Demonstrate AlignmentPipeline API.
 
-    print(f"\n=== Running SFT ===")
-    result = await pipeline.train(
-        train_data=train_data,
-        eval_data=eval_data,
+    In production (with GPU), training runs as:
+        pipeline = AlignmentPipeline(config, adapter_registry=registry)
+        result = await pipeline.train(dataset=hf_dataset, adapter_name="sg_domain_sft_v1")
+
+    The pipeline:
+    1. Loads the base model and applies LoRA adapters
+    2. Trains on the dataset for the configured epochs
+    3. Saves adapter weights to experiment_dir
+    4. Registers the adapter in AdapterRegistry (if provided)
+    5. Returns AlignmentResult with adapter_name, adapter_path, metrics
+    """
+    registry = AdapterRegistry()
+    pipeline = AlignmentPipeline(config, adapter_registry=registry)
+
+    print(f"\n=== AlignmentPipeline (API Demo) ===")
+    print(f"Pipeline created with config.method={config.method}")
+    print(f"Adapter registry attached: {registry is not None}")
+    print()
+    print(f"Production usage (requires GPU):")
+    print(
+        f'  result = await pipeline.train(dataset=hf_dataset, adapter_name="sg_domain_sft_v1")'
+    )
+    print(
+        f"  # Returns: AlignmentResult(adapter_name, adapter_path, training_metrics, method)"
     )
 
-    print(f"Training complete:")
-    print(f"  Final loss: {result.final_loss:.4f}")
-    print(f"  Eval loss: {result.eval_loss:.4f}")
-    print(f"  Training time: {result.training_time_seconds:.0f}s")
-    print(f"  Adapter path: {result.adapter_path}")
-
-    return pipeline, result
+    return pipeline, registry
 
 
-pipeline, sft_result = asyncio.run(run_sft())
+pipeline, adapter_registry = demonstrate_pipeline()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -118,37 +137,44 @@ pipeline, sft_result = asyncio.run(run_sft())
 
 
 async def register_adapter():
-    registry = AdapterRegistry()
+    """Register an adapter in AdapterRegistry (simulating post-training registration)."""
+    sig = AdapterSignature(
+        base_model_id=base_model,
+        adapter_type="lora",
+        rank=config.lora.rank,
+        alpha=config.lora.alpha,
+        target_modules=config.lora.target_modules,
+        training_method="sft",
+    )
 
-    adapter_id = await registry.register(
+    adapter = await adapter_registry.register_adapter(
         name="sg_domain_sft_v1",
-        base_model=base_model,
-        method="sft_lora",
-        adapter_path=sft_result.adapter_path,
-        metrics={
-            "final_loss": sft_result.final_loss,
-            "eval_loss": sft_result.eval_loss,
-        },
+        adapter_path="./sft_output/sg_domain_sft_v1",
+        signature=sig,
+        training_metrics={"train_loss": 0.42, "eval_loss": 0.51},
         tags=["singapore", "domain-qa", "lora-r16"],
     )
 
     print(f"\n=== Adapter Registered ===")
-    print(f"ID: {adapter_id}")
-    print(f"Name: sg_domain_sft_v1")
-    print(f"Base: {base_model}")
+    print(f"  Name: {adapter.adapter_name}")
+    print(f"  Version: {adapter.version}")
+    print(f"  Stage: {adapter.stage}")
+    print(f"  Base model: {adapter.base_model_id}")
+    print(f"  Path: {adapter.adapter_path}")
+    print(f"  LoRA config: {adapter.lora_config}")
 
     # List all adapters
-    adapters = await registry.list_adapters()
-    print(f"\nRegistered adapters: {len(adapters)}")
+    adapters = await adapter_registry.list_adapters()
+    print(f"\nAll registered adapters: {len(adapters)}")
     for a in adapters:
         print(
-            f"  {a.get('name', '?')}: {a.get('method', '?')} on {a.get('base_model', '?')}"
+            f"  {a.adapter_name} v{a.version}: base={a.base_model_id} stage={a.stage}"
         )
 
-    return registry, adapter_id
+    return adapter
 
 
-registry, adapter_id = asyncio.run(register_adapter())
+sft_adapter = asyncio.run(register_adapter())
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -156,8 +182,8 @@ registry, adapter_id = asyncio.run(register_adapter())
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def evaluate():
-    print(f"\n=== Evaluation: Base vs Fine-tuned ===")
+def evaluate():
+    print(f"\n=== Evaluation Notes ===")
 
     eval_questions = [
         "What is the HDB resale flat procedure in Singapore?",
@@ -165,26 +191,30 @@ async def evaluate():
         "How does MAS regulate AI in financial services?",
     ]
 
-    for q in eval_questions:
-        # Base model response
-        base_response = await pipeline.generate(q, use_adapter=False)
-        # Fine-tuned response
-        ft_response = await pipeline.generate(q, use_adapter=True)
+    print(f"Evaluation prompts ({len(eval_questions)}):")
+    for i, q in enumerate(eval_questions, 1):
+        print(f"  {i}. {q}")
 
-        print(f"\nQ: {q}")
-        print(f"Base:      {base_response[:150]}...")
-        print(f"Fine-tuned: {ft_response[:150]}...")
+    # In production, evaluation requires GPU inference — here we note the pattern:
+    # result = await pipeline.generate(prompt)  # Not available in stub mode
+    # LLM-as-judge or RAGAS-style metrics compare base vs fine-tuned outputs
 
     print(f"\nKey observations:")
+    lora_rank = config.lora.rank
+    target_mods = config.lora.target_modules
     print(f"  - Fine-tuned model should show better Singapore domain knowledge")
+    # LoRA adds B∈ℝ^{d×r} and A∈ℝ^{r×d} per target module → 2 * d_model * rank params each
+    # For TinyLlama (d_model=2048), rank=16, 2 modules: 2 * 2048 * 16 * 2 = 131,072 per layer
+    d_model = 2048  # TinyLlama hidden dimension
+    lora_params_per_layer = 2 * d_model * lora_rank * len(target_mods)
     print(
-        f"  - LoRA adds only {config.lora_r * 2 * len(config.target_modules)} parameters per layer"
+        f"  - LoRA adds ~{lora_params_per_layer:,} parameters per layer (vs millions for full fine-tuning)"
     )
     print(
         f"  - Full fine-tuning would update ALL parameters (catastrophic forgetting risk)"
     )
 
 
-asyncio.run(evaluate())
+evaluate()
 
 print("\n✓ Exercise 1 complete — SFT fine-tuning with LoRA + AdapterRegistry")

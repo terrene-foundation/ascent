@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 
@@ -213,7 +214,7 @@ loader = ASCENTDataLoader()
 spirals_df = loader.load("ascent07", "synthetic_spirals.parquet")
 
 explorer = DataExplorer()
-spiral_summary = explorer.analyze(spirals_df)
+spiral_summary = asyncio.run(explorer.profile(spirals_df))
 
 print(f"\n=== Synthetic Spirals Dataset ===")
 print(f"Shape: {spirals_df.shape}")

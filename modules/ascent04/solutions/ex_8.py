@@ -44,28 +44,42 @@ async def register_onnx_model():
     await conn.initialize()
 
     registry = ModelRegistry(conn)
-    await registry.initialize()
 
-    # Load ONNX model bytes
+    # Load ONNX model bytes, or train a small sklearn model as fallback
+    import pickle
+    from sklearn.dummy import DummyClassifier
+
     onnx_path = Path("medical_cnn.onnx")
-    if onnx_path.exists():
+    _use_dummy = not onnx_path.exists()
+    if not _use_dummy:
         model_bytes = onnx_path.read_bytes()
     else:
-        # Create a placeholder for environments without the trained model
-        model_bytes = b"placeholder_onnx_model"
-        print("⚠ ONNX model not found — using placeholder. Run Exercise 7 first.")
+        # Train a small dummy model so InferenceServer can load valid bytes
+        dummy = DummyClassifier(strategy="prior")
+        dummy.fit(np.zeros((10, 5)), np.array([0] * 8 + [1] * 2))
+        model_bytes = pickle.dumps(dummy)
+        print(
+            "⚠ ONNX model not found — using dummy sklearn model. Run Exercise 7 first."
+        )
 
-    # Define model signature
+    # Define model signature — adapts to dummy model when ONNX is unavailable
+    if _use_dummy:
+        input_features = [
+            FeatureField(name=f"feat_{i}", dtype="float32") for i in range(5)
+        ]
+    else:
+        input_features = [
+            FeatureField(
+                name="image",
+                dtype="float32",
+                description="Grayscale image tensor (1, 64, 64)",
+            ),
+        ]
+
     signature = ModelSignature(
         input_schema=FeatureSchema(
             name="medical_image_input",
-            features=[
-                FeatureField(
-                    name="image",
-                    dtype="float32",
-                    description="Grayscale image tensor (1, 64, 64)",
-                ),
-            ],
+            features=input_features,
             entity_id_column="patient_id",
         ),
         output_columns=[
@@ -107,10 +121,10 @@ async def register_onnx_model():
     )
     print(f"Promoted to: {model_version.stage}")
 
-    return conn, registry, signature
+    return conn, registry, signature, _use_dummy
 
 
-conn, registry, signature = asyncio.run(register_onnx_model())
+conn, registry, signature, USE_DUMMY_MODEL = asyncio.run(register_onnx_model())
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -121,8 +135,11 @@ conn, registry, signature = asyncio.run(register_onnx_model())
 async def setup_inference():
     server = InferenceServer(registry, cache_size=5)
 
-    # Warm the cache with our model
-    await server.warm_cache(["medical_cnn_v1"])
+    # Warm the cache with our model (may fail for non-pickle-compatible artifacts)
+    try:
+        await server.warm_cache(["medical_cnn_v1"])
+    except Exception as exc:
+        print(f"⚠ Cache warming skipped: {exc}")
 
     # Check model info
     info = await server.get_model_info("medical_cnn_v1")
@@ -143,10 +160,14 @@ server = asyncio.run(setup_inference())
 async def test_inference():
     # Single prediction
     rng = np.random.default_rng(42)
-    sample_features = {
-        "image": rng.standard_normal((1, 64, 64)).tolist(),
-        "patient_id": "patient_001",
-    }
+    if USE_DUMMY_MODEL:
+        sample_features = {f"feat_{i}": float(rng.standard_normal()) for i in range(5)}
+        sample_features["patient_id"] = "patient_001"
+    else:
+        sample_features = {
+            "image": rng.standard_normal((1, 64, 64)).tolist(),
+            "patient_id": "patient_001",
+        }
 
     result = await server.predict(
         model_name="medical_cnn_v1",
@@ -161,13 +182,22 @@ async def test_inference():
     print(f"Inference path: {result.inference_path}")
 
     # Batch prediction
-    batch = [
-        {
-            "image": rng.standard_normal((1, 64, 64)).tolist(),
-            "patient_id": f"patient_{i:03d}",
-        }
-        for i in range(10)
-    ]
+    if USE_DUMMY_MODEL:
+        batch = [
+            {
+                **{f"feat_{j}": float(rng.standard_normal()) for j in range(5)},
+                "patient_id": f"patient_{i:03d}",
+            }
+            for i in range(10)
+        ]
+    else:
+        batch = [
+            {
+                "image": rng.standard_normal((1, 64, 64)).tolist(),
+                "patient_id": f"patient_{i:03d}",
+            }
+            for i in range(10)
+        ]
 
     batch_results = await server.predict_batch(
         model_name="medical_cnn_v1",
@@ -196,7 +226,10 @@ async def deploy_nexus():
     app = Nexus()
 
     # Register inference endpoints with Nexus
-    server.register_endpoints(app)
+    try:
+        server.register_endpoints(app)
+    except (ImportError, ModuleNotFoundError):
+        print("⚠ kailash_nexus not installed — skipping endpoint auto-registration")
 
     print(f"\n=== Nexus Multi-Channel Deployment ===")
     print("Registered channels:")
@@ -227,10 +260,16 @@ app, session = asyncio.run(deploy_nexus())
 async def test_nexus_prediction():
     """Test prediction through Nexus unified session."""
     rng = np.random.default_rng(99)
-    test_input = {
-        "image": rng.standard_normal((1, 64, 64)).tolist(),
-        "patient_id": "patient_nexus_test",
-    }
+    if USE_DUMMY_MODEL:
+        test_input = {
+            **{f"feat_{i}": float(rng.standard_normal()) for i in range(5)},
+            "patient_id": "patient_nexus_test",
+        }
+    else:
+        test_input = {
+            "image": rng.standard_normal((1, 64, 64)).tolist(),
+            "patient_id": "patient_nexus_test",
+        }
 
     # Through InferenceServer (same result regardless of channel)
     result = await server.predict("medical_cnn_v1", test_input)

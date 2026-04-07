@@ -89,7 +89,6 @@ models = {
         learning_rate=0.1,
         max_depth=6,
         eval_metric="logloss",
-        early_stopping_rounds=50,
         random_state=42,
         verbosity=0,
     ),
@@ -98,7 +97,6 @@ models = {
         learning_rate=0.1,
         max_depth=6,
         num_leaves=31,
-        early_stopping_round=50,
         random_state=42,
         verbose=-1,
     ),
@@ -116,7 +114,14 @@ results = {}
 for name, model in models.items():
     print(f"\nTraining {name}...")
 
-    if name == "CatBoost":
+    if name == "XGBoost":
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_test, y_test)],
+            verbose=False,
+        )
+    elif name == "CatBoost":
         model.fit(X_train, y_train, eval_set=(X_test, y_test))
     else:
         model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
@@ -175,11 +180,10 @@ for lr in learning_rates:
         learning_rate=lr,
         max_depth=6,
         eval_metric="logloss",
-        early_stopping_rounds=50,
         random_state=42,
         verbosity=0,
     )
-    xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
+    xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
     y_proba = xgb_model.predict_proba(X_test)[:, 1]
     lr_results["XGBoost"][lr] = roc_auc_score(y_test, y_proba)
 
@@ -188,7 +192,6 @@ for lr in learning_rates:
         n_estimators=500,
         learning_rate=lr,
         max_depth=6,
-        early_stopping_round=50,
         random_state=42,
         verbose=-1,
     )

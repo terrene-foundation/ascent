@@ -4,206 +4,186 @@
 # ════════════════════════════════════════════════════════════════════════
 # ASCENT06 — Exercise 6: Governed Agents
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Wrap Module 5's ReActAgent with PactGovernedAgent. Define
-#   operating envelopes and demonstrate that agents cannot modify their
-#   own governance (frozen GovernanceContext).
+# OBJECTIVE: Wrap a Kaizen agent with PactGovernedAgent. Define operating
+#   envelopes and demonstrate that agents cannot modify their own
+#   governance (frozen GovernanceContext).
 #
 # TASKS:
-#   1. Create GovernanceEngine from Exercise 5's organization
-#   2. Wrap a ReActAgent with PactGovernedAgent
-#   3. Define operating envelopes (cost, tools, data)
-#   4. Test governance enforcement
-#   5. Demonstrate frozen context and monotonic tightening
+#   1. Create GovernanceEngine from a YAML organization
+#   2. Wrap an agent with PactGovernedAgent
+#   3. Test governance enforcement via verify_action
+#   4. Demonstrate frozen context and tool registration
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
 import os
+import tempfile
+import uuid
+from pathlib import Path
 
 from dotenv import load_dotenv
 
+from kailash.trust import ConfidentialityLevel
 from pact import GovernanceEngine, GovernanceContext, PactGovernedAgent
-from pact import Address, compile_org, load_org_yaml
-from kaizen_agents import Delegate
+from pact import compile_org, load_org_yaml
+from pact.governance import RoleClearance, RoleEnvelope
+from kailash.trust.pact.config import (
+    ConstraintEnvelopeConfig,
+    OperationalConstraintConfig,
+    TemporalConstraintConfig,
+    DataAccessConstraintConfig,
+    CommunicationConstraintConfig,
+)
 
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
-
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Set up GovernanceEngine (from Ex5)
+# TASK 1: Set up GovernanceEngine
 # ══════════════════════════════════════════════════════════════════════
 
-# Minimal org for this exercise
-org_dict = {
-    "organization": {
-        "name": "ASCENT Demo",
-        "departments": [
-            {
-                "name": "data_science",
-                "teams": [
-                    {
-                        "name": "modeling",
-                        "roles": [
-                            {
-                                "name": "ml_agent",
-                                "permissions": {
-                                    "data_access": ["credit_data", "feature_store"],
-                                    "tools": [
-                                        "profile_data",
-                                        "describe_column",
-                                        "default_rate_by",
-                                    ],
-                                    "max_cost_usd": 5.0,
-                                    "can_deploy": False,
-                                },
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
-}
+# Minimal org YAML for this exercise
+org_yaml = """
+org_id: ascent_demo
+name: "ASCENT Demo"
 
+departments:
+  - id: data_science
+    name: "Data Science"
 
-async def setup():
-    compiled = compile_org(org_dict)
-    engine = GovernanceEngine(compiled)
+teams:
+  - id: modeling
+    name: "Modeling"
 
-    # Create governance context for the ML agent
-    agent_address = Address("data_science", "modeling", "ml_agent")
-    context = await engine.create_context(agent_address)
+roles:
+  - id: ml_agent
+    name: "ML Analysis Agent"
+    is_primary_for_unit: data_science
+    agent: true
 
-    print(f"=== GovernanceContext ===")
-    print(f"Address: {agent_address}")
-    print(f"Max cost: ${context.max_cost_usd}")
-    print(f"Data access: {context.data_access}")
-    print(f"Tools allowed: {context.tools_allowed}")
-    print(f"Can deploy: {context.can_deploy}")
-    print(f"Frozen: {type(context).__dataclass_fields__ is not None}")
+clearances:
+  - role: ml_agent
+    level: confidential
+    compartments: [credit_data, feature_store]
+"""
 
-    return engine, context
+org_file = Path(tempfile.mktemp(suffix=".yaml"))
+org_file.write_text(org_yaml)
 
+loaded = load_org_yaml(str(org_file))
+engine = GovernanceEngine(loaded.org_definition)
 
-engine, governance_context = asyncio.run(setup())
+# Find the ml_agent role address
+compiled = compile_org(loaded.org_definition)
+agent_addr = None
+for addr, node in compiled.nodes.items():
+    if node.node_id == "ml_agent":
+        agent_addr = addr
+        break
+
+# Grant clearance
+for cs in loaded.clearances:
+    if cs.role_id == "ml_agent" and agent_addr:
+        clearance = RoleClearance(
+            role_address=agent_addr,
+            max_clearance=ConfidentialityLevel.CONFIDENTIAL,
+            compartments=frozenset(cs.compartments),
+            granted_by_role_address="system_init",
+        )
+        engine.grant_clearance(agent_addr, clearance)
+
+# Set operating envelope
+envelope = RoleEnvelope(
+    id=f"env-{uuid.uuid4().hex[:8]}",
+    defining_role_address=agent_addr,  # Self-defined for demo
+    target_role_address=agent_addr,
+    envelope=ConstraintEnvelopeConfig(
+        id="ml-agent-envelope",
+        operational=OperationalConstraintConfig(
+            allowed_actions=["profile_data", "describe_column", "default_rate_by"],
+        ),
+        temporal=TemporalConstraintConfig(),
+        data_access=DataAccessConstraintConfig(),
+        communication=CommunicationConstraintConfig(),
+    ),
+)
+engine.set_role_envelope(envelope)
+
+# Get governance context
+context = engine.get_context(agent_addr)
+
+print(f"=== GovernanceContext ===")
+print(f"Address: {agent_addr}")
+print(f"Clearance: {context.effective_clearance_level}")
+print(f"Compartments: {context.compartments}")
+print(f"Allowed actions: {context.allowed_actions}")
+
+org_file.unlink()
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Wrap agent with PactGovernedAgent
 # ══════════════════════════════════════════════════════════════════════
 
+# PactGovernedAgent wraps the engine, NOT the base agent directly
+# It takes: engine, role_address, posture
+governed = PactGovernedAgent(
+    engine=engine,
+    role_address=agent_addr,
+)
 
-async def create_governed_agent():
-    # Base agent (from M5)
-    base_agent = Delegate(model=model)
-
-    # Wrap with governance
-    governed_agent = PactGovernedAgent(
-        agent=base_agent,
-        governance_context=governance_context,
-    )
-
-    print(f"\n=== PactGovernedAgent ===")
-    print(f"Base agent: Delegate")
-    print(f"Governance: ASCENT Demo / data_science / modeling / ml_agent")
-    print(f"Cost budget: ${governance_context.max_cost_usd}")
-
-    return governed_agent
-
-
-governed_agent = asyncio.run(create_governed_agent())
+print(f"\n=== PactGovernedAgent ===")
+print(f"Role address: {agent_addr}")
+print(f"Context (read-only): {governed.context is not None}")
+print(f"Context clearance: {governed.context.effective_clearance_level}")
+print(f"Context actions: {governed.context.allowed_actions}")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: Test governance enforcement
 # ══════════════════════════════════════════════════════════════════════
 
+# Register tools with the governed agent
+# Only registered tools can be executed (default-deny)
+governed.register_tool("profile_data", cost=0.1, resource="credit_data")
+governed.register_tool("describe_column", cost=0.05, resource="credit_data")
+governed.register_tool("default_rate_by", cost=0.1, resource="credit_data")
 
-async def test_enforcement():
-    """Test that governance restricts agent behavior."""
+print(f"\n=== Governance Enforcement ===")
 
-    # Allowed: use permitted tools on permitted data
-    print(f"\n=== Governance Tests ===")
+# Test via verify_action on the engine
+test_cases = [
+    ("profile_data", "Use profile_data tool"),
+    ("describe_column", "Use describe_column tool"),
+    ("training_pipeline", "Use training_pipeline (NOT in envelope)"),
+    ("deploy_model", "Deploy model (NOT in envelope)"),
+    ("default_rate_by", "Use default_rate_by tool"),
+]
 
-    # Test 1: Allowed action
-    allowed = await governed_agent.check_permission(
-        action="use_tool",
-        resource="profile_data",
-    )
-    print(f"1. Use profile_data tool: {'ALLOW' if allowed else 'DENY'} ✓")
+for action, description in test_cases:
+    verdict = engine.verify_action(agent_addr, action)
+    print(f"  {description}")
+    print(f"    → {verdict.level}: {verdict.reason}")
 
-    # Test 2: Denied tool (not in allowed list)
-    denied_tool = await governed_agent.check_permission(
-        action="use_tool",
-        resource="training_pipeline",  # Not in allowed tools
-    )
-    print(f"2. Use training_pipeline: {'ALLOW' if denied_tool else 'DENY'} ✓")
-
-    # Test 3: Denied data access
-    denied_data = await governed_agent.check_permission(
-        action="access_data",
-        resource="production_logs",  # Not in allowed data
-    )
-    print(f"3. Access production_logs: {'ALLOW' if denied_data else 'DENY'} ✓")
-
-    # Test 4: Cost check
-    within_budget = await governed_agent.check_cost(amount=3.0)
-    over_budget = await governed_agent.check_cost(amount=10.0)
-    print(f"4. Spend $3.00 (budget $5): {'ALLOW' if within_budget else 'DENY'} ✓")
-    print(f"5. Spend $10.00 (budget $5): {'ALLOW' if over_budget else 'DENY'} ✓")
-
-    # Test 5: Deploy action (not permitted for this role)
-    can_deploy = await governed_agent.check_permission(
-        action="deploy",
-        resource="model_v1",
-    )
-    print(f"6. Deploy model: {'ALLOW' if can_deploy else 'DENY'} ✓")
-
-
-asyncio.run(test_enforcement())
+# Test tool execution through governed agent
+print(f"\n=== Tool Execution via PactGovernedAgent ===")
+print(f"Registered tools: {list(governed._registered_tools.keys())}")
+print(f"Unregistered tools are DEFAULT-DENY")
+print()
+print(f"PactGovernedAgent.execute_tool() flow:")
+print(f"  1. Check if tool is registered → if not, BLOCK")
+print(f"  2. Verify action via GovernanceEngine.verify_action()")
+print(f"  3. If BLOCKED → raise GovernanceBlockedError")
+print(f"  4. If HELD → raise GovernanceHeldError")
+print(f"  5. If FLAGGED → log warning, proceed")
+print(f"  6. If AUTO_APPROVED → proceed silently")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Run governed agent on a real task
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def run_governed_task():
-    """Run the governed agent — governance is transparent to the task."""
-
-    prompt = (
-        "Analyse the credit scoring dataset. Profile the data and "
-        "identify which features predict default. Keep analysis under $5."
-    )
-
-    print(f"\n=== Governed Agent Execution ===")
-    print(f"Task: {prompt}")
-    print(
-        f"Governance active: cost≤$5, tools=[profile_data, describe_column, default_rate_by]"
-    )
-
-    response_text = ""
-    async for event in governed_agent.run(prompt):
-        if hasattr(event, "text"):
-            response_text += event.text
-
-    print(f"\nResponse: {response_text[:300]}...")
-
-    # Check cost after execution
-    cost_spent = governed_agent.cost_tracker.total_spent
-    print(f"\nCost spent: ${cost_spent:.4f} / ${governance_context.max_cost_usd}")
-
-
-asyncio.run(run_governed_task())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Frozen context demonstration
+# TASK 4: Frozen context demonstration
 # ══════════════════════════════════════════════════════════════════════
 
 print(f"\n=== Frozen GovernanceContext ===")
@@ -213,33 +193,33 @@ GovernanceContext is a frozen dataclass:
 
   @dataclass(frozen=True)
   class GovernanceContext:
-      max_cost_usd: float
-      data_access: tuple[str, ...]
-      tools_allowed: tuple[str, ...]
-      can_deploy: bool
+      role_address: str
+      posture: TrustPostureLevel
+      effective_envelope: ConstraintEnvelopeConfig | None
+      clearance: RoleClearance | None
+      effective_clearance_level: ConfidentialityLevel | None
+      allowed_actions: frozenset[str]
+      compartments: frozenset[str]
+      org_id: str
+      created_at: datetime
 
   # This RAISES FrozenInstanceError:
-  context.max_cost_usd = 999.0
+  context.role_address = "hacked"
 
 WHY frozen?
   1. Agents cannot escalate their own privileges
   2. Context is immutable proof of what was authorized
-  3. AuditChain can verify context wasn't tampered with
-  4. Monotonic tightening is guaranteed (child ≤ parent)
-
-Attack prevention:
-  ✗ Agent modifies its budget: FrozenInstanceError
-  ✗ Agent creates child with higher permissions: tightened to parent
-  ✗ Agent accesses data outside scope: fail-closed DENY
-  ✗ Governance engine error: fail-closed DENY (not ALLOW)
+  3. AuditChain can verify context was not tampered with
+  4. Monotonic tightening is guaranteed (child <= parent)
 """
 )
 
 # Demonstrate immutability
 try:
-    governance_context.max_cost_usd = 999.0
+    governed.context.role_address = "hacked"
     print("ERROR: Should have raised FrozenInstanceError!")
 except (AttributeError, TypeError) as e:
-    print(f"✓ Attempted modification blocked: {type(e).__name__}")
+    print(f"Attempted modification blocked: {type(e).__name__}")
+    print(f"  Agents RECEIVE governance but CANNOT modify it")
 
 print("\n✓ Exercise 6 complete — governed agents with PACT enforcement")

@@ -23,6 +23,7 @@ import asyncio
 
 import numpy as np
 import polars as pl
+from kailash.db.connection import ConnectionManager
 from kailash_ml import ModelVisualizer
 from kailash_ml import ExperimentTracker
 from scipy import stats
@@ -44,18 +45,27 @@ print(f"Columns: {exp_data.columns}")
 print(exp_data.head(8))
 
 # Primary metric: treatment effect (revenue lift per user)
-# The data has control and treatment groups with pre/post measurements
+# The data has control and multiple treatment groups with pre/post measurements
+# We compare the primary treatment arm (treatment_a) against control
+# Subsample to 2000 per group — bootstrap is computationally expensive
+# (BCa jackknife is O(n), so large n makes the exercise impractical)
+SAMPLE_N = 2_000
+
 control_revenue = (
-    exp_data.filter(pl.col("group") == "control")["revenue"]
+    exp_data.filter(pl.col("experiment_group") == "control")
+    .sample(n=SAMPLE_N, seed=42)["revenue"]
     .to_numpy()
     .astype(np.float64)
 )
 treatment_revenue = (
-    exp_data.filter(pl.col("group") == "treatment")["revenue"]
+    exp_data.filter(pl.col("experiment_group") == "treatment_a")
+    .sample(n=SAMPLE_N, seed=42)["revenue"]
     .to_numpy()
     .astype(np.float64)
 )
-lift = treatment_revenue - control_revenue.mean()  # Individual lifts vs control mean
+lift = (
+    treatment_revenue.mean() - control_revenue.mean()
+)  # Scalar lift: difference of means
 
 n_control = len(control_revenue)
 n_treatment = len(treatment_revenue)
@@ -82,9 +92,7 @@ print(f"Observed lift: ${treatment_revenue.mean() - control_revenue.mean():.2f}"
 # Demonstrate where Normal theory breaks down: median
 sample_median = np.median(treatment_revenue)
 # Normal theory SE for median: π/(2n) * σ² (only valid for large n and symmetric dist)
-normal_se_median = (
-    np.sqrt(np.pi / (2 * n_treatment)) * treatment_revenue.std() / np.sqrt(n_treatment)
-)
+normal_se_median = treatment_revenue.std() * np.sqrt(np.pi / (2 * n_treatment))
 normal_ci_median = (
     sample_median - 1.96 * normal_se_median,
     sample_median + 1.96 * normal_se_median,
@@ -258,30 +266,22 @@ print(
 # When you cannot assume Normality, distribution-free (non-parametric)
 # tests provide valid inference regardless of the true distribution.
 
-# ─────── Sign test ────────────────────────────────────────────────────
-# Null: median lift = 0. Count how many observations are positive.
-# Test statistic: k = number of positive lifts
+# ─────── Sign test (one-sample) ───────────────────────────────────────
+# Test whether treatment median exceeds the control mean.
+# Count how many treatment observations exceed the control mean.
 # Under H0: k ~ Binomial(n, 0.5)
-k_positive = np.sum(lift > 0)
-n_nonzero = np.sum(lift != 0)
+individual_diffs = treatment_revenue - control_revenue.mean()
+k_positive = np.sum(individual_diffs > 0)
+n_nonzero = np.sum(individual_diffs != 0)
 sign_p = 2 * min(
     stats.binom.cdf(k_positive, n_nonzero, 0.5),
     1 - stats.binom.cdf(k_positive - 1, n_nonzero, 0.5),
 )
 
 print(f"\n=== Distribution-Free Tests ===")
-print(f"Sign test (H0: median lift = 0):")
-print(f"  Positive lifts: {k_positive}/{n_nonzero}")
+print(f"Sign test (H0: treatment median = control mean):")
+print(f"  Treatment values above control mean: {k_positive}/{n_nonzero}")
 print(f"  p-value: {sign_p:.6f}")
-
-# ─────── Wilcoxon signed-rank test ────────────────────────────────────
-# More powerful than sign test: uses magnitude of deviations, not just sign.
-# Null: distribution of lift is symmetric around 0.
-wsr_stat, wsr_p = stats.wilcoxon(lift, alternative="two-sided")
-
-print(f"\nWilcoxon signed-rank test (H0: symmetric around 0):")
-print(f"  W-statistic: {wsr_stat:.1f}")
-print(f"  p-value: {wsr_p:.6f}")
 
 # ─────── Mann-Whitney U (two independent samples) ──────────────────────
 # Non-parametric alternative to Welch's t-test.
@@ -305,7 +305,6 @@ for test_name, p_val in [
     ("Welch's t-test", t_p),
     ("Mann-Whitney U", mw_p),
     ("Sign test", sign_p),
-    ("Wilcoxon signed-rank", wsr_p),
 ]:
     decision = "SIGNIFICANT" if p_val < 0.05 else "not significant"
     print(f"{test_name:<25} {p_val:>10.6f} {decision:>15}")
@@ -318,8 +317,9 @@ for test_name, p_val in [
 
 async def compare_bootstrap_runs():
     """Log and compare different bootstrap configurations as experiment runs."""
-    tracker = ExperimentTracker()
-    await tracker.initialize()
+    conn = ConnectionManager("sqlite:///ascent02_bootstrap.db")
+    await conn.initialize()
+    tracker = ExperimentTracker(conn)
 
     exp_id = await tracker.create_experiment(
         name="ascent02_bootstrap_comparison",
@@ -400,19 +400,17 @@ async def compare_bootstrap_runs():
         )
         await run.set_tag("method_type", "parametric")
 
-    # Compare runs
-    comparison = await tracker.compare_runs(exp_id)
+    # Summarise logged runs
     print(f"\n=== ExperimentTracker: Bootstrap Run Comparison ===")
-    if comparison:
-        for run_info in comparison:
-            run_name = run_info.get("name", "unknown")
-            metrics = run_info.get("metrics", {})
-            ci_width = metrics.get("ci_width", "N/A")
-            print(f"  {run_name:<25}: CI width = {ci_width}")
-    else:
-        print(f"  Logged 3 runs to experiment '{exp_id}'")
-        print(f"  Methods: percentile, BCa, parametric-Normal")
+    print(f"  Experiment: {exp_id}")
+    print(f"  Logged 3 runs: nonparam_percentile, nonparam_bca, parametric_normal")
+    print(
+        f"  CI widths — percentile: ${pct_ci[1]-pct_ci[0]:.2f}, "
+        f"BCa: ${bca_ci[1]-bca_ci[0]:.2f}, "
+        f"parametric: ${param_pct_ci[1]-param_pct_ci[0]:.2f}"
+    )
 
+    await conn.close()
     return exp_id
 
 

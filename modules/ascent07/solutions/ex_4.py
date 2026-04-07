@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 
@@ -97,7 +98,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent07", "mnist_sample.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 
 feature_cols = [c for c in df.columns if c != "label"]
 X = [
@@ -196,14 +197,7 @@ print(f"Training with CrossEntropy loss...")
 ce_losses = train_with_loss("ce")
 
 viz = ModelVisualizer()
-loss_comparison = pl.DataFrame(
-    {
-        "epoch": list(range(len(mse_losses))),
-        "mse_loss": mse_losses,
-        "ce_loss": ce_losses,
-    }
-)
-fig = viz.plot_training_curves(loss_comparison)
+fig = viz.training_history({"mse_loss": mse_losses, "ce_loss": ce_losses})
 
 print(f"\n  MSE final loss:  {mse_losses[-1]:.4f}")
 print(f"  CE final loss:   {ce_losses[-1]:.4f}")
@@ -325,15 +319,14 @@ print(f"Rule of thumb:")
 print(f"  Sigmoid/Tanh -> Xavier (accounts for both directions)")
 print(f"  ReLU/variants -> He (accounts for dead half)")
 
-# Compute theoretical gradient scaling
-print(f"\n  Xavier gradient scaling over 10 layers:")
-for layer_idx in range(1, 11):
-    scale = (2.0 / (64 + 64)) ** (layer_idx / 2)
-    print(f"    Layer {layer_idx:2d}: ~{scale:.6f}")
-
-print(f"\n  He gradient scaling over 10 layers:")
-for layer_idx in range(1, 11):
-    scale = (2.0 / 64) ** (layer_idx / 2) * (0.5 ** (layer_idx / 2))
-    print(f"    Layer {layer_idx:2d}: ~{scale:.6f}")
+# Key insight: initialization controls activation/gradient variance per layer
+# Xavier: Var(weights) = 2/(fan_in + fan_out) → keeps variance ~1.0 for tanh/sigmoid
+# He:     Var(weights) = 2/fan_in            → keeps variance ~1.0 for ReLU (compensates
+#                                                for ReLU zeroing out ~half of activations)
+# With correct initialization, activation variance stays near 1.0 across ALL layers.
+# With wrong initialization (e.g., Xavier + ReLU), variance shrinks per layer → vanishing gradients.
+print(f"\n  Xavier (tanh): aims to keep activation variance ~1.0 at every layer")
+print(f"  He (ReLU):    aims to keep activation variance ~1.0 at every layer")
+print(f"  Wrong init:   variance compounds per layer → exponential shrink or explosion")
 
 print("\n✓ Exercise 4 complete — loss functions and initialization strategies compared")

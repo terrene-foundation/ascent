@@ -33,6 +33,17 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
+
+try:
+    import sentence_transformers as _st  # noqa: F401
+except ImportError:
+    print(
+        "sentence-transformers not installed. Run: uv pip install sentence-transformers"
+    )
+    raise SystemExit(0)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -100,13 +111,19 @@ class RAGAnswer(Signature):
     )
 
 
-async def build_rag_agent():
-    agent = RAGResearchAgent(
-        signature=RAGAnswer,
-        model=model,
-        documents=documents,
-        max_llm_cost_usd=3.0,
-    )
+def build_rag_agent():
+    # RAGResearchAgent includes a built-in vector store for document retrieval.
+    # Pass documents via the vector_store after construction, or rely on
+    # the agent's default document collection.
+    agent = RAGResearchAgent(model=model)
+
+    # Add our SDK docs to the agent's vector store
+    # vector_store.add_documents expects dicts with "content", "title", and "id" keys
+    doc_dicts = [
+        {"id": f"doc_{i}", "content": d, "title": sdk_docs[i]["title"], "metadata": {}}
+        for i, d in enumerate(documents)
+    ]
+    agent.vector_store.add_documents(doc_dicts)
 
     questions = [
         "How does Kailash detect data drift in production models?",
@@ -116,19 +133,21 @@ async def build_rag_agent():
 
     results = []
     for q in questions:
-        result = await agent.run(question=q)
+        result = agent.run(query=q)
 
         print(f"\n=== Q: {q} ===")
-        print(f"A: {result.answer[:300]}...")
-        print(f"Sources: {result.sources}")
-        print(f"Confidence: {result.confidence}")
-        print(f"Retrieval quality: {result.retrieval_quality}")
+        answer = result.get("answer", result.get("response", str(result)))
+        sources = result.get("sources", result.get("retrieved_documents", []))
+        confidence = result.get("confidence", "N/A")
+        print(f"A: {str(answer)[:300]}...")
+        print(f"Sources: {sources}")
+        print(f"Confidence: {confidence}")
         results.append(result)
 
     return results
 
 
-rag_results = asyncio.run(build_rag_agent())
+rag_results = build_rag_agent()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -166,16 +185,29 @@ questions = [
 ]
 
 for i, (q, r) in enumerate(zip(questions, rag_results)):
+    answer = r.get("answer", r.get("response", str(r)))
+    sources = r.get("sources", r.get("retrieved_documents", []))
+    confidence = r.get("confidence", 0.5)
+
+    # Find relevant source documents for faithfulness check
+    source_titles = sources if isinstance(sources, list) else []
     relevant_docs = " ".join(
-        d["content"] for d in sdk_docs if any(t in d["title"] for t in r.sources)
+        d["content"]
+        for d in sdk_docs
+        if any(str(t) in d["title"] for t in source_titles)
     )
-    faith = evaluate_faithfulness(r.answer, relevant_docs) if relevant_docs else 0.0
-    relev = evaluate_relevance(q, r.answer)
+    if not relevant_docs:
+        # Fallback: use all docs as context
+        relevant_docs = " ".join(d["content"] for d in sdk_docs)
+
+    faith = evaluate_faithfulness(str(answer), relevant_docs)
+    relev = evaluate_relevance(q, str(answer))
 
     print(f"\nQ{i+1}: {q[:60]}...")
     print(f"  Faithfulness: {faith:.3f}")
     print(f"  Relevance:    {relev:.3f}")
-    print(f"  Self-rated confidence: {r.confidence:.3f}")
+    conf_val = float(confidence) if isinstance(confidence, (int, float)) else 0.5
+    print(f"  Self-rated confidence: {conf_val:.3f}")
 
 
 # ══════════════════════════════════════════════════════════════════════

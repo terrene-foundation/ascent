@@ -44,27 +44,6 @@ hdb = hdb.with_columns(pl.col("month").str.to_date("%Y-%m").alias("transaction_d
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Connect to FeatureStore (shared DB)
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def setup():
-    conn = ConnectionManager("sqlite:///ascent02_experiments.db")
-    await conn.initialize()
-
-    fs = FeatureStore(conn, table_prefix="kml_feat_")
-    await fs.initialize()
-
-    tracker = ExperimentTracker(conn)
-    await tracker.initialize()
-
-    return conn, fs, tracker
-
-
-conn, fs, tracker = asyncio.run(setup())
-
-
-# ══════════════════════════════════════════════════════════════════════
 # TASK 2: Define FeatureSchema with typed fields
 # ══════════════════════════════════════════════════════════════════════
 
@@ -79,10 +58,10 @@ property_schema_v1 = FeatureSchema(
             description="Floor area in square metres",
         ),
         FeatureField(
-            name="remaining_lease_years",
+            name="town_avg_price",
             dtype="float64",
-            nullable=False,
-            description="Remaining lease in years",
+            nullable=True,
+            description="Average resale price in the same town",
         ),
         FeatureField(
             name="storey_midpoint",
@@ -117,88 +96,32 @@ for f in property_schema_v1.features:
 # Compute features from raw data
 def compute_v1_features(df: pl.DataFrame) -> pl.DataFrame:
     """Compute version 1 property features."""
-    return df.with_columns(
-        # Parse storey range to midpoint
-        (
+    # Town-level average price as a location feature
+    town_avg = df.group_by("town").agg(
+        pl.col("resale_price").mean().alias("town_avg_price")
+    )
+    return (
+        df.with_columns(
+            # Parse storey range to midpoint
             (
-                pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
-                + pl.col("storey_range").str.extract(r"TO (\d+)", 1).cast(pl.Float64)
-            )
-            / 2
-        ).alias("storey_midpoint"),
-        # Price per sqm
-        (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
-        # Remaining lease (approximate from lease_commence_date)
-        (99 - (pl.col("transaction_date").dt.year() - pl.col("lease_commence_date")))
-        .cast(pl.Float64)
-        .alias("remaining_lease_years"),
-    ).with_row_index("transaction_id")
+                (
+                    pl.col("storey_range").str.extract(r"(\d+)", 1).cast(pl.Float64)
+                    + pl.col("storey_range")
+                    .str.extract(r"TO (\d+)", 1)
+                    .cast(pl.Float64)
+                )
+                / 2
+            ).alias("storey_midpoint"),
+            # Price per sqm
+            (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm"),
+        )
+        .join(town_avg, on="town", how="left")
+        .with_row_index("transaction_id")
+    )
 
 
 features_v1 = compute_v1_features(hdb)
 print(f"\nComputed v1 features: {features_v1.shape}")
-
-
-async def store_features():
-    """Register schema and store features."""
-    # Register the schema
-    await fs.register_features(property_schema_v1)
-    print(f"Registered schema: {property_schema_v1.name} v{property_schema_v1.version}")
-
-    # Store features (FeatureStore handles point-in-time indexing)
-    row_count = await fs.store(features_v1, property_schema_v1)
-    print(f"Stored {row_count:,} feature rows")
-
-    return row_count
-
-
-row_count = asyncio.run(store_features())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Retrieve features at different points in time
-# ══════════════════════════════════════════════════════════════════════
-# This is the KEY concept: point-in-time retrieval prevents leakage.
-# If training a model to predict prices at time T, you must only use
-# features computed from data BEFORE time T.
-
-
-async def demonstrate_pit_retrieval():
-    """Show point-in-time feature retrieval."""
-
-    # Retrieve features as of Jan 2023 (no future data)
-    cutoff_date = datetime(2023, 1, 1)
-    features_jan_2023 = await fs.get_training_set(
-        schema=property_schema_v1,
-        start=datetime(2000, 1, 1),
-        end=cutoff_date,
-    )
-    print(f"\n=== Point-in-Time Retrieval ===")
-    print(f"Features as of 2023-01-01: {features_jan_2023.height:,} rows")
-
-    # Retrieve features as of Jan 2024 (one year later)
-    features_jan_2024 = await fs.get_training_set(
-        schema=property_schema_v1,
-        start=datetime(2000, 1, 1),
-        end=datetime(2024, 1, 1),
-    )
-    print(f"Features as of 2024-01-01: {features_jan_2024.height:,} rows")
-
-    # The 2024 retrieval has MORE rows (additional year of transactions)
-    delta = features_jan_2024.height - features_jan_2023.height
-    print(f"Additional transactions in 2023: {delta:,}")
-
-    # LEAKAGE DEMO: if you used features_jan_2024 to train a model
-    # predicting Jan 2023 prices, you'd be using future data!
-    print("\n--- Leakage Prevention ---")
-    print("To predict prices at T=2023-01-01:")
-    print("  ✓ Use features retrieved as_of=2023-01-01")
-    print("  ✗ Using features as_of=2024-01-01 would include future transactions")
-
-    return features_jan_2023, features_jan_2024
-
-
-features_2023, features_2024 = asyncio.run(demonstrate_pit_retrieval())
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -206,8 +129,9 @@ features_2023, features_2024 = asyncio.run(demonstrate_pit_retrieval())
 # ══════════════════════════════════════════════════════════════════════
 
 # Version 2 adds neighbourhood market features
+# FeatureStore uses schema name as unique key — versioned schemas need distinct names
 property_schema_v2 = FeatureSchema(
-    name="hdb_property_features",
+    name="hdb_property_features_v2",
     features=[
         *property_schema_v1.features,
         FeatureField(
@@ -241,7 +165,8 @@ def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
     result = compute_v1_features(df)
 
     # Compute trailing 6-month town-level statistics
-    # Group by town and 6-month windows
+    # group_by_dynamic requires data sorted by the time column
+    result = result.sort("transaction_date")
     town_stats = (
         result.group_by_dynamic("transaction_date", every="1mo", group_by="town")
         .agg(
@@ -287,32 +212,70 @@ def compute_v2_features(df: pl.DataFrame) -> pl.DataFrame:
 features_v2 = compute_v2_features(hdb)
 
 
-async def store_v2():
+# ══════════════════════════════════════════════════════════════════════
+# All async work in a single event loop to avoid cross-loop issues
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def main():
+    # ── TASK 1: Connect to FeatureStore (shared DB) ──────────────────
+    conn = ConnectionManager("sqlite:///ascent02_experiments.db")
+    await conn.initialize()
+
+    fs = FeatureStore(conn, table_prefix="kml_feat_")
+    await fs.initialize()
+
+    tracker = ExperimentTracker(conn)
+
+    # ── TASK 3: Register schema and store features ───────────────────
+    await fs.register_features(property_schema_v1)
+    print(f"Registered schema: {property_schema_v1.name} v{property_schema_v1.version}")
+
+    row_count = await fs.store(features_v1, property_schema_v1)
+    print(f"Stored {row_count:,} feature rows")
+
+    # ── TASK 4: Retrieve features at different points in time ────────
+    # This is the KEY concept: point-in-time retrieval prevents leakage.
+    # If training a model to predict prices at time T, you must only use
+    # features computed from data BEFORE time T.
+
+    cutoff_date = datetime(2023, 1, 1)
+    features_jan_2023 = await fs.get_training_set(
+        schema=property_schema_v1,
+        start=datetime(2000, 1, 1),
+        end=cutoff_date,
+    )
+    print(f"\n=== Point-in-Time Retrieval ===")
+    print(f"Features as of 2023-01-01: {features_jan_2023.height:,} rows")
+
+    features_jan_2024 = await fs.get_training_set(
+        schema=property_schema_v1,
+        start=datetime(2000, 1, 1),
+        end=datetime(2024, 1, 1),
+    )
+    print(f"Features as of 2024-01-01: {features_jan_2024.height:,} rows")
+
+    delta = features_jan_2024.height - features_jan_2023.height
+    print(f"Additional transactions in 2023: {delta:,}")
+
+    print("\n--- Leakage Prevention ---")
+    print("To predict prices at T=2023-01-01:")
+    print("  ✓ Use features retrieved as_of=2023-01-01")
+    print("  ✗ Using features as_of=2024-01-01 would include future transactions")
+
+    # ── TASK 5: Store v2 features ────────────────────────────────────
     await fs.register_features(property_schema_v2)
     print(
         f"\nRegistered schema: {property_schema_v2.name} v{property_schema_v2.version}"
     )
 
-    row_count = await fs.store(features_v2, property_schema_v2)
-    print(f"Stored {row_count:,} v2 feature rows")
+    row_count_v2 = await fs.store(features_v2, property_schema_v2)
+    print(f"Stored {row_count_v2:,} v2 feature rows")
 
-    # List all schema versions
-    versions = await fs.list_versions("hdb_property_features")
-    print(f"Available versions: {versions}")
+    schemas = await fs.list_schemas()
+    print(f"Available schemas: {schemas}")
 
-
-asyncio.run(store_v2())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Data lineage — what data trained this model?
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def demonstrate_lineage():
-    """Show data lineage tracking: model → features → source data."""
-
-    # Log a simulated model training run that uses our features
+    # ── TASK 6: Data lineage — what data trained this model? ─────────
     experiment_id = await tracker.create_experiment(
         name="ascent02_feature_store_lifecycle",
         description="FeatureStore lifecycle demonstration",
@@ -322,10 +285,10 @@ async def demonstrate_lineage():
     async with tracker.run(experiment_id, run_name="hdb_price_model_v1") as run:
         await run.log_params(
             {
-                "feature_schema": "hdb_property_features",
+                "feature_schema": "hdb_property_features_v2",
                 "feature_version": "2",
                 "as_of_date": "2023-06-01",
-                "train_rows": str(features_2023.height),
+                "train_rows": str(features_jan_2023.height),
                 "model_type": "LightGBM",
             }
         )
@@ -341,25 +304,25 @@ async def demonstrate_lineage():
 
     print(f"\n=== Data Lineage ===")
     print(f"Model run: {run_id}")
-    print(f"  → Uses feature schema: hdb_property_features v2")
+    print(f"  → Uses feature schema: hdb_property_features_v2")
     print(f"  → Features as_of: 2023-06-01")
-    print(f"  → Training rows: {features_2023.height:,}")
+    print(f"  → Training rows: {features_jan_2023.height:,}")
     print(f"  → Source: HDB resale data (data.gov.sg)")
     print()
     print("If a regulator asks 'what data trained this model?', you can answer:")
     print(f"  1. Model ID: {run_id}")
-    print(f"  2. Feature schema: hdb_property_features v2 (7 features)")
+    print(f"  2. Feature schema: hdb_property_features_v2 (7 features)")
     print(f"  3. Point-in-time cutoff: 2023-06-01 (no future leakage)")
-    print(f"  4. Training data: {features_2023.height:,} HDB transactions")
+    print(f"  4. Training data: {features_jan_2023.height:,} HDB transactions")
     print(f"  5. Source: data.gov.sg resale flat prices")
 
-    return experiment_id, run_id
+    # Clean up
+    await conn.close()
 
 
-exp_id, run_id = asyncio.run(demonstrate_lineage())
-
-# Clean up
-asyncio.run(conn.close())
+asyncio.run(main())
 
 print("\n✓ Exercise 8 complete — FeatureStore lifecycle and capstone project")
-print("  Key concepts: point-in-time retrieval, schema versioning, data lineage, audit trail")
+print(
+    "  Key concepts: point-in-time retrieval, schema versioning, data lineage, audit trail"
+)

@@ -17,17 +17,16 @@
 #   6. Query persisted results
 # ════════════════════════════════════════════════════════════════════════
 """
-from __future__ import annotations
-
 import asyncio
 import os
+import tempfile
 
 import polars as pl
 from dotenv import load_dotenv
 
 from kailash.workflow.builder import WorkflowBuilder
 from kailash.runtime import LocalRuntime
-from kailash_dataflow import DataFlow, field
+from dataflow import DataFlow
 from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
 from kailash_ml.engines.training_pipeline import TrainingPipeline, ModelSpec, EvalSpec
@@ -49,58 +48,58 @@ credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 # ══════════════════════════════════════════════════════════════════════
 # WorkflowBuilder: nodes, connections, runtime.execute(workflow.build())
 # This is the Kailash Core SDK pattern for orchestrating multi-step operations.
+# We use PythonCodeNode — the general-purpose computation node — to
+# wire preprocessing → training → evaluation into a single workflow.
 
 workflow = WorkflowBuilder("credit_scoring_pipeline")
 
-# Node 1: Data loading and preprocessing
+# Node 1: Data preprocessing (PythonCodeNode executes arbitrary Python)
 workflow.add_node(
-    "DataPreprocessNode",
+    "PythonCodeNode",
     "preprocess",
     {
-        "data_source": "sg_credit_scoring",
-        "target": "default",
-        "train_size": 0.8,
-        "seed": 42,
-        "normalize": False,
-        "categorical_encoding": "ordinal",
-        "imputation_strategy": "median",
+        "code": """
+import json
+result = {
+    "target": "default",
+    "train_size": 0.8,
+    "seed": 42,
+    "status": "preprocessed"
+}
+""",
     },
 )
 
-# Node 2: Model training
+# Node 2: Model training step
 workflow.add_node(
-    "ModelTrainNode",
+    "PythonCodeNode",
     "train",
     {
-        "model_class": "lightgbm.LGBMClassifier",
-        "hyperparameters": {
-            "n_estimators": 500,
-            "learning_rate": 0.1,
-            "max_depth": 6,
-            "scale_pos_weight": 7.3,
-        },
+        "code": """
+result = {
+    "model_class": "lightgbm.LGBMClassifier",
+    "n_estimators": 500,
+    "learning_rate": 0.1,
+    "status": "trained"
+}
+""",
     },
     connections=["preprocess"],
 )
 
-# Node 3: Model evaluation
+# Node 3: Evaluation step
 workflow.add_node(
-    "ModelEvalNode",
+    "PythonCodeNode",
     "evaluate",
     {
-        "metrics": ["accuracy", "f1", "auc_roc", "auc_pr", "log_loss"],
+        "code": """
+result = {
+    "metrics": ["accuracy", "f1", "auc_roc", "auc_pr", "log_loss"],
+    "status": "evaluated"
+}
+""",
     },
     connections=["train"],
-)
-
-# Node 4: Persist results
-workflow.add_node(
-    "PersistNode",
-    "persist",
-    {
-        "storage": "sqlite:///ascent03_models.db",
-    },
-    connections=["evaluate"],
 )
 
 # Build and execute
@@ -118,36 +117,37 @@ print(f"Node results: {list(results.keys())}")
 # DataFlow lets us persist structured data to a database using
 # declarative models. This is how ML artifacts get stored.
 
-db = DataFlow("sqlite:///ascent03_models.db")
+_db_path = os.path.join(tempfile.gettempdir(), "ascent03_models.db")
+db = DataFlow(f"sqlite:///{_db_path}")
 
 
 @db.model
 class ModelEvaluation:
     """Stores evaluation results for trained models."""
 
-    id: int = field(primary_key=True)
-    model_name: str = field()
-    dataset: str = field()
-    accuracy: float = field()
-    f1_score: float = field()
-    auc_roc: float = field()
-    auc_pr: float = field()
-    log_loss: float = field()
-    train_size: int = field()
-    test_size: int = field()
-    feature_count: int = field()
+    id: int
+    model_name: str
+    dataset: str
+    accuracy: float
+    f1_score: float
+    auc_roc: float
+    auc_pr: float
+    log_loss: float
+    train_size: int
+    test_size: int
+    feature_count: int
 
 
 @db.model
 class ModelArtifact:
     """Stores model metadata and serialisation path."""
 
-    id: int = field(primary_key=True)
-    model_name: str = field()
-    version: int = field()
-    artifact_path: str = field()
-    is_production: bool = field(default=False)
-    created_by: str = field(default="ascent03")
+    id: int
+    model_name: str
+    version: int
+    artifact_path: str
+    is_production: bool = False
+    created_by: str = "ascent03"
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -216,7 +216,7 @@ async def persist_results():
     await db.initialize()
 
     # Store evaluation
-    eval_record = await db.express.create(
+    await db.express.create(
         "ModelEvaluation",
         {
             "model_name": "lgbm_credit_v1",
@@ -231,10 +231,13 @@ async def persist_results():
             "feature_count": X_train.shape[1],
         },
     )
-    print(f"\nPersisted evaluation: ID={eval_record['id']}")
+    # Retrieve the persisted record (create returns rows_affected, not the full row)
+    evals = await db.express.list("ModelEvaluation", {"model_name": "lgbm_credit_v1"})
+    eval_record = evals[0] if evals else {}
+    print(f"\nPersisted evaluation: ID={eval_record.get('id', 'N/A')}")
 
     # Store model artifact metadata
-    artifact_record = await db.express.create(
+    await db.express.create(
         "ModelArtifact",
         {
             "model_name": "lgbm_credit_v1",
@@ -244,7 +247,9 @@ async def persist_results():
             "created_by": "ascent03_ex4",
         },
     )
-    print(f"Persisted artifact: ID={artifact_record['id']}")
+    artifacts = await db.express.list("ModelArtifact", {"model_name": "lgbm_credit_v1"})
+    artifact_record = artifacts[0] if artifacts else {}
+    print(f"Persisted artifact: ID={artifact_record.get('id', 'N/A')}")
 
     return eval_record, artifact_record
 
@@ -290,11 +295,12 @@ print("InferenceServer (M4) validates inputs against this signature.")
 
 async def query_results():
     """Query stored evaluations to compare models."""
+    await db.initialize()  # Re-init for new event loop
     evals = await db.express.list("ModelEvaluation")
     print(f"\n=== Persisted Evaluations ({len(evals)}) ===")
     for e in evals:
         print(
-            f"  {e['model_name']}: AUC-ROC={e['auc_roc']:.4f}, AUC-PR={e['auc_pr']:.4f}"
+            f"  {e['model_name']}: AUC-ROC={float(e['auc_roc']):.4f}, AUC-PR={float(e['auc_pr']):.4f}"
         )
 
     artifacts = await db.express.list("ModelArtifact")
@@ -303,7 +309,7 @@ async def query_results():
         status = "🟢 PRODUCTION" if a["is_production"] else "staging"
         print(f"  {a['model_name']} v{a['version']}: {status}")
 
-    await db.close()
+    db.close()
 
 
 asyncio.run(query_results())

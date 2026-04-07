@@ -17,10 +17,10 @@
 #   6. Explore async patterns: async with, context managers, connection lifecycle
 # ════════════════════════════════════════════════════════════════════════
 """
-from __future__ import annotations
-
 import asyncio
 import json
+import os
+import tempfile
 from datetime import datetime
 
 import lightgbm as lgb
@@ -35,7 +35,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from kailash_dataflow import DataFlow, field
+from dataflow import DataFlow
 from kailash_ml import PreprocessingPipeline, ModelVisualizer
 from kailash_ml.interop import to_sklearn_input
 
@@ -85,7 +85,8 @@ print(f"Default rate (train): {y_train.mean():.2%}")
 # field(primary_key=True) marks the auto-increment primary key.
 # Timestamps are auto-managed — never set them manually.
 
-DB_URL = "sqlite:///ascent03_ex6_results.db"
+_db_path = os.path.join(tempfile.gettempdir(), "ascent03_ex6_results.db")
+DB_URL = f"sqlite:///{_db_path}"
 db = DataFlow(DB_URL)
 
 
@@ -93,36 +94,36 @@ db = DataFlow(DB_URL)
 class ModelRun:
     """A single training run with its configuration and metrics."""
 
-    id: int = field(primary_key=True)
-    run_name: str = field()
-    model_family: str = field()  # "lgbm", "xgboost", etc.
-    dataset: str = field()
+    id: int
+    run_name: str
+    model_family: str  # "lgbm", "xgboost", etc.
+    dataset: str
     # Hyperparameters (serialised to JSON string)
-    hyperparams_json: str = field(default="{}")
+    hyperparams_json: str = "{}"
     # Evaluation metrics
-    accuracy: float = field(default=0.0)
-    f1_score: float = field(default=0.0)
-    auc_roc: float = field(default=0.0)
-    auc_pr: float = field(default=0.0)
-    log_loss_val: float = field(default=0.0)
-    brier_score: float = field(default=0.0)
+    accuracy: float = 0.0
+    f1_score: float = 0.0
+    auc_roc: float = 0.0
+    auc_pr: float = 0.0
+    log_loss_val: float = 0.0
+    brier_score: float = 0.0
     # Metadata
-    train_samples: int = field(default=0)
-    test_samples: int = field(default=0)
-    feature_count: int = field(default=0)
-    is_production_candidate: bool = field(default=False)
-    notes: str = field(default="")
+    train_samples: int = 0
+    test_samples: int = 0
+    feature_count: int = 0
+    is_production_candidate: bool = False
+    notes: str = ""
 
 
 @db.model
 class FeatureImportance:
     """Top feature importances for a model run — linked by run_id."""
 
-    id: int = field(primary_key=True)
-    run_id: int = field()  # Foreign key (by convention)
-    feature_name: str = field()
-    importance: float = field()
-    rank: int = field()
+    id: int
+    run_id: int  # Foreign key (by convention)
+    feature_name: str
+    importance: float
+    rank: int
 
 
 print("\n=== DataFlow Schema Defined ===")
@@ -245,7 +246,7 @@ async def persist_all_runs():
         metrics = run_data["metrics"]
 
         # Create the ModelRun record
-        run_record = await db.express.create(
+        await db.express.create(
             "ModelRun",
             {
                 "run_name": config["run_name"],
@@ -265,7 +266,9 @@ async def persist_all_runs():
                 "notes": config["notes"],
             },
         )
-        run_id = run_record["id"]
+        # Retrieve the created record to get its auto-generated id
+        runs = await db.express.list("ModelRun", {"run_name": config["run_name"]})
+        run_id = runs[-1]["id"] if runs else 0
         run_ids.append(run_id)
         print(f"  Persisted {config['run_name']}: ID={run_id}")
 
@@ -295,28 +298,29 @@ asyncio.run(persist_all_runs())
 # TASK 4: Query, filter, and compare runs
 # ══════════════════════════════════════════════════════════════════════
 # db.express.list("ModelName", filter_dict) returns matching records.
-# db.express.get("ModelName", id) retrieves a single record by primary key.
+# db.express.read("ModelName", id) retrieves a single record by primary key.
 # Both return plain Python dicts — easy to work with.
 
 
 async def query_and_compare():
     """Retrieve and compare all stored model runs."""
+    await db.initialize()  # Re-init for new event loop
 
     # List all runs
     all_runs = await db.express.list("ModelRun")
     print(f"\n=== All Stored Runs ({len(all_runs)}) ===")
     print(f"{'Run Name':<25} {'AUC-ROC':>10} {'AUC-PR':>10} {'Brier':>8} {'Notes':<35}")
     print("─" * 95)
-    for run in sorted(all_runs, key=lambda r: r["auc_pr"], reverse=True):
+    for run in sorted(all_runs, key=lambda r: float(r["auc_pr"]), reverse=True):
         print(
-            f"{run['run_name']:<25} {run['auc_roc']:>10.4f} {run['auc_pr']:>10.4f} "
-            f"{run['brier_score']:>8.4f} {run['notes']:<35}"
+            f"{run['run_name']:<25} {float(run['auc_roc']):>10.4f} {float(run['auc_pr']):>10.4f} "
+            f"{float(run['brier_score']):>8.4f} {run['notes']:<35}"
         )
 
     # Filter: only runs with AUC-PR above a threshold
     # db.express.list supports filter_dict for equality filters
     # For range queries, filter in Python after retrieval
-    high_quality = [r for r in all_runs if r["auc_pr"] > 0.30]
+    high_quality = [r for r in all_runs if float(r["auc_pr"]) > 0.30]
     print(f"\nRuns with AUC-PR > 0.30: {len(high_quality)}")
 
     # Filter: only regularised models
@@ -328,10 +332,13 @@ async def query_and_compare():
 
     # Get a specific run by ID
     if run_ids:
-        first_run = await db.express.get("ModelRun", str(run_ids[0]))
-        print(f"\nFirst run retrieved by ID={run_ids[0]}:")
-        hyperparams = json.loads(first_run["hyperparams_json"])
-        print(f"  Hyperparams: {hyperparams}")
+        first_run = await db.express.read("ModelRun", str(run_ids[0]))
+        if first_run:
+            print(f"\nFirst run retrieved by ID={run_ids[0]}:")
+            hyperparams = json.loads(first_run["hyperparams_json"])
+            print(f"  Hyperparams: {hyperparams}")
+        else:
+            print(f"\nFirst run ID={run_ids[0]} not found (stale across event loops)")
 
     return all_runs
 
@@ -348,12 +355,13 @@ all_runs = asyncio.run(query_and_compare())
 
 async def promote_best():
     """Find the best run by AUC-PR and mark it as production candidate."""
+    await db.initialize()  # Re-init for new event loop
     all_runs = await db.express.list("ModelRun")
 
     # Find best by AUC-PR
-    best = max(all_runs, key=lambda r: r["auc_pr"])
+    best = max(all_runs, key=lambda r: float(r["auc_pr"]))
     print(f"\n=== Promoting Best Run ===")
-    print(f"Best run: {best['run_name']} (AUC-PR={best['auc_pr']:.4f})")
+    print(f"Best run: {best['run_name']} (AUC-PR={float(best['auc_pr']):.4f})")
 
     # Update: set is_production_candidate = True
     updated = await db.express.update(
@@ -365,13 +373,16 @@ async def promote_best():
             + f" | Promoted {datetime.now().strftime('%Y-%m-%d')}",
         },
     )
-    print(f"Updated ID={updated['id']}: is_production_candidate = True")
+    print(f"Updated ID={best['id']}: is_production_candidate = True")
 
     # Verify the update
-    confirmed = await db.express.get("ModelRun", str(best["id"]))
-    print(
-        f"Confirmed: {confirmed['run_name']} → production_candidate={confirmed['is_production_candidate']}"
-    )
+    confirmed = await db.express.read("ModelRun", str(best["id"]))
+    if confirmed:
+        print(
+            f"Confirmed: {confirmed['run_name']} → production_candidate={confirmed['is_production_candidate']}"
+        )
+    else:
+        print(f"Confirmed: update applied (read-back unavailable)")
 
     # List only production candidates
     candidates = await db.express.list("ModelRun", {"is_production_candidate": True})
@@ -388,7 +399,7 @@ asyncio.run(promote_best())
 # 1. await db.initialize()         — opens connection pool
 # 2. await db.express.create(...)  — single insert
 # 3. await db.express.list(...)    — query with optional filter
-# 4. await db.express.get(...)     — retrieve by primary key
+# 4. await db.express.read(...)     — retrieve by primary key
 # 5. await db.express.update(...)  — partial update
 # 6. await db.express.delete(...)  — delete by primary key
 # 7. await db.close()              — release connection pool
@@ -400,6 +411,7 @@ asyncio.run(promote_best())
 
 async def demonstrate_async_context():
     """Show async context manager pattern for connection management."""
+    await db.initialize()  # Re-init for new event loop
 
     # Pattern: explicit lifecycle
     print("\n=== Async Connection Lifecycle ===")
@@ -421,16 +433,16 @@ async def demonstrate_async_context():
             fi_records = await db.express.list(
                 "FeatureImportance", {"run_id": run_id, "rank": 1}
             )
-            run = await db.express.get("ModelRun", str(run_id))
+            run = await db.express.read("ModelRun", str(run_id))
             if fi_records:
                 top_feat = fi_records[0]
                 print(
                     f"  {run['run_name']}: top feature = {top_feat['feature_name']} "
-                    f"(importance={top_feat['importance']:.2f})"
+                    f"(importance={float(top_feat['importance']):.2f})"
                 )
 
     # Clean up connection pool
-    await db.close()
+    db.close()
     print("\nConnection pool closed.")
 
 
@@ -443,9 +455,9 @@ asyncio.run(demonstrate_async_context())
 
 metrics_by_run = {
     r["run_name"]: {
-        "AUC_ROC": r["auc_roc"],
-        "AUC_PR": r["auc_pr"],
-        "Brier_Score": r["brier_score"],
+        "AUC_ROC": float(r["auc_roc"]),
+        "AUC_PR": float(r["auc_pr"]),
+        "Brier_Score": float(r["brier_score"]),
     }
     for r in all_runs
 }

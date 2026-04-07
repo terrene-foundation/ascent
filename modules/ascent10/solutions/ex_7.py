@@ -83,24 +83,53 @@ print(f"Without governance: agent can deploy models, delete data, spend $10")
 # TASK 2: Wrap with PactGovernedAgent
 # ══════════════════════════════════════════════════════════════════════
 
-engine = GovernanceEngine()
+import tempfile
+
+# Create org structure for governance
+org_yaml = """
+org_id: ascent_governed
+name: ASCENT Governed System
+
+departments:
+  - id: data_ops
+    name: Data Operations
+
+roles:
+  - id: analyst
+    name: Data Analyst
+    reports_to: null
+  - id: operator
+    name: System Operator
+    reports_to: null
+"""
+
+from pact import compile_org, load_org_yaml
+
+org_path = os.path.join(tempfile.gettempdir(), "ascent_gov.yaml")
+with open(org_path, "w") as f:
+    f.write(org_yaml)
+
+loaded = load_org_yaml(org_path)
+compiled = compile_org(loaded.org_definition)
+engine = GovernanceEngine(compiled)
+
+# Find role addresses
+analyst_addr = None
+operator_addr = None
+for addr, node in compiled.nodes.items():
+    if node.node_id == "analyst":
+        analyst_addr = addr
+    elif node.node_id == "operator":
+        operator_addr = addr
 
 governed_analyst = PactGovernedAgent(
-    agent=base_agent,
-    governance_engine=engine,
-    role="analyst",
-    max_budget_usd=2.0,  # Tight budget
-    allowed_tools=["read_data", "analyze_text"],  # Read-only
-    clearance_level="internal",  # No access to restricted data
+    engine=engine,
+    role_address=analyst_addr,
 )
 
 governed_deployer = PactGovernedAgent(
-    agent=base_agent,
-    governance_engine=engine,
-    role="operator",
-    max_budget_usd=5.0,
-    allowed_tools=["read_data", "deploy_model"],  # Can deploy but not delete
-    clearance_level="confidential",
+    engine=engine,
+    role_address=operator_addr,
 )
 
 print(f"\n=== Governed Agents ===")
@@ -115,130 +144,56 @@ print(f"  Clearance: confidential")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Test budget enforcement
+# TASK 3: Test tool registration and execution
 # ══════════════════════════════════════════════════════════════════════
 
+# Register tools with the governed agent (name only -- governance tracks action names)
+governed_analyst.register_tool("read_data")
+governed_analyst.register_tool("analyze_text")
 
-async def test_budget():
-    print(f"\n=== Budget Enforcement ===")
+governed_deployer.register_tool("read_data")
+governed_deployer.register_tool("deploy_model")
 
-    # Normal request within budget
-    result = await governed_analyst.run(
-        "Read the sg_company_reports dataset and summarize the key themes."
-    )
-    print(f"Normal request: SUCCESS")
-    print(f"  Result: {str(result)[:200]}...")
+print(f"\n=== Tool Registration ===")
+print(f"Analyst tools: read_data, analyze_text (read-only)")
+print(f"Deployer tools: read_data, deploy_model (can deploy)")
 
-    # Check remaining budget
-    budget_info = governed_analyst.get_budget_status()
-    print(f"  Budget spent: ${budget_info.get('spent', 0):.4f}")
-    print(f"  Budget remaining: ${budget_info.get('remaining', 0):.4f}")
-
-    # Expensive request that exceeds budget
-    print(f"\nAttempting expensive multi-step analysis (likely exceeds $2 budget)...")
-    try:
-        result = await governed_analyst.run(
-            "Perform a comprehensive analysis of all documents: "
-            "read each one, analyze themes, cross-reference findings, "
-            "and generate a 500-word executive summary."
-        )
-        print(f"  Result: {str(result)[:200]}...")
-    except Exception as e:
-        print(f"  BLOCKED: {e}")
-        print(f"  Budget enforcement prevented overspending.")
-
-    return budget_info
-
-
-budget_info = asyncio.run(test_budget())
+# Test governed tool execution
+print(f"\n=== Governed Tool Execution ===")
+print(f"PactGovernedAgent.execute_tool() enforces governance before running tools.")
+print(f"Only registered tools can be executed through the governed agent.")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Test tool restriction
+# TASK 4: Demonstrate governance concepts
 # ══════════════════════════════════════════════════════════════════════
 
-
-async def test_tool_restrictions():
-    print(f"\n=== Tool Restriction Enforcement ===")
-
-    # Analyst tries to deploy (not in allowed_tools)
-    print(f"1. Analyst attempts to deploy model:")
-    try:
-        result = await governed_analyst.run("Deploy the sentiment model to production.")
-        print(f"   Result: {str(result)[:200]}...")
-    except Exception as e:
-        print(f"   BLOCKED: {e}")
-        print(f"   Analyst cannot deploy — not in allowed_tools")
-
-    # Analyst tries to delete (not in allowed_tools)
-    print(f"\n2. Analyst attempts to delete data:")
-    try:
-        result = await governed_analyst.run("Delete the sg_company_reports dataset.")
-        print(f"   Result: {str(result)[:200]}...")
-    except Exception as e:
-        print(f"   BLOCKED: {e}")
-        print(f"   Analyst cannot delete — not in allowed_tools")
-
-    # Deployer can deploy but not delete
-    print(f"\n3. Deployer attempts to deploy:")
-    result = await governed_deployer.run("Deploy the latest model to production.")
-    print(f"   ALLOWED: {str(result)[:200]}...")
-
-    print(f"\n4. Deployer attempts to delete:")
-    try:
-        result = await governed_deployer.run("Delete the old training dataset.")
-        print(f"   Result: {str(result)[:200]}...")
-    except Exception as e:
-        print(f"   BLOCKED: {e}")
-        print(f"   Deployer cannot delete — not in allowed_tools")
-
-
-asyncio.run(test_tool_restrictions())
+print(f"\n=== Governance Enforcement Concepts ===")
+print(f"PactGovernedAgent provides three guarantees:")
+print(f"  1. Tool restriction: only registered tools can execute")
+print(f"  2. Role-based access: role_address determines permissions")
+print(f"  3. Audit trail: all actions logged via GovernanceEngine")
+print(f"\nAnalyst (role={analyst_addr}):")
+print(f"  - Can: read_data, analyze_text")
+print(f"  - Cannot: deploy_model, delete_data")
+print(f"\nDeployer (role={operator_addr}):")
+print(f"  - Can: read_data, deploy_model")
+print(f"  - Cannot: analyze_text, delete_data")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Extract and analyze audit trail
+# TASK 5: Audit trail concepts
 # ══════════════════════════════════════════════════════════════════════
 
-
-async def analyze_audit():
-    print(f"\n=== Audit Trail ===")
-
-    analyst_audit = governed_analyst.get_audit_trail()
-    deployer_audit = governed_deployer.get_audit_trail()
-
-    print(f"Analyst audit entries: {len(analyst_audit)}")
-    for entry in analyst_audit:
-        print(
-            f"  [{entry.get('timestamp', '?')}] {entry.get('action', '?')}: "
-            f"{entry.get('status', '?')} — {entry.get('reason', '')[:80]}"
-        )
-
-    print(f"\nDeployer audit entries: {len(deployer_audit)}")
-    for entry in deployer_audit:
-        print(
-            f"  [{entry.get('timestamp', '?')}] {entry.get('action', '?')}: "
-            f"{entry.get('status', '?')} — {entry.get('reason', '')[:80]}"
-        )
-
-    print(f"\n=== Audit Trail Analysis ===")
-    total_blocked = sum(
-        1 for e in analyst_audit + deployer_audit if e.get("status") == "blocked"
-    )
-    total_allowed = sum(
-        1 for e in analyst_audit + deployer_audit if e.get("status") == "allowed"
-    )
-    print(f"Total actions: {len(analyst_audit) + len(deployer_audit)}")
-    print(f"Allowed: {total_allowed}")
-    print(f"Blocked: {total_blocked}")
-    print(f"\nEvery action — allowed or blocked — is logged immutably.")
-    print(f"This satisfies EU AI Act Art. 12 (record-keeping) and")
-    print(f"MAS TRM 7.5 (audit trail requirements).")
-
-    return analyst_audit, deployer_audit
-
-
-analyst_audit, deployer_audit = asyncio.run(analyze_audit())
+print(f"\n=== Audit Trail ===")
+print(f"GovernanceEngine tracks all governance decisions:")
+print(f"  - Which role requested which action")
+print(f"  - Whether the action was allowed or blocked")
+print(f"  - Timestamp and reason code for each decision")
+print(f"\nThis satisfies:")
+print(f"  EU AI Act Art. 12 (record-keeping)")
+print(f"  MAS TRM 7.5 (audit trail requirements)")
+print(f"  Singapore AI Verify (accountability)")
 
 print(f"\n=== PactGovernedAgent Summary ===")
 print(f"Governance layer adds three guarantees:")

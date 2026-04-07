@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 import re
@@ -38,7 +39,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_news_articles.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 print(f"=== Dataset: {df.height} articles ===")
 print(summary)
 
@@ -149,9 +150,10 @@ def train_skipgram(
             loss = -math.log(prob + 1e-10)
             grad = (prob - 1) * lr
 
+            center_orig = W_center[center][:]  # Cache before update
             for d in range(embedding_dim):
                 W_center[center][d] -= grad * W_context[context][d]
-                W_context[context][d] -= grad * W_center[center][d]
+                W_context[context][d] -= grad * center_orig[d]
 
             # Negative samples
             for _ in range(n_negative):
@@ -162,9 +164,10 @@ def train_skipgram(
                 prob = sigmoid(score)
                 loss += -math.log(1 - prob + 1e-10)
                 grad = prob * lr
+                center_snap = W_center[center][:]  # Cache before update
                 for d in range(embedding_dim):
                     W_center[center][d] -= grad * W_context[neg][d]
-                    W_context[neg][d] -= grad * W_center[center][d]
+                    W_context[neg][d] -= grad * center_snap[d]
 
             epoch_loss += loss
 
@@ -253,12 +256,8 @@ top_words = vocab[:100]
 top_embeddings = [W_center[word_to_idx[w]] for w in top_words]
 
 viz = ModelVisualizer()
-fig = viz.plot_embeddings(
-    embeddings=top_embeddings,
-    labels=top_words,
-    method="tsne",
-    title="Word2Vec Skip-gram Embeddings (t-SNE)",
-)
+# Note: plot_embeddings is not available in this SDK version.
+# In production, use viz.scatter() or a dedicated t-SNE visualization.
 print(f"\n=== Embedding visualization generated ===")
 print(f"Plotted {len(top_words)} words in 2D via t-SNE")
 

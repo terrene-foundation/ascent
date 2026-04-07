@@ -34,6 +34,13 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+if not os.environ.get("OPENAI_API_KEY"):
+    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
+    print("  Set it in .env to run this exercise with real LLM calls.")
+    import sys
+
+    sys.exit(0)
+
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 print(f"LLM Model: {model}")
 
@@ -198,7 +205,7 @@ async def hybrid_search(query: str, top_k: int = 5, alpha: float = 0.5) -> list[
     bm25_norm = normalize_scores(bm25_scores)
 
     # Vector scores (embed a subset for cost efficiency)
-    delegate = Delegate(model=model, max_llm_cost_usd=1.0)
+    delegate = Delegate(model=model, budget_usd=1.0)
     query_emb = await get_embedding(query, delegate)
 
     # Embed top BM25 candidates only (efficiency)
@@ -258,12 +265,12 @@ async def rerank(query: str, candidates: list[dict], top_k: int = 3) -> list[dic
     reranker = SimpleQAAgent(
         signature=RelevanceScore,
         model=model,
-        max_llm_cost_usd=1.0,
+        budget_usd=1.0,
     )
 
     scored = []
     for candidate in candidates:
-        result = await reranker.run(
+        result = reranker.run(
             query=query,
             passage=candidate["text"][:500],
         )
@@ -316,10 +323,10 @@ async def evaluate_rag(question: str, context: str, answer: str) -> dict:
     evaluator = SimpleQAAgent(
         signature=RAGEvaluation,
         model=model,
-        max_llm_cost_usd=0.5,
+        budget_usd=0.5,
     )
 
-    result = await evaluator.run(
+    result = evaluator.run(
         question=question,
         context=context,
         answer=answer,
@@ -335,7 +342,7 @@ async def evaluate_rag(question: str, context: str, answer: str) -> dict:
 
 async def rag_answer(query: str, results: list[dict]) -> tuple[str, str]:
     """Generate an answer from retrieved context."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = Delegate(model=model, budget_usd=0.5)
     context = "\n\n---\n\n".join(r["text"] for r in results)
     prompt = f"""Answer using ONLY the provided context.
 

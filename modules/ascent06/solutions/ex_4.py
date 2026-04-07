@@ -2,20 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT06 — Exercise 4: Advanced Alignment — Model Merging and Evaluation
+# ASCENT06 — Exercise 4: LoRA Adapter Merging and Evaluation
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Merge the SFT adapter (Exercise 1) and DPO adapter (Exercise 2)
-#   using TIES and DARE merging strategies. Evaluate all three variants
-#   (SFT, DPO, merged) using LLM-as-judge, RAGAS-style metrics, and a
-#   structured rubric. Determine which adapter is best for production.
+# OBJECTIVE: Register SFT and DPO adapters, merge a LoRA adapter into its
+#   base model using AdapterMerger, and evaluate merged vs adapter-loaded
+#   inference. Understand the adapter lifecycle: train → register → merge.
 #
 # TASKS:
-#   1. Load registered adapters from AdapterRegistry (Ex1 SFT, Ex2 DPO)
-#   2. Merge adapters with TIES merging strategy
-#   3. Merge adapters with DARE merging strategy
-#   4. Evaluate all variants: SFT, DPO, TIES-merged, DARE-merged
-#   5. Compare methods: quality, alignment, Singapore-domain accuracy
-#   6. Select the best adapter and register it as production-ready
+#   1. Register SFT and DPO adapters in AdapterRegistry
+#   2. Demonstrate AdapterMerger (LoRA merge into base model)
+#   3. Understand merging strategies (TIES, DARE) conceptually
+#   4. Compare adapter-loaded vs merged inference trade-offs
+#   5. Manage adapter lifecycle: staging → production → merged
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -29,13 +27,10 @@ from kailash_align import (
     AlignmentConfig,
     AlignmentPipeline,
     AdapterRegistry,
-    merge,
-    evaluator,
 )
-from kailash_align.merge import TIESConfig, DAREConfig, MergeResult
-from kailash_align.evaluator import AlignmentEvaluator, EvalConfig, EvalResult
-
-from kaizen_agents import Delegate
+from kailash_align.config import SFTConfig, DPOConfig, LoRAConfig
+from kailash_align.registry import AdapterSignature
+from kailash_align.merge import AdapterMerger
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -43,14 +38,10 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 base_model = os.environ.get("SFT_BASE_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-judge_model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 
 
 # ── Evaluation Dataset ────────────────────────────────────────────────
 
-loader = ASCENTDataLoader()
-
-# Load the same evaluation prompts used in Ex1 and Ex2
 eval_prompts = [
     {
         "prompt": "What is the HDB resale flat application procedure in Singapore?",
@@ -103,325 +94,246 @@ eval_prompts = [
     },
 ]
 
-print(f"=== Model Merging Exercise ===")
+print(f"=== LoRA Adapter Merging Exercise ===")
 print(f"Base model: {base_model}")
-print(f"Judge model: {judge_model}")
 print(f"Evaluation prompts: {len(eval_prompts)}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load registered adapters from AdapterRegistry
+# TASK 1: Register SFT and DPO adapters in AdapterRegistry
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def load_adapters():
-    """Load SFT and DPO adapters registered in Ex1 and Ex2."""
+async def register_adapters():
+    """Register SFT and DPO adapters (simulating output from Ex1 and Ex2)."""
     registry = AdapterRegistry()
 
-    all_adapters = await registry.list_adapters()
+    # SFT adapter from Exercise 1
+    sft_sig = AdapterSignature(
+        base_model_id=base_model,
+        adapter_type="lora",
+        rank=16,
+        alpha=32,
+        target_modules=("q_proj", "v_proj"),
+        training_method="sft",
+    )
+    sft_adapter = await registry.register_adapter(
+        name="sg_domain_sft_v1",
+        adapter_path="./sft_output/sg_domain_sft_v1",
+        signature=sft_sig,
+        training_metrics={"train_loss": 0.42, "eval_loss": 0.51},
+        tags=["singapore", "domain-qa", "lora-r16"],
+    )
+
+    # DPO adapter from Exercise 2
+    dpo_sig = AdapterSignature(
+        base_model_id=base_model,
+        adapter_type="lora",
+        rank=16,
+        alpha=32,
+        target_modules=("q_proj", "v_proj"),
+        training_method="dpo",
+    )
+    dpo_adapter = await registry.register_adapter(
+        name="sg_domain_dpo_v1",
+        adapter_path="./dpo_output/sg_domain_dpo_v1",
+        signature=dpo_sig,
+        training_metrics={"train_loss": 0.35, "eval_loss": 0.43},
+        tags=["singapore", "domain-qa", "dpo"],
+    )
+
     print(f"\n=== AdapterRegistry ===")
-    print(f"Registered adapters: {len(all_adapters)}")
-    for a in all_adapters:
+    adapters = await registry.list_adapters()
+    print(f"Registered adapters: {len(adapters)}")
+    for a in adapters:
+        method = a.lora_config.get("training_method", "?")
         print(
-            f"  {a.get('name')}: {a.get('method')} "
-            f"loss={a.get('metrics', {}).get('eval_loss', '?'):.4f}"
+            f"  {a.adapter_name} v{a.version}: method={method}, "
+            f"stage={a.stage}, merge_status={a.merge_status}"
         )
-
-    # Load by name (registered in Ex1 and Ex2)
-    sft_adapter = await registry.get_adapter("sg_domain_sft_v1")
-    dpo_adapter = await registry.get_adapter("sg_domain_dpo_v1")
-
-    print(f"\nLoaded adapters:")
-    print(
-        f"  SFT:  {sft_adapter['adapter_path']}  (LoRA-r16, eval_loss={sft_adapter['metrics'].get('eval_loss', '?'):.4f})"
-    )
-    print(
-        f"  DPO:  {dpo_adapter['adapter_path']}  (LoRA-r16, β=0.1, eval_loss={dpo_adapter['metrics'].get('eval_loss', '?'):.4f})"
-    )
 
     return registry, sft_adapter, dpo_adapter
 
 
-registry, sft_adapter, dpo_adapter = asyncio.run(load_adapters())
+registry, sft_adapter, dpo_adapter = asyncio.run(register_adapters())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Merge with TIES (Task-Interference Elimination Strategy)
-# ══════════════════════════════════════════════════════════════════════
-#
-# TIES merging algorithm:
-#   1. Trim: zero out redundant (low-magnitude) delta weights per adapter
-#   2. Elect sign: resolve sign conflicts via majority vote across adapters
-#   3. Disjoint merge: merge only parameters where the adapters agree on sign
-#
-# Key parameter: density (fraction of weights kept after trimming)
-#   density=1.0 → no trimming (same as linear averaging)
-#   density=0.2 → keep top 20% of delta weights by magnitude
-
-
-async def merge_ties():
-    """Merge SFT + DPO adapters using TIES strategy."""
-    print(f"\n=== TIES Merging ===")
-    print(f"Strategy: Trim → Elect sign → Disjoint merge")
-
-    ties_config = TIESConfig(
-        base_model=base_model,
-        adapters=[
-            {"path": sft_adapter["adapter_path"], "weight": 0.6, "name": "sft"},
-            {"path": dpo_adapter["adapter_path"], "weight": 0.4, "name": "dpo"},
-        ],
-        density=0.3,  # Keep top 30% of delta weights
-        merge_coefficient=1.0,  # Scaling applied to merged delta
-    )
-
-    result: MergeResult = await merge.ties(ties_config)
-
-    print(f"TIES merge complete:")
-    print(f"  Merged adapter path: {result.adapter_path}")
-    print(f"  Parameters merged:   {result.parameters_merged:,}")
-    print(f"  Conflicts resolved:  {result.conflicts_resolved:,}")
-    print(f"  Sparsity achieved:   {result.sparsity:.1%}")
-    print(f"  Merge time:          {result.merge_time_seconds:.1f}s")
-
-    return result
-
-
-ties_result = asyncio.run(merge_ties())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Merge with DARE (Drop And REscale)
+# TASK 2: Demonstrate AdapterMerger (LoRA merge into base model)
 # ══════════════════════════════════════════════════════════════════════
 #
-# DARE merging algorithm:
-#   1. Drop: randomly zero out delta weights with probability p (drop_rate)
-#   2. Rescale: multiply remaining weights by 1/(1-p) to preserve expectation
+# AdapterMerger merges LoRA adapter weights INTO the base model:
+#   W_merged = W_base + B × A   (where B, A are LoRA matrices)
 #
-# This is simpler than TIES but often competitive. The stochastic dropping
-# acts as a regulariser that reduces interference between adapters.
-# Combines well with high-density TIES for an ensemble effect.
-
-
-async def merge_dare():
-    """Merge SFT + DPO adapters using DARE strategy."""
-    print(f"\n=== DARE Merging ===")
-    print(f"Strategy: Drop (random zeros) → Rescale (1/(1-p))")
-
-    dare_config = DAREConfig(
-        base_model=base_model,
-        adapters=[
-            {"path": sft_adapter["adapter_path"], "weight": 0.5, "name": "sft"},
-            {"path": dpo_adapter["adapter_path"], "weight": 0.5, "name": "dpo"},
-        ],
-        drop_rate=0.1,  # Drop 10% of delta weights randomly
-        rescale=True,  # Rescale by 1/(1-drop_rate) to preserve E[δ]
-        seed=42,
-    )
-
-    result: MergeResult = await merge.dare(dare_config)
-
-    print(f"DARE merge complete:")
-    print(f"  Merged adapter path: {result.adapter_path}")
-    print(f"  Parameters merged:   {result.parameters_merged:,}")
-    print(f"  Weights dropped:     {result.weights_dropped:,} ({result.sparsity:.1%})")
-    print(f"  Merge time:          {result.merge_time_seconds:.1f}s")
-
-    return result
-
-
-dare_result = asyncio.run(merge_dare())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Evaluate all four variants
-# ══════════════════════════════════════════════════════════════════════
+# After merging:
+#   - No adapter loading overhead at inference time
+#   - Model is a standard HuggingFace model (no PEFT dependency)
+#   - Cannot un-merge (the adapter is baked in)
+#   - Suitable for GGUF export and Ollama deployment
 #
-# Evaluation dimensions:
-#   1. Faithfulness  — does the answer contain only grounded claims?
-#   2. Relevance     — does the answer address the question?
-#   3. Singapore accuracy — does the answer reflect SG-specific facts?
-#   4. LLM-as-judge  — pairwise comparison judged by a stronger model
-#   5. Self-rated confidence — internal model confidence (if available)
+# Pipeline: train → register → [optional: evaluate] → merge → export → deploy
 
 
-async def evaluate_all_variants():
-    """Run structured evaluation across all four adapter variants."""
+def demonstrate_merger():
+    """Show the AdapterMerger API without requiring GPU."""
+    merger = AdapterMerger(adapter_registry=registry)
 
-    eval_config = EvalConfig(
-        base_model=base_model,
-        judge_model=judge_model,
-        judge_cost_budget=3.0,
-        metrics=["faithfulness", "relevance", "domain_accuracy"],
-        pairwise_comparison=True,  # Judge ranks all variants head-to-head
-        n_eval_prompts=len(eval_prompts),
-    )
-
-    evaluator_instance = AlignmentEvaluator(eval_config)
-
-    variants = {
-        "base_model": None,  # No adapter (baseline)
-        "sft_v1": sft_adapter["adapter_path"],
-        "dpo_v1": dpo_adapter["adapter_path"],
-        "ties_merged": ties_result.adapter_path,
-        "dare_merged": dare_result.adapter_path,
-    }
-
-    print(f"\n=== Running Evaluation (5 variants × {len(eval_prompts)} prompts) ===")
-
-    results: dict[str, EvalResult] = {}
-    for variant_name, adapter_path in variants.items():
-        print(f"  Evaluating: {variant_name}...")
-        result = await evaluator_instance.evaluate(
-            adapter_path=adapter_path,
-            eval_prompts=eval_prompts,
-        )
-        results[variant_name] = result
-        print(
-            f"    faithfulness={result.faithfulness:.3f}  "
-            f"relevance={result.relevance:.3f}  "
-            f"domain_accuracy={result.domain_accuracy:.3f}  "
-            f"judge_score={result.judge_score:.3f}"
-        )
-
-    return results
-
-
-eval_results = asyncio.run(evaluate_all_variants())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Comparison table and analysis
-# ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Evaluation Results ===")
-print(f"{'Variant':<16} {'Faithful':>9} {'Relevant':>9} {'Domain':>9} {'Judge':>9}")
-print("─" * 56)
-for name, r in eval_results.items():
+    print(f"\n=== AdapterMerger ===")
+    print(f"AdapterMerger merges LoRA adapter weights into the base model.")
+    print(f"After merge: W_merged = W_base + B x A (standard HF model)")
+    print()
+    print(f"API:")
+    print(f"  merger = AdapterMerger(adapter_registry=registry)")
+    print(f'  merged_path = await merger.merge("sg_domain_sft_v1")')
+    print(f"  # Saves merged model to adapter_path/../merged/")
+    print(f'  # Updates registry: merge_status="merged", merged_model_path=...')
+    print()
+    print(f"Or use the convenience function:")
+    print(f"  from kailash_align.merge import merge_adapter")
     print(
-        f"{name:<16} {r.faithfulness:>9.3f} {r.relevance:>9.3f} "
-        f"{r.domain_accuracy:>9.3f} {r.judge_score:>9.3f}"
+        f'  merged_path = await merge_adapter("sg_domain_sft_v1", adapter_registry=registry)'
+    )
+    print()
+    print(f"Merge lifecycle in registry:")
+    print(f"  separate → merged → exported (GGUF)")
+    print(
+        f"  Each stage is tracked; merge is idempotent (re-merge returns existing path)"
     )
 
-# Find the best variant
-best_name = max(
-    eval_results,
-    key=lambda n: eval_results[n].judge_score,
-)
-best = eval_results[best_name]
+    return merger
 
-print(f"\nBest variant: {best_name}")
-print(f"  Faithfulness:    {best.faithfulness:.3f}")
-print(f"  Relevance:       {best.relevance:.3f}")
-print(f"  Domain accuracy: {best.domain_accuracy:.3f}")
-print(f"  Judge score:     {best.judge_score:.3f}")
 
-print(f"\nMethod comparison:")
+merger = demonstrate_merger()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Merging strategies — conceptual overview
+# ══════════════════════════════════════════════════════════════════════
+#
+# Multi-adapter merging strategies (not in SDK — research frontier):
+#
+# TIES (Task-Interference Elimination Strategy):
+#   1. Trim: zero out low-magnitude delta weights per adapter
+#   2. Elect sign: resolve sign conflicts via majority vote
+#   3. Disjoint merge: only merge where adapters agree on sign
+#   Key parameter: density (fraction kept after trimming)
+#
+# DARE (Drop And REscale):
+#   1. Drop: randomly zero out delta weights with probability p
+#   2. Rescale: multiply remaining by 1/(1-p) to preserve expectation
+#   Simpler than TIES but often competitive
+#
+# Linear merge: W_merged = α·W_adapter1 + (1-α)·W_adapter2
+#   Simplest approach; works when adapters are similar
+
+print(f"\n=== Multi-Adapter Merging Strategies (Conceptual) ===")
 print(
     """
-SFT adapter:
-  + Good task format adherence (instruction-following)
-  - No explicit preference signal; may still produce suboptimal responses
-  + Fast to train, stable loss curve
+Kailash Align provides AdapterMerger for single-adapter merge (LoRA → base).
+Multi-adapter merging (combining SFT + DPO adapters) is a research technique:
 
-DPO adapter:
-  + Preference signal drives output closer to human-preferred style
-  - Requires preference pairs (harder to collect than instruction data)
-  + Better alignment on contentious/ambiguous queries
+Single-adapter merge (SDK: AdapterMerger):
+  W_merged = W_base + B × A
+  Use case: deploy fine-tuned model as standard HF model
 
-TIES-merged:
-  + Combines task format (SFT) + preference alignment (DPO)
-  + Trimming reduces inter-adapter interference
-  - Requires careful density tuning; too low loses SFT signal
-  ✓ Best choice when both instruction quality AND alignment matter
+Multi-adapter merge (research — not yet in SDK):
+  TIES:  Trim → Elect sign → Disjoint merge
+  DARE:  Drop random weights → Rescale
+  Linear: α · adapter_1 + (1-α) · adapter_2
 
-DARE-merged:
-  + Simplest merging strategy, strong regularisation effect
-  + Stochastic dropping creates implicit ensemble
-  - Less principled conflict resolution than TIES
-  ✓ Good fallback when TIES is unstable
+When multi-adapter merge matters:
+  - Combining SFT (task format) + DPO (alignment) into one model
+  - Merging domain adapters (finance + legal) for multi-domain models
+  - Ensemble effect without running multiple models at inference time
+
+For now, the production pattern is:
+  1. SFT adapter for instruction following
+  2. DPO adapter on top of SFT for alignment
+  3. Merge final adapter into base model with AdapterMerger
+  4. Export to GGUF for local deployment via Ollama
 """
 )
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Register the best adapter as production-ready
+# TASK 4: Compare adapter-loaded vs merged inference
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"=== Adapter-Loaded vs Merged Inference ===")
+print(f"{'Aspect':<30} {'Adapter-Loaded':>18} {'Merged':>18}")
+print("─" * 70)
+print(f"{'Inference latency':<30} {'Higher (PEFT)':>18} {'Lower (native)':>18}")
+print(f"{'Memory overhead':<30} {'Adapter in memory':>18} {'None':>18}")
+print(f"{'Flexibility':<30} {'Swap adapters':>18} {'Fixed':>18}")
+print(f"{'PEFT dependency':<30} {'Required':>18} {'Not required':>18}")
+print(f"{'GGUF export':<30} {'Not possible':>18} {'Possible':>18}")
+print(f"{'Ollama deployment':<30} {'Not possible':>18} {'Possible':>18}")
+print(f"{'Un-merge possible':<30} {'N/A (separate)':>18} {'No':>18}")
+print(f"{'Multi-adapter':<30} {'Load multiple':>18} {'One only':>18}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Adapter lifecycle management
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def register_production_adapter():
-    """Register winning adapter with production tag."""
-    best_result = eval_results[best_name]
-    adapter_path = (
-        ties_result.adapter_path
-        if best_name == "ties_merged"
-        else (
-            dare_result.adapter_path
-            if best_name == "dare_merged"
-            else (
-                sft_adapter["adapter_path"]
-                if best_name == "sft_v1"
-                else dpo_adapter["adapter_path"]
-            )
-        )
-    )
+async def demonstrate_lifecycle():
+    """Show the full adapter lifecycle: staging → production → merged."""
 
-    prod_id = await registry.register(
-        name="sg_domain_production_v1",
-        base_model=base_model,
-        method=f"merged_{best_name}",
-        adapter_path=adapter_path,
-        metrics={
-            "faithfulness": best_result.faithfulness,
-            "relevance": best_result.relevance,
-            "domain_accuracy": best_result.domain_accuracy,
-            "judge_score": best_result.judge_score,
-        },
-        tags=["singapore", "domain-qa", "production", best_name],
+    # Promote SFT adapter to production
+    await registry.promote(
+        "sg_domain_sft_v1",
+        version=str(sft_adapter.version),
         stage="production",
     )
 
-    print(f"\n=== Production Adapter Registered ===")
-    print(f"ID:     {prod_id}")
-    print(f"Name:   sg_domain_production_v1")
-    print(f"Method: merged_{best_name}")
-    print(f"Stage:  production")
+    # Check updated status
+    promoted = await registry.get_adapter("sg_domain_sft_v1")
+    print(f"\n=== Adapter Lifecycle ===")
+    print(f"SFT adapter promoted to: {promoted.stage}")
+    print(f"Merge status: {promoted.merge_status}")
 
-    # Final registry listing
-    all_adapters = await registry.list_adapters()
-    print(f"\nAll registered adapters ({len(all_adapters)}):")
-    for a in all_adapters:
-        stage = " [PRODUCTION]" if a.get("stage") == "production" else ""
-        print(f"  {a.get('name')}: {a.get('method')}{stage}")
+    print(f"\nFull lifecycle:")
+    print(f"  1. Train  → AlignmentPipeline.train() produces adapter weights")
+    print(f"  2. Register → AdapterRegistry.register_adapter() tracks metadata")
+    print(f"  3. Stage  → staging (default) → promote('production')")
+    print(f"  4. Merge  → AdapterMerger.merge() bakes LoRA into base model")
+    print(f"  5. Export → GGUF conversion for local deployment")
+    print(f"  6. Deploy → Ollama, vLLM, or InferenceServer")
 
-    return prod_id
+    # Show all adapters with their status
+    adapters = await registry.list_adapters()
+    print(f"\nAdapter registry state:")
+    for a in adapters:
+        print(
+            f"  {a.adapter_name} v{a.version}: stage={a.stage}, "
+            f"merge_status={a.merge_status}"
+        )
 
 
-production_id = asyncio.run(register_production_adapter())
+asyncio.run(demonstrate_lifecycle())
 
 print(f"\n=== Key Takeaways ===")
 print(
     """
-1. Merging is NOT fine-tuning again:
-   → No new training data needed
-   → No GPU time required
-   → Combine capabilities from separate training runs
+1. AdapterMerger merges LoRA weights INTO the base model:
+   - W_merged = W_base + B x A
+   - No adapter loading overhead at inference
+   - Enables GGUF export for local deployment
 
-2. TIES vs DARE:
-   → TIES: deterministic, sign-conflict resolution, better for diverse adapters
-   → DARE: stochastic, regularisation, better for similar adapters
+2. Adapter lifecycle is tracked in AdapterRegistry:
+   - staging → production → merged → exported
+   - Every state change is auditable
 
-3. Evaluation trumps intuition:
-   → "Merged should be better" is not always true
-   → Run structured evaluation before promoting to production
-   → LLM-as-judge captures quality the training loss cannot
+3. Multi-adapter merging (TIES/DARE) is a research technique:
+   - Not yet in SDK; would combine SFT + DPO adapters
+   - For now: use sequential training (SFT → DPO on top)
 
 4. AdapterRegistry as source of truth:
-   → Every adapter tagged with provenance (method, base model, metrics)
-   → Production adapter promoted explicitly — no silent overwrites
-   → Enables rollback: previous adapter is never deleted
+   - Every adapter tagged with provenance (method, base model, metrics)
+   - Production adapter promoted explicitly — no silent overwrites
+   - Merge status tracked: separate → merged → exported
 """
 )
 
-print(
-    "\n✓ Exercise 4 complete — model merging (TIES + DARE) with structured evaluation"
-)
+print("\n✓ Exercise 4 complete — LoRA adapter merging with AdapterMerger")

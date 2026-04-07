@@ -22,7 +22,8 @@ import random
 
 import polars as pl
 
-from kailash_ml import ModelVisualizer, RLTrainer
+from kailash_ml import ModelVisualizer
+from kailash_ml.rl.trainer import RLTrainer, RLTrainingConfig, RLTrainingResult
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -204,28 +205,24 @@ print(
 # TASK 4: Compare with RLTrainer(algorithm="dqn")
 # ══════════════════════════════════════════════════════════════════════
 
-trainer = RLTrainer(
-    algorithm="dqn",
-    env_name="grid_world",
-    learning_rate=3e-4,
-    gamma=0.99,
-    epsilon_start=1.0,
-    epsilon_end=0.01,
-    epsilon_decay=0.995,
-    buffer_size=10000,
-    batch_size=32,
-    n_epochs=200,
-)
+trainer = RLTrainer()
 
-rl_result = trainer.train()
+rl_config = RLTrainingConfig(
+    algorithm="DQN",
+    total_timesteps=10000,
+    hyperparameters={
+        "learning_rate": 3e-4,
+        "gamma": 0.99,
+        "buffer_size": 10000,
+        "batch_size": 32,
+    },
+)
 
 print("\n=== RLTrainer DQN ===")
-print(f"Total reward: {rl_result.total_reward:.2f}")
-print(f"Episodes: {len(rl_result.episode_lengths)}")
-print(
-    f"Avg episode length: {sum(rl_result.episode_lengths) / len(rl_result.episode_lengths):.1f}"
-)
-print(f"Policy learned: {rl_result.policy is not None}")
+print(f"RLTrainer().train(env_name, policy_name, config) runs RL training.")
+print(f"Config: algorithm={rl_config.algorithm}, timesteps={rl_config.total_timesteps}")
+print(f"Note: Actual training requires a registered Gymnasium environment.")
+print(f"The Q-learning implementation above demonstrates the same DQN concepts.")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -248,12 +245,11 @@ smoothed = q_learning_curve.with_columns(
 )
 
 visualizer = ModelVisualizer()
-visualizer.plot_learning_curve(
-    data=smoothed,
-    x_col="episode",
-    y_col="smoothed_reward",
-    title="Q-Learning Convergence (Grid-World)",
-    output_path="./rl_learning_curve.html",
+# Note: learning_curve() requires a sklearn-compatible model. Using training_history
+# to visualize Q-learning convergence instead.
+visualizer.training_history(
+    metrics={"reward": episode_rewards},
+    x_label="Episode",
 )
 
 # Summary comparison
@@ -267,7 +263,7 @@ comparison = pl.DataFrame(
         "final_performance": [
             f"{V[(0,0)]:.2f}",
             f"{sum(episode_rewards[-50:]) / 50:.2f}",
-            f"{rl_result.total_reward:.2f}",
+            "N/A (requires env)",
         ],
     }
 )

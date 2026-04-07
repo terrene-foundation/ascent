@@ -168,6 +168,7 @@ def focal_loss_lgb(y_true, y_pred, gamma=2.0, alpha=0.25):
         * (gamma * (1 - p) * np.log(np.clip(1 - p, 1e-8, 1)) + p)
         * (1 - y_true)
     )
+    # Approximation: uses CE Hessian; exact focal loss Hessian has gamma-dependent terms
     hess = np.abs(grad) * (1 - np.abs(grad))
     hess = np.clip(hess, 1e-8, None)
     return grad, hess
@@ -181,10 +182,18 @@ focal_model = lgb.LGBMClassifier(
     objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0),
 )
 focal_model.fit(X_train, y_train)
-y_raw_focal = focal_model.predict_proba(X_test)[:, 1]
+# Custom objective may return raw scores (not true probabilities) even from
+# predict_proba — apply sigmoid to ensure values are in [0, 1]
+_focal_preds = focal_model.predict_proba(X_test)
+_focal_raw = _focal_preds[:, 1] if _focal_preds.ndim == 2 else _focal_preds
+y_raw_focal = (
+    1.0 / (1.0 + np.exp(-_focal_raw))
+    if _focal_raw.max() > 1.0 or _focal_raw.min() < 0.0
+    else _focal_raw
+)
 
 # Note: custom objective outputs are not calibrated probabilities
-# Need post-hoc calibration
+# Need post-hoc calibration (sigmoid rescaling applied above for validity)
 print(f"\n=== Focal Loss (γ=2.0) ===")
 print(f"AUC-ROC: {roc_auc_score(y_test, y_raw_focal):.4f}")
 print(f"AUC-PR:  {average_precision_score(y_test, y_raw_focal):.4f}")
@@ -192,18 +201,23 @@ print(
     f"Brier:   {brier_score_loss(y_test, y_raw_focal):.4f} (uncalibrated — expected to be poor)"
 )
 
+
 # Compare γ values
+def _make_focal_obj(g):
+    """Factory to avoid closure pitfalls with LightGBM's 3-arg objective call."""
+    return lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=g)
+
+
 for gamma in [0.0, 0.5, 1.0, 2.0, 5.0]:
     m = lgb.LGBMClassifier(
         n_estimators=300,
         random_state=42,
         verbose=-1,
-        objective=lambda y_true, y_pred, g=gamma: focal_loss_lgb(
-            y_true, y_pred, gamma=g
-        ),
+        objective=_make_focal_obj(gamma),
     )
     m.fit(X_train, y_train)
-    y_p = m.predict_proba(X_test)[:, 1]
+    _preds = m.predict_proba(X_test)
+    y_p = _preds[:, 1] if _preds.ndim == 2 else _preds
     print(f"  γ={gamma:.1f}: AUC-PR={average_precision_score(y_test, y_p):.4f}")
 
 

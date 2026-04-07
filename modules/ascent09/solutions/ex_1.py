@@ -31,6 +31,13 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+if not os.environ.get("OPENAI_API_KEY"):
+    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
+    print("  Set it in .env to run this exercise with real LLM calls.")
+    import sys
+
+    sys.exit(0)
+
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 print(f"LLM Model: {model}")
 
@@ -275,7 +282,7 @@ async def first_delegate_call():
 
     delegate = Delegate(
         model=model,
-        max_llm_cost_usd=1.0,
+        budget_usd=1.0,
     )
 
     prompt = f"""Analyze this Singapore company report excerpt and identify:
@@ -312,7 +319,7 @@ async def compare_tokenizers():
 
     delegate = Delegate(
         model=model,
-        max_llm_cost_usd=0.5,
+        budget_usd=0.5,
     )
 
     test_sentence = "Singapore's financial sector grew 8.2% in Q3."

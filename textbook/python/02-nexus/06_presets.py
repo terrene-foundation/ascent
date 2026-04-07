@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import os
+
 from nexus import Nexus
 from nexus.presets import PRESETS, NexusConfig, PresetConfig, apply_preset, get_preset
 
@@ -81,7 +83,9 @@ except ValueError as e:
 config = NexusConfig(
     cors_origins=["https://app.example.com"],
     cors_allow_credentials=False,
-    jwt_secret="super-secret-key",
+    jwt_secret=os.environ[
+        "JWT_SECRET_KEY"
+    ],  # Always use environment variables for secrets
     jwt_algorithm="HS256",
     rate_limit=200,
     audit_enabled=True,
@@ -96,7 +100,7 @@ assert config.environment == "production"
 # Secrets are redacted in repr
 repr_str = repr(config)
 assert "[REDACTED]" in repr_str
-assert "super-secret-key" not in repr_str
+assert os.environ["JWT_SECRET_KEY"] not in repr_str
 
 # ── 6. NexusConfig defaults ───────────────────────────────────────
 # Default values are secure and development-friendly.

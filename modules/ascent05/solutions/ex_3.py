@@ -32,6 +32,9 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
@@ -146,14 +149,8 @@ class DataExplorationResult(Signature):
     recommendation: str = OutputField(description="Recommendation based on findings")
 
 
-async def run_react_agent():
-    agent = ReActAgent(
-        signature=DataExplorationResult,
-        model=model,
-        tools=tools,
-        max_llm_cost_usd=3.0,
-        max_iterations=10,
-    )
+def run_react_agent():
+    agent = ReActAgent(model=model)
 
     task = (
         "Explore the Singapore credit scoring dataset. "
@@ -162,25 +159,33 @@ async def run_react_agent():
         "and recommend preprocessing steps for a classification model."
     )
 
+    # Build context from the available tool functions so the agent
+    # knows what data operations are available
+    tool_descriptions = "\n".join(
+        f"  {name}: {func.__doc__ or 'no description'}" for name, func in tools.items()
+    )
+    context = (
+        f"Available analysis functions:\n{tool_descriptions}\n\n"
+        f"Dataset: sg_credit_scoring.parquet with {credit.height:,} rows "
+        f"and columns: {credit.columns}"
+    )
+
     print(f"\n=== ReActAgent Exploration ===")
     print(f"Task: {task}")
     print(f"Available tools: {list(tools.keys())}")
-    print(f"Max iterations: 10")
-    print(f"Cost budget: $3.00\n")
+    print(f"Budget: governed by Delegate-level budget_usd\n")
 
-    result = await agent.run(task=task)
+    result = agent.run(task=task, context=context)
 
     print(f"\n=== Results ===")
-    print(f"Tools used: {result.tools_used}")
-    print(f"\nFindings:")
-    for i, finding in enumerate(result.findings):
-        print(f"  {i+1}. {finding}")
-    print(f"\nRecommendation: {result.recommendation}")
+    print(f"Result keys: {list(result.keys())}")
+    for key, value in result.items():
+        print(f"  {key}: {str(value)[:200]}")
 
     return result
 
 
-react_result = asyncio.run(run_react_agent())
+react_result = run_react_agent()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -209,7 +214,7 @@ What happens if you REMOVE the cost budget?
 3. What if the agent calls DataExplorer on a 100GB dataset?
    → Memory exhaustion, cluster costs, timeout failures
 
-max_llm_cost_usd is NOT optional. It is a governance requirement.
+budget_usd is NOT optional. It is a governance requirement.
 
 In production:
   - Set budgets proportional to task complexity

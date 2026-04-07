@@ -31,6 +31,13 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+if not os.environ.get("OPENAI_API_KEY"):
+    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
+    print("  Set it in .env to run this exercise with real LLM calls.")
+    import sys
+
+    sys.exit(0)
+
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 print(f"LLM Model: {model}")
 
@@ -53,7 +60,7 @@ CATEGORIES = ["Financial", "Technology", "Healthcare", "Real Estate", "Manufactu
 
 async def zero_shot_classify(text: str) -> str:
     """Classify a document using zero-shot prompting."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = Delegate(model=model, budget_usd=0.5)
 
     prompt = f"""Classify the following Singapore company report into exactly one category.
 
@@ -117,7 +124,7 @@ FEW_SHOT_EXAMPLES = [
 
 async def few_shot_classify(text: str) -> str:
     """Classify a document using few-shot prompting with examples."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = Delegate(model=model, budget_usd=0.5)
 
     examples_text = "\n".join(
         f'Text: "{ex["text"]}"\nCategory: {ex["category"]}\n'
@@ -161,7 +168,7 @@ few_shot_results = asyncio.run(run_few_shot())
 
 async def cot_classify(text: str) -> str:
     """Classify using chain-of-thought reasoning."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = Delegate(model=model, budget_usd=0.5)
 
     prompt = f"""Classify this Singapore company report into one category: {', '.join(CATEGORIES)}.
 
@@ -232,14 +239,14 @@ async def structured_extract():
     agent = SimpleQAAgent(
         signature=ReportExtraction,
         model=model,
-        max_llm_cost_usd=1.0,
+        budget_usd=1.0,
     )
 
     print(f"\n=== Structured Extraction (Signature) ===")
     texts = sample_docs.select("text").to_series().to_list()
     results = []
     for i, text in enumerate(texts[:3]):
-        result = await agent.run(report_text=text[:800])
+        result = agent.run(report_text=text[:800])
         print(f"\n  Doc {i+1}:")
         print(f"    Category: {result.category}")
         print(f"    Entities: {result.key_entities[:5]}")

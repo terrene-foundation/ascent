@@ -377,7 +377,7 @@ for epoch in range(epochs):
 # ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
-fig = viz.plot_training_curves(
+fig = viz.training_history(
     {
         "SGD": sgd_losses,
         "SGD+Momentum": mom_losses,

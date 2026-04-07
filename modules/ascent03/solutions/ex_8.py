@@ -19,6 +19,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 from datetime import datetime
 
 import numpy as np
@@ -271,7 +273,8 @@ print("  The 'Medium' model typically offers the best bias-variance trade-off")
 
 
 async def persist_final():
-    conn = ConnectionManager("sqlite:///ascent03_models.db")
+    _db_path = os.path.join(tempfile.gettempdir(), "ascent03_models.db")
+    conn = ConnectionManager(f"sqlite:///{_db_path}")
     await conn.initialize()
 
     registry = ModelRegistry(conn)

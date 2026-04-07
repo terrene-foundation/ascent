@@ -12,7 +12,7 @@
 #   1. Store data in variables (strings, numbers, f-strings)
 #   2. Load the dataset and read its shape, columns, and first rows
 #   3. Use describe() to get summary statistics
-#   4. Find the hottest, coldest, and wettest months
+#   4. Find the hottest, coldest, and wettest days
 #   5. Print a formatted summary report
 # ════════════════════════════════════════════════════════════════════════
 """
@@ -93,7 +93,14 @@ print(f"\n=== Summary Statistics ===")
 print(df.describe())
 
 # You can access a single column with df["column_name"]
-# Then call aggregation methods directly on that column
+# Then call aggregation methods directly on that column.
+# The dataset has temperature_max and temperature_min — we compute the mean.
+df = df.with_columns(
+    ((pl.col("temperature_max") + pl.col("temperature_min")) / 2).alias(
+        "mean_temperature_c"
+    ),
+)
+
 mean_temp = df["mean_temperature_c"].mean()
 min_temp = df["mean_temperature_c"].min()
 max_temp = df["mean_temperature_c"].max()
@@ -106,42 +113,42 @@ print(f"  Maximum:  {max_temp:.2f}°C")
 print(f"  Std dev:  {std_temp:.2f}°C")
 # std dev measures spread — a small std dev means values cluster around the mean
 
-mean_rain = df["total_rainfall_mm"].mean()
-max_rain = df["total_rainfall_mm"].max()
+mean_rain = df["rainfall_mm"].mean()
+max_rain = df["rainfall_mm"].max()
 print(f"\nRainfall details:")
-print(f"  Average:  {mean_rain:.1f} mm/month")
-print(f"  Maximum:  {max_rain:.1f} mm/month")
+print(f"  Average:  {mean_rain:.1f} mm/day")
+print(f"  Maximum:  {max_rain:.1f} mm/day")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Find extremes — hottest, coldest, and wettest months
+# TASK 4: Find extremes — hottest, coldest, and wettest days
 # ══════════════════════════════════════════════════════════════════════
 
 # .filter() keeps rows where a condition is True
 # pl.col("column_name") refers to a column inside a Polars expression
 # .max() returns the single highest value in a column
 
-# The hottest month: filter where temperature equals the maximum temperature
+# The hottest day: filter where temperature equals the maximum temperature
 hottest_row = df.filter(pl.col("mean_temperature_c") == df["mean_temperature_c"].max())
 
 coldest_row = df.filter(pl.col("mean_temperature_c") == df["mean_temperature_c"].min())
 
-wettest_row = df.filter(pl.col("total_rainfall_mm") == df["total_rainfall_mm"].max())
+wettest_row = df.filter(pl.col("rainfall_mm") == df["rainfall_mm"].max())
 
-# .item() extracts a single value from a one-cell DataFrame
-hottest_month = hottest_row["month"][0]  # [0] gets the first (only) element
+# [0] gets the first (only) element from the filtered result
+hottest_date = hottest_row["date"][0]
 hottest_temp = hottest_row["mean_temperature_c"][0]
 
-coldest_month = coldest_row["month"][0]
+coldest_date = coldest_row["date"][0]
 coldest_temp = coldest_row["mean_temperature_c"][0]
 
-wettest_month = wettest_row["month"][0]
-wettest_rain = wettest_row["total_rainfall_mm"][0]
+wettest_date = wettest_row["date"][0]
+wettest_rain = wettest_row["rainfall_mm"][0]
 
-print(f"\n=== Extreme Months ===")
-print(f"Hottest:  {hottest_month} at {hottest_temp:.1f}°C")
-print(f"Coldest:  {coldest_month} at {coldest_temp:.1f}°C")
-print(f"Wettest:  {wettest_month} with {wettest_rain:.1f} mm")
+print(f"\n=== Extreme Days ===")
+print(f"Hottest:  {hottest_date} at {hottest_temp:.1f}°C")
+print(f"Coldest:  {coldest_date} at {coldest_temp:.1f}°C")
+print(f"Wettest:  {wettest_date} with {wettest_rain:.1f} mm")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -160,12 +167,12 @@ print(f"  Date columns:    {cols:>6}")
 print(f"")
 print(f"  Temperature (°C)")
 print(f"    Mean: {mean_temp:>8.2f}")
-print(f"    Min:  {min_temp:>8.2f}  ({coldest_month})")
-print(f"    Max:  {max_temp:>8.2f}  ({hottest_month})")
+print(f"    Min:  {min_temp:>8.2f}  ({coldest_date})")
+print(f"    Max:  {max_temp:>8.2f}  ({hottest_date})")
 print(f"")
-print(f"  Rainfall (mm/month)")
+print(f"  Rainfall (mm/day)")
 print(f"    Mean: {mean_rain:>8.1f}")
-print(f"    Max:  {max_rain:>8.1f}  ({wettest_month})")
+print(f"    Max:  {max_rain:>8.1f}  ({wettest_date})")
 print(f"{separator}")
 
 # The :>8 in format strings means "right-align in a field 8 chars wide"

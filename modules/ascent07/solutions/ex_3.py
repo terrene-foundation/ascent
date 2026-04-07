@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 
@@ -101,7 +102,14 @@ plot_data = pl.DataFrame(
 )
 
 viz = ModelVisualizer()
-fig = viz.plot_training_curves(plot_data)
+fig = viz.training_history(
+    metrics={
+        "sigmoid": plot_data["sigmoid"].to_list(),
+        "relu": plot_data["relu"].to_list(),
+        "gelu": plot_data["gelu"].to_list(),
+    },
+    x_label="z",
+)
 
 print(f"\n=== Derivatives at z=0 ===")
 print(f"sigmoid'(0) = {sigmoid_deriv(0.0):.4f} (max value = 0.25)")
@@ -120,7 +128,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent07", "mnist_sample.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 
 print(f"\n=== MNIST Sample ===")
 print(f"Shape: {df.shape}")
@@ -282,7 +290,14 @@ comparison_df = pl.DataFrame(
     }
 )
 
-fig = viz.plot_training_curves(comparison_df)
+fig = viz.training_history(
+    metrics={
+        "sigmoid_loss": results["sigmoid"],
+        "relu_loss": results["relu"],
+        "gelu_loss": results["gelu"],
+    },
+    x_label="Epoch",
+)
 print(f"\nConvergence comparison plotted.")
 
 

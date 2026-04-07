@@ -218,12 +218,10 @@ print(
 
 best_labels = all_labels[best_method[0]]
 
-# Add cluster labels to original data
-clustered = customers.drop_nulls(subset=feature_cols).with_columns(
-    pl.Series(
-        "cluster", best_labels[: customers.drop_nulls(subset=feature_cols).height]
-    )
-)
+# Add cluster labels to original data (Spectral uses a 10K subset, so match rows)
+clean_df = customers.drop_nulls(subset=feature_cols)
+profiling_df = clean_df.head(len(best_labels))
+clustered = profiling_df.with_columns(pl.Series("cluster", best_labels))
 
 # Profile each cluster
 print(f"\n=== Cluster Profiles ===")

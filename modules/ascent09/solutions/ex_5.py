@@ -25,7 +25,6 @@ import polars as pl
 
 from kaizen_agents import Delegate
 from kaizen import Signature, InputField, OutputField
-from kaizen.core import BaseAgent
 from kaizen_agents.agents.specialized.react import ReActAgent
 from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
 
@@ -33,6 +32,13 @@ from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
+
+if not os.environ.get("OPENAI_API_KEY"):
+    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
+    print("  Set it in .env to run this exercise with real LLM calls.")
+    import sys
+
+    sys.exit(0)
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 print(f"LLM Model: {model}")
@@ -174,14 +180,11 @@ async def build_and_run_react():
 
     agent = ReActAgent(
         model=model,
-        tools=tools,
-        max_llm_cost_usd=2.0,
     )
 
     print(f"\n=== ReActAgent Created ===")
     print(f"Model: {model}")
     print(f"Tools: {[t.__name__ for t in tools]}")
-    print(f"Budget: $2.00")
 
     return agent
 
@@ -198,8 +201,6 @@ async def multi_step_analysis():
     """Run the agent on a task requiring multiple tool calls."""
     react_agent = ReActAgent(
         model=model,
-        tools=tools,
-        max_llm_cost_usd=2.0,
     )
 
     task = """Analyze the Singapore company reports dataset:
@@ -210,7 +211,7 @@ async def multi_step_analysis():
 Provide a final synthesis of your findings."""
 
     print(f"\n=== Multi-Step Analysis ===")
-    result = await react_agent.run(task)
+    result = react_agent.run(task)
 
     if hasattr(result, "content"):
         print(f"Agent output: {result.content[:500]}...")
@@ -261,29 +262,19 @@ class DataAnalysisSignature(Signature):
     next_steps: list[str] = OutputField(description="Recommended next analysis steps")
 
 
-class DataAnalysisAgent(BaseAgent):
-    """Structured data analysis agent using a typed Signature."""
-
-    signature = DataAnalysisSignature
-    model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
-    max_llm_cost_usd = 1.0
-
-
 async def structured_agent_analysis():
-    """Run the structured analysis agent."""
+    """Run structured analysis using SimpleQAAgent."""
     summary = data_summary()
 
-    agent = DataAnalysisAgent()
-    result = await agent.run(
-        dataset_summary=summary,
-        analysis_question="What patterns in this dataset would be most valuable for predicting company performance?",
+    agent = SimpleQAAgent(model=model)
+    result = agent.run(
+        f"Given this dataset summary, answer with key findings, recommended ML model, "
+        f"data quality issues, and next steps for predicting company performance.\n\n"
+        f"Dataset summary:\n{summary}",
     )
 
     print(f"\n=== Structured Analysis Agent ===")
-    print(f"Key findings: {result.key_findings}")
-    print(f"Recommended model: {result.recommended_model}")
-    print(f"Data quality issues: {result.data_quality_issues}")
-    print(f"Next steps: {result.next_steps}")
+    print(f"Result: {str(result)[:500]}...")
 
     return result
 

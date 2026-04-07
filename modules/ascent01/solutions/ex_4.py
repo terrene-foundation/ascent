@@ -47,6 +47,11 @@ print(f"Shape: {hdb.shape}")
 print(f"Columns: {hdb.columns}")
 print(hdb.head(5))
 
+# Normalise join keys: HDB towns are UPPERCASE, MRT/school towns are Title Case.
+# Always check join key formats before joining — case mismatches cause silent nulls.
+mrt_stations = mrt_stations.with_columns(pl.col("town").str.to_uppercase())
+schools = schools.with_columns(pl.col("town").str.to_uppercase())
+
 print("\n=== MRT Stations ===")
 print(f"Shape: {mrt_stations.shape}")
 print(f"Columns: {mrt_stations.columns}")
@@ -190,14 +195,17 @@ print(
 )
 
 # Does MRT proximity correlate with price?
-corr_mrt_price = district_summary["distance_to_mrt_km"].pearson_corr(
-    district_summary["median_price"]
-)
-corr_school_price = district_summary["school_count"].pearson_corr(
-    district_summary["median_price"]
-)
+corr_mrt_price = district_summary.select(
+    pl.corr("distance_to_mrt_km", "median_price")
+).item()
+corr_school_price = district_summary.select(
+    pl.corr("school_count", "median_price")
+).item()
 print(f"\nCorrelation: MRT distance ↔ median price: {corr_mrt_price:.3f}")
 print(f"Correlation: school count ↔ median price:  {corr_school_price:.3f}")
-print("(Positive = more schools / closer MRT → higher price)")
+print("(Positive school_count corr = more schools → higher price)")
+print(
+    "(Positive MRT distance corr = farther from MRT → higher price, negative = closer → higher price)"
+)
 
 print("\n✓ Exercise 4 complete — joins and multi-table aggregation")

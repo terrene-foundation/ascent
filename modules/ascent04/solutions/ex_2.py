@@ -240,7 +240,7 @@ def compute_log_likelihood(
     """Compute log-likelihood: Σ_i log Σ_k π_k N(x_i | μ_k, Σ_k)."""
     n_samples = X.shape[0]
     n_components = len(weights)
-    log_likelihoods = np.zeros(n_samples)
+    log_likelihoods = np.full(n_samples, -np.inf)
 
     for k in range(n_components):
         try:

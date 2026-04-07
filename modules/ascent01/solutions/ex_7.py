@@ -84,10 +84,23 @@ print(fx_rates.head(5))
 # Forward-filling is the standard approach for quarterly economic data:
 # the Q1 figure applies to Jan, Feb, and Mar; Q2 to Apr, May, Jun, etc.
 
-# Parse all date columns to proper date types
-cpi = cpi.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
-employment = employment.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
-fx_rates = fx_rates.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
+# Parse date columns to proper date types (if not already parsed by the loader).
+# Polars' read_csv with try_parse_dates=True may auto-detect date columns,
+# so we check the dtype first to avoid a SchemaError on double-parsing.
+
+
+def _ensure_date_col(df: pl.DataFrame, col: str = "date") -> pl.DataFrame:
+    """Cast a column to Date if it isn't already."""
+    if df[col].dtype == pl.Utf8:
+        return df.with_columns(pl.col(col).str.to_date("%Y-%m-%d"))
+    if df[col].dtype == pl.Datetime:
+        return df.with_columns(pl.col(col).cast(pl.Date))
+    return df  # already Date
+
+
+cpi = _ensure_date_col(cpi)
+employment = _ensure_date_col(employment)
+fx_rates = _ensure_date_col(fx_rates)
 
 # Truncate all dates to the first of the month for joining
 cpi = cpi.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))

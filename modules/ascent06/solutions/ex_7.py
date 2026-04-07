@@ -5,44 +5,48 @@
 # ASCENT06 — Exercise 7: Agent Governance at Scale
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Govern a multi-agent ML pipeline using PACT clearance levels,
-#   budget cascading, and dereliction handling. Demonstrate how governance
-#   properties propagate from an org-level policy down through a supervisor
-#   to worker agents — and what happens when agents violate constraints.
+#   envelope verification, and audit logging. Demonstrate how governance
+#   properties propagate through a role hierarchy.
 #
 # TASKS:
 #   1. Define a multi-tier organisation with clearance levels
-#   2. Build a multi-agent pipeline (supervisor + 3 workers)
-#   3. Demonstrate budget cascading (child ≤ parent at every level)
-#   4. Test dereliction scenarios: what happens when agents fail or overspend
-#   5. AuditChain: verify tamper-evident logging of every governance event
-#   6. Scale governance: apply policy to 10 agents in a single org
+#   2. Build governed role hierarchy (supervisor + 3 workers)
+#   3. Demonstrate clearance-based access control
+#   4. Test envelope enforcement across the fleet
+#   5. Verify audit trail via GovernanceEngine
+#   6. Scale governance: apply policy to multiple agents
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
 import os
+import tempfile
+import uuid
+from pathlib import Path
 
 import polars as pl
 
-from pact import GovernanceEngine, compile_org, Address
-from pact import GovernanceContext, RoleEnvelope, TaskEnvelope
-from pact import PactGovernedAgent, AuditChain
+from kailash.trust import ConfidentialityLevel
+from pact import GovernanceEngine, compile_org, load_org_yaml
+from pact import GovernanceContext, PactGovernedAgent
 from pact.governance import (
-    ClearanceLevel,
-    BudgetCascade,
-    DerelictionHandler,
-    DerelictionPolicy,
-    GovernanceViolation,
+    ClearanceSpec,
+    RoleClearance,
+    RoleEnvelope,
+    KnowledgeItem,
 )
-from kaizen_agents import Delegate, SupervisorWorkerPattern
+from kailash.trust.pact.config import (
+    ConstraintEnvelopeConfig,
+    OperationalConstraintConfig,
+    TemporalConstraintConfig,
+    DataAccessConstraintConfig,
+    CommunicationConstraintConfig,
+)
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
-
-model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 
 
 # ── Data Context ──────────────────────────────────────────────────────
@@ -64,513 +68,314 @@ print(f"Dataset: {data_context}")
 # TASK 1: Multi-tier organisation with clearance levels
 # ══════════════════════════════════════════════════════════════════════
 #
-# Clearance levels add a security layer on top of RBAC permissions.
-# A clearance level is a numeric tier (0 = public, 4 = top-secret).
+# Clearance levels (ConfidentialityLevel enum):
+#   PUBLIC       — anyone
+#   RESTRICTED   — basic authenticated access
+#   CONFIDENTIAL — approved analysts
+#   SECRET       — senior staff + ML engineers
+#   TOP_SECRET   — executives + model risk only
+#
 # Resources are tagged with a minimum required clearance.
 # An agent can only access a resource if its clearance >= resource level.
-#
-# Clearance hierarchy used here:
-#   0 — PUBLIC     (anyone)
-#   1 — INTERNAL   (employees)
-#   2 — SENSITIVE  (approved analysts)
-#   3 — RESTRICTED (senior staff + ML engineers)
-#   4 — CRITICAL   (executives + model risk only)
 
 org_yaml_content = """
-organization:
-  name: "ASCENT Credit Bureau (Governed)"
-  version: "2.0"
+org_id: ascent_credit_governed
+name: "ASCENT Credit Bureau (Governed)"
 
-  clearance_levels:
-    - level: 0
-      name: "PUBLIC"
-    - level: 1
-      name: "INTERNAL"
-    - level: 2
-      name: "SENSITIVE"
-    - level: 3
-      name: "RESTRICTED"
-    - level: 4
-      name: "CRITICAL"
+departments:
+  - id: ml_pipeline
+    name: "ML Pipeline Agents"
+  - id: risk_governance
+    name: "Risk Governance"
 
-  data_classifications:
-    credit_applications:   3   # RESTRICTED
-    model_predictions:     2   # SENSITIVE
-    audit_logs:            4   # CRITICAL
-    feature_store:         2   # SENSITIVE
-    production_logs:       1   # INTERNAL
-    public_reports:        0   # PUBLIC
+teams:
+  - id: orchestration
+    name: "Orchestration"
+  - id: workers
+    name: "Worker Agents"
+  - id: oversight
+    name: "Oversight"
 
-  departments:
-    - name: "ml_pipeline"
-      description: "Automated ML pipeline agents"
-      teams:
-        - name: "orchestration"
-          roles:
-            - name: "pipeline_supervisor"
-              clearance: 3
-              permissions:
-                data_access: ["credit_applications", "model_predictions",
-                              "feature_store", "production_logs"]
-                tools: ["profile_data", "describe_column", "target_analysis",
-                        "train_model", "register_model"]
-                max_cost_usd: 10.0
-                can_deploy: false
-                can_approve_production: false
+roles:
+  # Pipeline supervisor
+  - id: pipeline_supervisor
+    name: "Pipeline Supervisor"
+    is_primary_for_unit: ml_pipeline
 
-        - name: "workers"
-          roles:
-            - name: "data_quality_worker"
-              clearance: 2
-              permissions:
-                data_access: ["credit_applications", "feature_store"]
-                tools: ["profile_data", "describe_column"]
-                max_cost_usd: 2.0
-                can_deploy: false
+  # Worker agents
+  - id: data_quality_worker
+    name: "Data Quality Worker"
+    reports_to: pipeline_supervisor
+    agent: true
+  - id: feature_worker
+    name: "Feature Worker"
+    reports_to: pipeline_supervisor
+    agent: true
+  - id: model_worker
+    name: "Model Worker"
+    reports_to: pipeline_supervisor
+    agent: true
 
-            - name: "feature_worker"
-              clearance: 2
-              permissions:
-                data_access: ["credit_applications", "feature_store"]
-                tools: ["describe_column", "target_analysis"]
-                max_cost_usd: 2.0
-                can_deploy: false
+  # Risk governance
+  - id: risk_officer
+    name: "Risk Officer"
+    is_primary_for_unit: risk_governance
 
-            - name: "model_worker"
-              clearance: 3
-              permissions:
-                data_access: ["credit_applications", "model_predictions", "feature_store"]
-                tools: ["train_model", "register_model"]
-                max_cost_usd: 3.0
-                can_deploy: false
-
-    - name: "risk_governance"
-      description: "Model risk and compliance oversight"
-      teams:
-        - name: "oversight"
-          roles:
-            - name: "risk_officer"
-              clearance: 4
-              permissions:
-                data_access: ["audit_logs", "model_predictions", "production_logs"]
-                tools: ["read_audit_chain"]
-                max_cost_usd: 1.0
-                can_deploy: false
-                can_approve_production: true
+clearances:
+  - role: pipeline_supervisor
+    level: secret
+    compartments: [credit_applications, model_predictions, feature_store, production_logs]
+  - role: data_quality_worker
+    level: confidential
+    compartments: [credit_applications, feature_store]
+  - role: feature_worker
+    level: confidential
+    compartments: [credit_applications, feature_store]
+  - role: model_worker
+    level: secret
+    compartments: [credit_applications, model_predictions, feature_store]
+  - role: risk_officer
+    level: top_secret
+    compartments: [audit_logs, model_predictions, production_logs]
 """
-
-import tempfile
-from pathlib import Path
 
 org_file = Path(tempfile.mktemp(suffix=".yaml"))
 org_file.write_text(org_yaml_content)
 
-from pact import load_org_yaml
+loaded = load_org_yaml(str(org_file))
+compiled = compile_org(loaded.org_definition)
 
-org = load_org_yaml(str(org_file))
-compiled = compile_org(org)
+# Build role_id → address lookup
+role_addr = {}
+for addr, node in compiled.nodes.items():
+    if node.role_definition is not None and not node.is_vacant:
+        role_addr[node.node_id] = addr
 
 print(f"\n=== Organisation Compiled ===")
-print(f"Valid: {compiled.valid}")
-if compiled.errors:
-    print(f"Errors: {compiled.errors}")
-print(f"Departments: {[d.name for d in compiled.departments]}")
-print(f"Total roles: {compiled.total_roles}")
-print(f"Clearance levels: 0 (PUBLIC) → 4 (CRITICAL)")
+print(f"Org ID: {compiled.org_id}")
+print(f"Total nodes: {len(compiled.nodes)}")
+print(f"Role addresses:")
+for role_id, addr in role_addr.items():
+    print(f"  {role_id:<25} → {addr}")
+
+# Clearance hierarchy
+print(f"\nClearance hierarchy:")
+print(f"  PUBLIC       — anyone")
+print(f"  RESTRICTED   — basic access")
+print(f"  CONFIDENTIAL — approved analysts")
+print(f"  SECRET       — senior staff, ML engineers")
+print(f"  TOP_SECRET   — executives, model risk only")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Build governed multi-agent pipeline
+# TASK 2: Build governed role hierarchy
 # ══════════════════════════════════════════════════════════════════════
 
+engine = GovernanceEngine(loaded.org_definition)
 
-async def build_governed_pipeline():
-    """Create GovernanceEngine and wrap agents with governance contexts."""
-    engine = GovernanceEngine(compiled)
+# Grant clearances
+level_map = {
+    "public": ConfidentialityLevel.PUBLIC,
+    "restricted": ConfidentialityLevel.RESTRICTED,
+    "confidential": ConfidentialityLevel.CONFIDENTIAL,
+    "secret": ConfidentialityLevel.SECRET,
+    "top_secret": ConfidentialityLevel.TOP_SECRET,
+}
 
-    # Define addresses
-    supervisor_addr = Address("ml_pipeline", "orchestration", "pipeline_supervisor")
-    dq_worker_addr = Address("ml_pipeline", "workers", "data_quality_worker")
-    feat_worker_addr = Address("ml_pipeline", "workers", "feature_worker")
-    model_worker_addr = Address("ml_pipeline", "workers", "model_worker")
-
-    # Create governance contexts
-    supervisor_ctx = await engine.create_context(supervisor_addr)
-    dq_ctx = await engine.create_context(dq_worker_addr)
-    feat_ctx = await engine.create_context(feat_worker_addr)
-    model_ctx = await engine.create_context(model_worker_addr)
-
-    print(f"\n=== Governance Contexts ===")
-    for name, ctx in [
-        ("supervisor", supervisor_ctx),
-        ("dq_worker", dq_ctx),
-        ("feat_worker", feat_ctx),
-        ("model_worker", model_ctx),
-    ]:
+print(f"\n=== Clearances Granted ===")
+for cs in loaded.clearances:
+    if cs.role_id in role_addr:
+        addr = role_addr[cs.role_id]
+        clearance = RoleClearance(
+            role_address=addr,
+            max_clearance=level_map[cs.level],
+            compartments=frozenset(cs.compartments),
+            granted_by_role_address="system_init",
+        )
+        engine.grant_clearance(addr, clearance)
         print(
-            f"  {name:<18} clearance={ctx.clearance_level}  "
-            f"budget=${ctx.max_cost_usd:.2f}  "
-            f"tools={ctx.tools_allowed}"
+            f"  {cs.role_id:<25} → {cs.level:<12} compartments={sorted(cs.compartments)}"
         )
 
-    # Wrap base agents with governance
-    supervisor_agent = PactGovernedAgent(
-        agent=Delegate(model=model),
-        governance_context=supervisor_ctx,
-    )
-    dq_agent = PactGovernedAgent(
-        agent=Delegate(model=model),
-        governance_context=dq_ctx,
-    )
-    feat_agent = PactGovernedAgent(
-        agent=Delegate(model=model),
-        governance_context=feat_ctx,
-    )
-    model_agent = PactGovernedAgent(
-        agent=Delegate(model=model),
-        governance_context=model_ctx,
-    )
+# Set envelopes
+envelope_defs = [
+    (
+        "pipeline_supervisor",
+        "risk_officer",
+        [
+            "profile_data",
+            "describe_column",
+            "target_analysis",
+            "train_model",
+            "register_model",
+        ],
+    ),
+    ("data_quality_worker", "pipeline_supervisor", ["profile_data", "describe_column"]),
+    ("feature_worker", "pipeline_supervisor", ["describe_column", "target_analysis"]),
+    (
+        "model_worker",
+        "pipeline_supervisor",
+        ["train_model", "register_model"],
+    ),
+]
 
-    return engine, {
-        "supervisor": (supervisor_agent, supervisor_ctx),
-        "dq_worker": (dq_agent, dq_ctx),
-        "feat_worker": (feat_agent, feat_ctx),
-        "model_worker": (model_agent, model_ctx),
-    }
-
-
-engine, governed_agents = asyncio.run(build_governed_pipeline())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Budget cascading
-# ══════════════════════════════════════════════════════════════════════
-#
-# Budget cascading enforces: child_budget ≤ parent_budget at every level.
-#
-# Cascade hierarchy:
-#   Org budget ($20) → Supervisor ($10) → Workers ($2-3 each)
-#
-# Rules:
-#   1. Supervisor cannot be allocated more than the org allows
-#   2. Workers cannot be allocated more than the supervisor's remaining budget
-#   3. Supervisor's remaining budget = supervisor_budget - sum(worker_budgets)
-#   4. If supervisor is over-budget, PACT raises BudgetViolation (not silently clamps)
-
-
-async def demonstrate_budget_cascade():
-    print(f"\n=== Budget Cascading ===")
-
-    cascade = BudgetCascade(
-        org_total_budget=20.0,
-        governance_engine=engine,
-    )
-
-    supervisor_ctx = governed_agents["supervisor"][1]
-    dq_ctx = governed_agents["dq_worker"][1]
-    feat_ctx = governed_agents["feat_worker"][1]
-    model_ctx = governed_agents["model_worker"][1]
-
-    # Validate the cascade from org → supervisor → workers
-    cascade_report = await cascade.validate(
-        parent_ctx=supervisor_ctx,
-        child_contexts=[dq_ctx, feat_ctx, model_ctx],
-    )
-
-    print(f"Org budget:         ${cascade_report.org_budget:.2f}")
-    print(f"Supervisor budget:  ${cascade_report.parent_budget:.2f}")
-    print(f"Workers allocated:  ${cascade_report.children_total:.2f}")
-    print(f"  dq_worker:        ${dq_ctx.max_cost_usd:.2f}")
-    print(f"  feat_worker:      ${feat_ctx.max_cost_usd:.2f}")
-    print(f"  model_worker:     ${model_ctx.max_cost_usd:.2f}")
-    print(f"Supervisor reserve: ${cascade_report.parent_reserve:.2f}")
-    print(f"Cascade valid:      {cascade_report.is_valid}")
-
-    # Attempt to create a child task that exceeds supervisor budget
-    print(f"\n--- Attempt: child requests $8 (supervisor only has $10) ---")
-    try:
-        excessive_task = TaskEnvelope(
-            parent=RoleEnvelope(
-                address=Address("ml_pipeline", "orchestration", "pipeline_supervisor"),
-                max_cost_usd=supervisor_ctx.max_cost_usd,
-                data_access=list(supervisor_ctx.data_access),
+print(f"\n=== Envelopes Set ===")
+for target_id, definer_id, actions in envelope_defs:
+    if target_id in role_addr and definer_id in role_addr:
+        env = RoleEnvelope(
+            id=f"env-{uuid.uuid4().hex[:8]}",
+            defining_role_address=role_addr[definer_id],
+            target_role_address=role_addr[target_id],
+            envelope=ConstraintEnvelopeConfig(
+                id=f"constraint-{target_id}",
+                operational=OperationalConstraintConfig(allowed_actions=actions),
+                temporal=TemporalConstraintConfig(),
+                data_access=DataAccessConstraintConfig(),
+                communication=CommunicationConstraintConfig(),
             ),
-            max_cost_usd=8.0,  # Allowed: 8 < 10
-            data_access=["credit_applications"],
         )
-        print(
-            f"  Granted: ${excessive_task.effective_max_cost_usd:.2f} (within parent)"
-        )
-    except GovernanceViolation as e:
-        print(f"  BLOCKED: {e}")
+        engine.set_role_envelope(env)
+        print(f"  {target_id:<25} defined_by={definer_id:<25} actions={actions}")
 
-    # Attempt to create a task exceeding parent by a large margin
-    print(f"\n--- Attempt: child requests $50 (supervisor budget is $10) ---")
-    try:
-        over_task = TaskEnvelope(
-            parent=RoleEnvelope(
-                address=Address("ml_pipeline", "orchestration", "pipeline_supervisor"),
-                max_cost_usd=supervisor_ctx.max_cost_usd,
-                data_access=list(supervisor_ctx.data_access),
-            ),
-            max_cost_usd=50.0,  # Exceeds parent — monotonically tightened
-            data_access=["credit_applications"],
-        )
-        print(
-            f"  Tightened to: ${over_task.effective_max_cost_usd:.2f} "
-            f"(clamped to parent limit)"
-        )
-    except GovernanceViolation as e:
-        print(f"  BLOCKED: {e}")
-
-
-asyncio.run(demonstrate_budget_cascade())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Dereliction scenarios
-# ══════════════════════════════════════════════════════════════════════
-#
-# Dereliction = agent fails to fulfil its governance obligation.
-# Three dereliction types:
-#   OVERSPEND     — agent exceeds its cost budget
-#   SCOPE_BREACH  — agent accesses data/tools outside its context
-#   TIMEOUT       — agent does not complete within allowed time
-#   SILENT_FAIL   — agent returns no output (drops the task)
-#
-# DerelictionPolicy defines what happens on each type:
-#   HALT          — immediately stop this agent, propagate to supervisor
-#   QUARANTINE    — mark agent as untrusted, route tasks to backup
-#   ALERT_ONLY    — log the violation, continue execution
-#   ROLLBACK      — undo any state changes the agent made
-#
-# In production: HALT for OVERSPEND and SCOPE_BREACH (safety-critical)
-#                ALERT_ONLY for TIMEOUT on non-critical workers
-#                ROLLBACK for SILENT_FAIL (prevent partial state)
-
-
-async def test_dereliction():
-    print(f"\n=== Dereliction Handling ===")
-
-    dq_agent, dq_ctx = governed_agents["dq_worker"]
-
-    policy = DerelictionPolicy(
-        overspend=DerelictionPolicy.Action.HALT,
-        scope_breach=DerelictionPolicy.Action.HALT,
-        timeout=DerelictionPolicy.Action.ALERT_ONLY,
-        silent_fail=DerelictionPolicy.Action.ROLLBACK,
-    )
-
-    handler = DerelictionHandler(
-        governance_engine=engine,
-        policy=policy,
-        notify_supervisor=True,  # Propagate to parent agent
-        log_to_audit_chain=True,  # Every dereliction is audited
-    )
-
-    # Scenario A: OVERSPEND — agent tries to spend more than its budget
-    print(f"\nScenario A: OVERSPEND (budget $2.00, request $5.00)")
-    overspend_violation = GovernanceViolation(
-        agent_address=Address("ml_pipeline", "workers", "data_quality_worker"),
-        violation_type="OVERSPEND",
-        details={"budget": 2.0, "requested": 5.0},
-    )
-    action_a = await handler.handle(overspend_violation)
-    print(f"  Dereliction type: OVERSPEND")
-    print(f"  Policy action:    {action_a.action}")
-    print(f"  Agent halted:     {action_a.agent_halted}")
-    print(f"  Supervisor notified: {action_a.supervisor_notified}")
-    print(f"  Audit event ID:   {action_a.audit_event_id}")
-
-    # Scenario B: SCOPE_BREACH — agent accesses data outside its context
+# Create governance contexts
+print(f"\n=== Governance Contexts ===")
+for role_id in role_addr:
+    ctx = engine.get_context(role_addr[role_id])
     print(
-        f"\nScenario B: SCOPE_BREACH (tries to access audit_logs, clearance 4 required)"
+        f"  {role_id:<25} clearance={str(ctx.effective_clearance_level):<35} "
+        f"actions={sorted(ctx.allowed_actions) if ctx.allowed_actions else '(no envelope)'}"
     )
-    scope_violation = GovernanceViolation(
-        agent_address=Address("ml_pipeline", "workers", "data_quality_worker"),
-        violation_type="SCOPE_BREACH",
-        details={
-            "resource": "audit_logs",
-            "required_clearance": 4,
-            "agent_clearance": 2,
-        },
-    )
-    action_b = await handler.handle(scope_violation)
-    print(f"  Dereliction type: SCOPE_BREACH")
-    print(f"  Policy action:    {action_b.action}")
-    print(f"  Agent halted:     {action_b.agent_halted}")
-    print(f"  Audit event ID:   {action_b.audit_event_id}")
-
-    # Scenario C: TIMEOUT — agent does not respond in time (non-critical)
-    print(f"\nScenario C: TIMEOUT (non-critical worker, ALERT_ONLY policy)")
-    timeout_violation = GovernanceViolation(
-        agent_address=Address("ml_pipeline", "workers", "feature_worker"),
-        violation_type="TIMEOUT",
-        details={"timeout_seconds": 30, "elapsed_seconds": 47},
-    )
-    action_c = await handler.handle(timeout_violation)
-    print(f"  Dereliction type: TIMEOUT")
-    print(f"  Policy action:    {action_c.action}")
-    print(f"  Agent halted:     {action_c.agent_halted}")
-    print(f"  Execution continues: {not action_c.agent_halted}")
-
-    # Scenario D: SILENT_FAIL — agent returns empty output (rollback triggered)
-    print(f"\nScenario D: SILENT_FAIL (model_worker returns nothing → rollback)")
-    silent_violation = GovernanceViolation(
-        agent_address=Address("ml_pipeline", "workers", "model_worker"),
-        violation_type="SILENT_FAIL",
-        details={"expected_output": "model_metrics", "actual_output": None},
-    )
-    action_d = await handler.handle(silent_violation)
-    print(f"  Dereliction type: SILENT_FAIL")
-    print(f"  Policy action:    {action_d.action}")
-    print(f"  State rolled back: {action_d.state_rolled_back}")
-
-    return handler
-
-
-handler = asyncio.run(test_dereliction())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: AuditChain — tamper-evident governance log
+# TASK 3: Clearance-based access control
 # ══════════════════════════════════════════════════════════════════════
 #
-# AuditChain records every governance event in a cryptographic chain.
-# Each entry contains: event_type, agent_address, timestamp, details,
-# and a SHA-256 hash of (previous_hash || event_data).
-#
-# Properties:
-#   Tamper-evident: modifying any entry breaks the hash chain
-#   Sequential:     events have a total ordering (by sequence number)
-#   Durable:        persisted to storage, survives process restart
-#   Queryable:      filter by agent, event type, time range
-#
-# In regulated contexts (MAS, PDPA): AuditChain is the evidence
-# that governance was enforced — not just configured.
+# check_access evaluates whether a role can access a knowledge item
+# based on clearance level and compartments.
 
+print(f"\n=== Clearance-Based Access Control ===")
 
-async def inspect_audit_chain():
-    print(f"\n=== AuditChain ===")
+# Define knowledge items with classification levels
+knowledge_items = [
+    KnowledgeItem(
+        item_id="credit_applications",
+        classification=ConfidentialityLevel.SECRET,
+        owning_unit_address="R1",  # Owned by pipeline supervisor
+        compartments=frozenset(["credit_applications"]),
+    ),
+    KnowledgeItem(
+        item_id="model_predictions",
+        classification=ConfidentialityLevel.CONFIDENTIAL,
+        owning_unit_address="R1",
+        compartments=frozenset(["model_predictions"]),
+    ),
+    KnowledgeItem(
+        item_id="audit_logs",
+        classification=ConfidentialityLevel.TOP_SECRET,
+        owning_unit_address="R2",  # Owned by risk officer
+        compartments=frozenset(["audit_logs"]),
+    ),
+    KnowledgeItem(
+        item_id="public_reports",
+        classification=ConfidentialityLevel.PUBLIC,
+        owning_unit_address="R1",
+        compartments=frozenset(),
+    ),
+]
 
-    audit = AuditChain(governance_engine=engine)
+from kailash.trust import TrustPosture
 
-    # Retrieve all events logged so far in this session
-    events = await audit.get_events(limit=20)
-    print(f"Events logged: {len(events)}")
-    print(f"\nEvent log:")
-    for event in events:
-        print(
-            f"  [{event.sequence:04d}] {event.timestamp:%H:%M:%S}  "
-            f"{event.event_type:<20} {str(event.agent_address):<45} "
-            f"hash={event.hash[:12]}..."
-        )
-
-    # Verify chain integrity
-    integrity = await audit.verify_chain()
-    print(f"\nChain integrity: {'VALID' if integrity.is_valid else 'BROKEN'}")
-    if not integrity.is_valid:
-        print(f"  Broken at sequence: {integrity.broken_at}")
-        print(f"  Reason: {integrity.reason}")
-
-    # Filter: show only dereliction events
-    dereliction_events = await audit.get_events(
-        event_type="DERELICTION",
-        limit=10,
-    )
-    print(f"\nDereliction events: {len(dereliction_events)}")
-    for e in dereliction_events:
-        print(
-            f"  {e.event_type} — {e.agent_address} — {e.details.get('violation_type')}"
-        )
-
-    return audit
-
-
-audit = asyncio.run(inspect_audit_chain())
+for ki in knowledge_items:
+    print(f"\n  Resource: {ki.item_id} (classification={ki.classification.value})")
+    for role_id in [
+        "pipeline_supervisor",
+        "data_quality_worker",
+        "model_worker",
+        "risk_officer",
+    ]:
+        if role_id in role_addr:
+            decision = engine.check_access(
+                role_addr[role_id], ki, TrustPosture.SUPERVISED
+            )
+            status = "ALLOW" if decision.allowed else "DENY"
+            print(f"    {role_id:<25} → {status} ({decision.reason})")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 6: Scale governance to 10 agents
+# TASK 4: Envelope enforcement across the fleet
 # ══════════════════════════════════════════════════════════════════════
-#
-# Production ML pipelines may have 10-50 agents running concurrently.
-# GovernanceEngine is thread-safe and designed for high concurrency.
-# This task demonstrates applying governance to 10 agents in parallel
-# and verifying that budget constraints hold across the fleet.
+
+print(f"\n=== Envelope Enforcement ===")
+fleet_tests = [
+    ("data_quality_worker", "profile_data", "DQ worker profiles data"),
+    ("data_quality_worker", "train_model", "DQ worker tries to train"),
+    ("feature_worker", "target_analysis", "Feature worker analyses targets"),
+    ("feature_worker", "register_model", "Feature worker tries to register model"),
+    ("model_worker", "train_model", "Model worker trains"),
+    ("model_worker", "profile_data", "Model worker tries profiling"),
+    ("pipeline_supervisor", "train_model", "Supervisor can train"),
+    (
+        "pipeline_supervisor",
+        "deploy_model",
+        "Supervisor tries deploy (not in envelope)",
+    ),
+]
+
+for role_id, action, description in fleet_tests:
+    if role_id in role_addr:
+        verdict = engine.verify_action(role_addr[role_id], action)
+        print(f"  {description}")
+        print(f"    → {verdict.level}")
 
 
-async def governance_at_scale():
-    print(f"\n=== Governance at Scale (10 agents) ===")
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Audit trail
+# ══════════════════════════════════════════════════════════════════════
 
-    fleet_budget_total = 20.0
-    n_workers = 8
-    per_worker_budget = fleet_budget_total / (
-        n_workers + 2
-    )  # Leave reserve for supervisor
-
-    # Simulate a fleet of 10 worker agents
-    fleet_contexts = []
-    for i in range(n_workers):
-        # Assign alternating roles from the worker pool
-        role = "data_quality_worker" if i % 2 == 0 else "feature_worker"
-        addr = Address("ml_pipeline", "workers", role)
-        ctx = await engine.create_context(addr)
-
-        # Apply budget cascade: worker gets per_worker_budget (clamped to role limit)
-        task = TaskEnvelope(
-            parent=RoleEnvelope(
-                address=Address("ml_pipeline", "orchestration", "pipeline_supervisor"),
-                max_cost_usd=per_worker_budget,
-                data_access=list(ctx.data_access),
-            ),
-            max_cost_usd=per_worker_budget,
-            data_access=list(ctx.data_access),
-        )
-
-        fleet_contexts.append((f"worker_{i:02d}", role, task.effective_max_cost_usd))
-
-    # Report fleet allocation
-    total_allocated = sum(b for _, _, b in fleet_contexts)
-    print(f"Fleet size:         {n_workers} workers + 1 supervisor")
-    print(f"Org budget:         ${fleet_budget_total:.2f}")
-    print(f"Per-worker budget:  ${per_worker_budget:.2f}")
-    print(f"Total allocated:    ${total_allocated:.2f}")
-    print(f"Budget utilisation: {total_allocated / fleet_budget_total:.0%}")
-    print(f"\nFleet:")
-    for name, role, budget in fleet_contexts:
-        print(f"  {name} ({role:<22}): ${budget:.2f}")
-
-    # Governance check: verify all allocations honour parent budget
-    violations = [
-        (name, budget)
-        for name, _, budget in fleet_contexts
-        if budget > per_worker_budget
-    ]
-    print(f"\nBudget violations: {len(violations)} (expected 0)")
-    assert len(violations) == 0, f"Budget cascade violated: {violations}"
-    print(f"All allocations satisfy cascade constraint (child ≤ parent)")
-
-    # Parallel governance checks across the fleet
-    async def check_agent(name: str, ctx_budget: float) -> bool:
-        # Simulate: each agent checks whether it can spend its budget
-        addr = Address("ml_pipeline", "workers", "data_quality_worker")
-        decision = await engine.can_access(addr, "credit_applications")
-        return decision
-
-    checks = await asyncio.gather(
-        *[check_agent(name, budget) for name, _, budget in fleet_contexts]
-    )
-
-    allowed = sum(checks)
-    print(f"\nParallel governance checks: {n_workers} agents")
-    print(f"  Allowed:  {allowed}/{n_workers}")
-    print(f"  Denied:   {n_workers - allowed}/{n_workers}")
+print(f"\n=== Audit Trail ===")
+print(f"Every governance operation is audited:")
+print(f"  - Clearance grants: who granted what to whom")
+print(f"  - Envelope assignments: who set what constraints")
+print(f"  - verify_action calls: every ALLOW/BLOCK decision")
+print(f"  - check_access calls: every knowledge access decision")
+print()
+print(f"GovernanceEngine supports:")
+print(f"  - In-memory audit (default)")
+print(f"  - SQLite-backed audit (store_backend='sqlite', store_url='path')")
+print(f"  - EATP emission (eatp_emitter=PactEatpEmitter)")
+print()
+integrity = engine.verify_audit_integrity()
+print(f"Audit integrity check: {'VALID' if integrity else 'BROKEN'}")
 
 
-asyncio.run(governance_at_scale())
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Scale governance to multiple agents
+# ══════════════════════════════════════════════════════════════════════
 
-# Cleanup
+print(f"\n=== Governance at Scale ===")
+
+# Create PactGovernedAgent instances for each worker
+governed_agents = {}
+for role_id in ["data_quality_worker", "feature_worker", "model_worker"]:
+    if role_id in role_addr:
+        agent = PactGovernedAgent(engine=engine, role_address=role_addr[role_id])
+        governed_agents[role_id] = agent
+
+print(f"Created {len(governed_agents)} governed agents:")
+for role_id, agent in governed_agents.items():
+    ctx = agent.context
+    print(f"  {role_id:<25} actions={sorted(ctx.allowed_actions)}")
+
+# Parallel governance checks
+print(f"\nParallel envelope verification:")
+for role_id, agent in governed_agents.items():
+    for action in ["profile_data", "train_model", "deploy_model"]:
+        verdict = engine.verify_action(role_addr[role_id], action)
+        status = "ALLOW" if verdict.level == "auto_approved" else "BLOCK"
+        print(f"  {role_id:<25} {action:<20} → {status}")
+
+# Clean up
 org_file.unlink()
 
 
@@ -578,41 +383,36 @@ org_file.unlink()
 # Summary
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n{'═' * 70}")
+print(f"\n{'=' * 70}")
 print(f"   GOVERNANCE AT SCALE — KEY PROPERTIES")
-print(f"{'═' * 70}")
+print(f"{'=' * 70}")
 print(
     """
-Clearance Levels:
-  → Resource classification independent of role permissions
-  → Agent clearance must be >= resource classification
-  → Prevents privilege escalation even with correct role
+Clearance Levels (ConfidentialityLevel enum):
+  PUBLIC → RESTRICTED → CONFIDENTIAL → SECRET → TOP_SECRET
+  Resource classification independent of role permissions.
+  Agent clearance must be >= resource classification.
+  Prevents privilege escalation even with correct role.
 
-Budget Cascading:
-  → Org → Supervisor → Workers: strict monotonic tightening
-  → Supervisor cannot grant more than it has
-  → Workers cannot exceed their parent supervisor's remaining budget
-  → Prevents "budget laundering" through delegation chains
+Envelope Enforcement:
+  verify_action() checks operational constraints.
+  auto_approved = action is within all constraint dimensions.
+  blocked = action is NOT in the allowed actions list.
+  GovernanceEngine is thread-safe and fail-closed.
 
-Dereliction Handling:
-  → HALT: safety-critical violations (overspend, scope breach)
-  → ALERT_ONLY: non-critical failures (timeout on low-priority task)
-  → ROLLBACK: partial state consistency (silent fail)
-  → Every dereliction is logged to AuditChain
+Governed Agents (PactGovernedAgent):
+  Wraps GovernanceEngine + role_address.
+  Agent receives frozen GovernanceContext (read-only).
+  Tool execution goes through governance verification.
+  Unregistered tools are DEFAULT-DENY.
 
-AuditChain:
-  → Cryptographic hash chain — tamper-evident
-  → Every governance event: access check, dereliction, budget spend
-  → Queryable by agent, event type, time range
-  → The regulatory artefact: proves governance was enforced
-
-Scale:
-  → GovernanceEngine is thread-safe, concurrency-safe
-  → Budget cascade applies across N agents in O(N) time
-  → AuditChain writes are serialised (correctness) but buffered (speed)
+Audit Trail:
+  Every governance event is logged (clearance grants, action verdicts).
+  verify_audit_integrity() checks for tampering.
+  Supports in-memory, SQLite, and EATP emission backends.
 """
 )
 
 print(
-    "✓ Exercise 7 complete — agent governance at scale with clearance, cascade, dereliction"
+    "✓ Exercise 7 complete — agent governance at scale with clearance, envelopes, audit"
 )

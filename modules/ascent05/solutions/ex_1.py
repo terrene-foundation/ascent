@@ -6,7 +6,7 @@
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Use Delegate for autonomous data analysis Q&A and build a
 #   SimpleQAAgent with custom Signature for structured answers. Set
-#   max_llm_cost_usd from Exercise 1 — mandatory for all M5 exercises.
+#   budget_usd from Exercise 1 — mandatory for all M5 exercises.
 #
 # TASKS:
 #   1. Set up Delegate with cost budget governance
@@ -34,6 +34,9 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 print(f"LLM Model: {model}")
 
 
@@ -65,7 +68,7 @@ async def delegate_analysis():
 
     delegate = Delegate(
         model=model,
-        max_llm_cost_usd=2.0,  # Hard budget cap — MANDATORY for all M5 exercises
+        budget_usd=2.0,  # Hard budget cap — MANDATORY for all M5 exercises
     )
 
     questions = [
@@ -134,47 +137,37 @@ class ChurnPrediction(Signature):
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def structured_analysis():
+def structured_analysis():
     """Use SimpleQAAgent for structured output."""
 
     # Segment analysis
-    segment_agent = SimpleQAAgent(
-        signature=CustomerSegmentAnalysis,
-        model=model,
-        max_llm_cost_usd=1.0,
-    )
+    segment_agent = SimpleQAAgent(model=model)
 
-    segment_result = await segment_agent.run(
-        data_context=data_summary,
+    segment_result = segment_agent.run(
         question="What customer segments should we target for a premium loyalty programme?",
+        context=data_summary,
     )
 
     print(f"\n=== Structured Segment Analysis ===")
-    print(f"Segments: {segment_result.segments}")
-    print(f"Confidence: {segment_result.confidence}")
-    print(f"Reasoning: {segment_result.reasoning[:200]}...")
-    print(f"Next steps: {segment_result.next_steps}")
+    for key, value in segment_result.items():
+        print(f"  {key}: {str(value)[:200]}")
 
     # Churn analysis
-    churn_agent = SimpleQAAgent(
-        signature=ChurnPrediction,
-        model=model,
-        max_llm_cost_usd=1.0,
-    )
+    churn_agent = SimpleQAAgent(model=model)
 
-    churn_result = await churn_agent.run(
-        data_context=data_summary,
+    churn_result = churn_agent.run(
+        question="What are the top churn risk factors and which metrics should we track for churn prediction?",
+        context=data_summary,
     )
 
     print(f"\n=== Structured Churn Analysis ===")
-    print(f"Risk factors: {churn_result.risk_factors}")
-    print(f"Key metrics: {churn_result.key_metrics}")
-    print(f"Model recommendation: {churn_result.model_recommendation}")
+    for key, value in churn_result.items():
+        print(f"  {key}: {str(value)[:200]}")
 
     return segment_result, churn_result
 
 
-segment_result, churn_result = asyncio.run(structured_analysis())
+segment_result, churn_result = structured_analysis()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -195,11 +188,11 @@ print(f"  → Signature = contract. Like ModelSignature for models, but for agen
 # ══════════════════════════════════════════════════════════════════════
 
 print(f"\n=== LLM Cost Governance ===")
-print(f"max_llm_cost_usd is MANDATORY for all M5 exercises.")
+print(f"budget_usd is MANDATORY for all M5 exercises.")
 print(f"CO methodology: human-on-the-loop, not in-the-loop.")
 print(f"The budget cap ensures agents cannot run away with API costs.")
 print(f"\nIn production:")
-print(f"  1. Set max_llm_cost_usd per agent based on expected task complexity")
+print(f"  1. Set budget_usd per agent based on expected task complexity")
 print(f"  2. Monitor actual spend vs budget")
 print(f"  3. Alert if spend approaches limit")
 print(f"  4. Module 6: PACT GovernanceEngine formalises cost envelopes")

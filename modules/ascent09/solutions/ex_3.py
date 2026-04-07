@@ -31,6 +31,13 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+if not os.environ.get("OPENAI_API_KEY"):
+    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
+    print("  Set it in .env to run this exercise with real LLM calls.")
+    import sys
+
+    sys.exit(0)
+
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 print(f"LLM Model: {model}")
 
@@ -148,7 +155,7 @@ Return ONLY 8 comma-separated numbers, nothing else. Example: 0.8,-0.2,0.1,0.9,0
 
 async def embed_chunks(chunk_texts: list[str]) -> list[list[float]]:
     """Generate embeddings for a list of chunks."""
-    delegate = Delegate(model=model, max_llm_cost_usd=2.0)
+    delegate = Delegate(model=model, budget_usd=2.0)
     embeddings = []
     for text in chunk_texts:
         emb = await generate_embedding(text, delegate)
@@ -231,7 +238,7 @@ print(f"Documents indexed: {len(store.documents)}")
 
 async def retrieve(query: str, top_k: int = 3) -> list[dict]:
     """Embed a query and retrieve the most relevant chunks."""
-    delegate = Delegate(model=model, max_llm_cost_usd=0.5)
+    delegate = Delegate(model=model, budget_usd=0.5)
     query_emb = await generate_embedding(query, delegate)
     results = store.search(query_emb, top_k=top_k)
     return results
@@ -257,7 +264,7 @@ for i, result in enumerate(retrieved):
 async def rag_answer(query: str) -> str:
     """Full RAG pipeline: retrieve context, then generate answer."""
     # Retrieve relevant chunks
-    delegate = Delegate(model=model, max_llm_cost_usd=1.0)
+    delegate = Delegate(model=model, budget_usd=1.0)
     query_emb = await generate_embedding(query, delegate)
     results = store.search(query_emb, top_k=3)
 

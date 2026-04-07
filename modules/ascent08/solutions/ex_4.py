@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import random
 import re
@@ -24,7 +25,7 @@ from collections import Counter
 
 import polars as pl
 
-from kailash_ml import DataExplorer, ModelVisualizer, TrainingPipeline
+from kailash_ml import DataExplorer, ModelVisualizer
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -38,7 +39,7 @@ loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_product_reviews.parquet")
 
 explorer = DataExplorer()
-summary = explorer.analyze(df)
+summary = asyncio.run(explorer.profile(df))
 print(f"=== Dataset: {df.height} reviews, columns: {df.columns} ===")
 print(summary)
 
@@ -50,7 +51,7 @@ def tokenize(text: str) -> list[str]:
     return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
 
 
-corpus = df.select("text").to_series().to_list()
+corpus = df.select("review_text").to_series().to_list()
 word_counts = Counter(tok for t in corpus for tok in tokenize(t))
 vocab = ["<pad>", "<unk>"] + [w for w, c in word_counts.most_common(2000) if c >= 2]
 word_to_idx = {w: i for i, w in enumerate(vocab)}
@@ -286,14 +287,11 @@ print(f"\nBiLSTM output dim: {len(bi_states[0])} (2 x {hidden_dim})")
 print(f"Forward captures left context, backward captures right context.")
 print(f"Concatenation gives full sentence context at every position.")
 
-# Sentiment classification via TrainingPipeline
-pipeline = TrainingPipeline(
-    model_type="text_classifier",
-    target="rating",
-    features=["text"],
-)
-result = pipeline.fit(df)
-print(f"\nTrainingPipeline sentiment result: {result}")
+# Note: TrainingPipeline(feature_store, registry) manages the full ML lifecycle.
+# The BiLSTM architecture above demonstrates the sequence modeling concepts;
+# in production, you would feed these representations into TrainingPipeline.
+print(f"\nBiLSTM architecture ready for sentiment classification.")
+print(f"In production: TrainingPipeline(feature_store, registry).fit(data)")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -310,12 +308,11 @@ for t in [0, 10, 25, 40, 49]:
     print(f"  t={t:<4} {rnn_grads_50[t]:<15.6f} {lstm_grads_50[t]:<15.6f}")
 
 viz = ModelVisualizer()
-fig = viz.plot_training_curves(
-    history={
+fig = viz.training_history(
+    metrics={
         "rnn_gradient": rnn_grads_50,
         "lstm_gradient": lstm_grads_50,
     },
-    title="RNN vs LSTM Gradient Flow Over Time Steps",
 )
 print(f"\nLSTM maintains gradient flow via the cell state highway.")
 print(f"Forget gate = 1 lets gradients pass through unattenuated.")

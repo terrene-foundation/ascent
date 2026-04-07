@@ -45,7 +45,7 @@ print(f"Default rate: {credit['default'].mean():.2%}")
 # For regression demonstration, we'll predict credit utilisation ratio
 # (a continuous variable, suitable for linear models)
 target_col = (
-    "credit_utilisation" if "credit_utilisation" in credit.columns else "annual_income"
+    "credit_utilization" if "credit_utilization" in credit.columns else "income_sgd"
 )
 
 pipeline = PreprocessingPipeline()
