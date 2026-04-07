@@ -72,16 +72,15 @@ A banker and a PhD sit in the same classroom. Both leave having learned somethin
 
 ## What's In The Box
 
-| Component          | Count         | Details                                                            |
-| ------------------ | ------------- | ------------------------------------------------------------------ |
-| Lecture decks      | 10            | Reveal.js HTML, three-layer depth, KaTeX math, speaker notes       |
-| Slides             | 1,333         | Every equation derived, every algorithm stepped through            |
-| Speaker notes      | 6             | Per-slide timing, beginner tips, expert tangents                   |
-| Exercises          | 48+           | Solutions + local + Jupyter + Colab (three-format consistency)     |
-| Datasets           | 11            | Singapore-context: HDB 15M, taxi 50K, credit 100K, experiment 500K |
-| Quizzes            | 6             | AI-resilient questions (context-specific, not recall)              |
-| SDK Textbook       | 163 tutorials | 83 Python + 80 Rust, basic to advanced, every Kailash engine       |
-| Assessment rubrics | 6             | Portfolio, capstone, peer review, model card template              |
+| Component     | Count         | Details                                                            |
+| ------------- | ------------- | ------------------------------------------------------------------ |
+| Lecture decks | 10            | Reveal.js HTML, three-layer depth, KaTeX math, speaker notes       |
+| Slides        | 1,333         | Every equation derived, every algorithm stepped through            |
+| Speaker notes | 10            | Per-slide timing, beginner tips, expert tangents                   |
+| Exercises     | 80            | Solutions + local + Jupyter + Colab (three-format consistency)     |
+| Datasets      | 11            | Singapore-context: HDB 15M, taxi 50K, credit 100K, experiment 500K |
+| Quizzes       | 10            | 246 AI-resilient questions (context-specific, not recall)          |
+| SDK Textbook  | 163 tutorials | 83 Python + 80 Rust, basic to advanced, every Kailash engine       |
 
 ### Verified Mathematical Content
 
@@ -131,6 +130,9 @@ uv run python modules/ascent01/local/ex_1.py
 
 # View lecture deck
 open decks/ascent01/deck.html
+
+# macOS only — LightGBM needs OpenMP
+brew install libomp
 
 # Advanced modules (DL, agents, alignment)
 uv sync --extra full

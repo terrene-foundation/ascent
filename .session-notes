@@ -1,63 +1,73 @@
-# Session Notes -- 2026-04-06 (Session 9)
+# Session Notes — 2026-04-07 (Session 13)
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` -- 10-module ASCENT structure, updated course structure table, scaffolding M1-M10
-2. `README.md` -- Programme overview
-3. `workspaces/curriculum/briefs/expanded-curriculum-v5.md` -- NEW: 10-module curriculum (replaces v4)
-4. `workspaces/curriculum/02-plans/01-implementation-plan.md` -- Updated to v5, all phases tracked
-5. `rules/exercise-standards.md` -- exercise format, progressive scaffolding targets
-6. `scripts/py_to_notebook.py` -- .py→.ipynb converter (auto-detects Kailash packages per exercise)
+1. `CLAUDE.md` — Course structure (10 modules), framework rules, exercise standards
+2. `workspaces/curriculum/04-validate/redteam-round1-2026-04-07.md` — Full red team report with all 22 fixes + structural deferred items
+3. `workspaces/curriculum/briefs/expanded-curriculum-v5.md` — Canonical curriculum spec (use this to verify dataset/exercise alignment)
+4. `tests/conftest.py` — Test harness, SLOW_EXERCISES set (3 capstones still timeout at 300s)
+5. `pyproject.toml` — Updated SDK pins (kailash-ml 0.7.0)
+6. `.claude/VERSION` — Now at 3.0.0 (synced from template)
 
-## Accomplished (Session 9)
+## Accomplished (Session 13)
 
-- **Build fix**: `pyproject.toml` added `[tool.hatch.build.targets.wheel] packages = ["shared"]` — `uv sync` works
-- **10 deck PDFs**: Generated via decktape (M1-M8, M10) + Playwright fallback (M9). Sizes 2-10MB
-- **Curriculum v5**: 10 modules × 8 lessons = 80, Foundation M1-M6 + Advanced M7-M10
-- **CLAUDE.md**: Course structure table matches actual module titles; scaffolding table extended to M10
-- **Textbook complete**: 83 Python → 83 Markdown → 83 HTML (was 83/33/26). All 9 sections at full parity
-- **Red team round 2**: Fixed M7 ex_3/ex_4 backprop, M9 ex_7 import, quiz 10.A.3/10.D.3 math, standardized pact/nexus imports
-- **Pushed**: 7 commits to `terrene-foundation/ascent` main (46fb9a0)
+- **COC synced 2.9.0→3.0.0** — 17 files updated from kailash-coc-claude-py template
+- **kailash-ml upgraded 0.6.0→0.7.0** — pyproject.toml + test_imports.py updated, all extras install via `uv sync --all-extras`
+- **Red Team Round 1 complete** — 6 parallel agents audited solutions, security, standards, textbook, decks
+- **22 fixes applied** (4 CRITICAL academic + 9 HIGH academic + 7 security/textbook + 2 prior bugs):
+  - M4/ex_2.py:243 EM log-likelihood init `0`→`-inf` (corrupted every iteration)
+  - M6/ex_1.py:206 LoRA param formula off by 2000x → fixed
+  - M7/ex_4.py:323 Removed fabricated gradient scaling formulas
+  - M2/ex_4.py: lift computation + Wilcoxon→sign test, median SE √n fix
+  - M2/ex_5.py:174 Expected loss sign error
+  - M1/ex_4.py:206 Backwards correlation interpretation
+  - M3/ex_3.py focal loss Hessian documented as approximation
+  - M10/ex_6.py:145 GovernanceEngine constructor type
+  - M7/ex_7.py CNN multi-channel simplification documented
+  - M8/ex_3.py Word2Vec gradient stale-value bug
+  - M1/ex_6.py to_pandas() framework boundary comments
+  - ascent04/ex_1.py ShapeError fix (Spectral 10K vs 50K rows)
+  - ascent05/ex_6.py:90 hardcoded gpt-4o-mini → env var
+  - textbook/.../06_presets.py JWT secret → os.environ
+  - shared/data_loader.py removed unsafe pickle.load()
+  - 71 textbook HTML files: 123 broken `.md`→`.html` links fixed
+  - textbook/html/index.html: 6 broken nav links + viewport meta
+  - .gitignore: node_modules/ added; .env: PCML→ASCENT
+- **Test results**: 75/75 non-slow exercises pass twice (pre-fix and post-fix), 138/138 imports/datasets
 
-## Outstanding — Next Session Work Queue
+## Outstanding
 
-### P1: Curriculum v5 Accuracy Fixes
-- V5 M5 exercise ordering wrong: says 5.5=ML Agent Pipeline but actual ex_5=MCP Servers
-  (verified: `head -5 modules/ascent05/solutions/ex_5.py` shows "MCP Servers and Tool Integration")
-- V5 M6 exercise ordering wrong: says 6.3=PACT but actual ex_3=RL, ex_4=Model Merging, ex_5=PACT
-- V5 lists ExperimentTracker for M1 lesson 1.4 but M1 has zero ExperimentTracker imports
-  (verified: `grep ExperimentTracker modules/ascent01/solutions/*.py` returns nothing)
-- V5 SDK coverage table undercounts: core SDK used in M2-M10, not just M3/M9; kailash-ml missing M9
-
-### P1: M1-M6 Module READMEs Wrong Exercise Counts
-- All say "5 Exercises" (M1-M2) or "6 Exercises" (M3-M6) but each has 8 exercise files
-  (verified: `head -10 modules/ascent01/README.md` says "Lab (3h) — 5 Exercises")
-
-### P2: Speaker Note Time Calibration
-- ALL modules overrun 180min target: M1=882, M7=497, M8=473, M9=494, M10=542
-  (verified: grep + bc on ascent01 and ascent07 speaker-notes.md)
-- Options: add skip markers, reduce per-slide times, or accept longer delivery
-
-### P2: Deck Audit Script Recalibration
-- `scripts/deck-audit.mjs` reports 84-98% overflow on ALL decks — systemic false positive
-- Slides render correctly (screenshot verified); script measures Reveal.js transforms incorrectly
-
-### P3: Quiz Parity
-- M1-M6: 24-25 questions each; M7-M10: 16 each. Consider 8-9 more per M7-M10 quiz
+- [ ] **3 capstone timeouts** (compute-bound, not bugs): ascent03/ex_8, ascent07/ex_8, ascent08/ex_7 — extend timeout in test_solutions.py beyond 300s OR optimize
+- [ ] **Dataset scale-up (CRITICAL)** — 8 datasets 5-100x undersized vs curriculum: HDB 150K vs 15M+, CC Fraud 50K vs 284K, ICU 1.5K vs 60K, SG News 5K vs 50K, Inventory Demand 90 rows (toy)
+- [ ] **Multimodal data missing** — Zero image/audio/video files. Curriculum specifies ChestX-ray14 for M4 (doesn't exist), MNIST is flattened pixel parquet
+- [ ] **15 solution/local exercise pairs misaligned in M4-M6** — Solutions and locals teach different topics. Re-strip from solutions
+- [ ] **Scaffolding 20-69pp too generous across ALL modules** — M9 has only ~2% stripped vs 75% target
+- [ ] **Hint coverage gaps** — M5: 15% blanks missing hints, M6: 28%, M10: 42%
+- [ ] **4 deck titles misaligned with CLAUDE.md** — M1, M4, M5, M6 deck content shifted by 1-2 modules
+- [ ] **7/10 decks exceed 80-100 slide target** — Up to 161 slides in M3
+- [ ] **M01 deck missing inline `<aside class="notes">`** — Reveal.js speaker view shows empty notes
+- [ ] **M07/M08 sparse on Kailash bridge slides** — M07 has 1, M08 has 5 vs ~15 expected
+- [ ] **Framework-First violation (60+ files)** — Raw sklearn/torch in ascent03/ascent04 solutions. Wrap or formally exempt
+- [ ] **Uncommitted changes** — `git status --short | wc -l` = 294 (verified). Includes 17 COC sync + 22 fixes + validation report
+- [ ] **Notebooks regeneration** — `uv run python scripts/py_to_notebook.py --all` (solutions changed)
 
 ## Oversight — Verify Before Starting
 
-- [ ] 80 exercises: `find modules/ascent*/solutions -name "ex_*.py" | wc -l` = 80 (verified: 80)
-- [ ] 10 PDFs: `ls decks/ascent*/deck.pdf | wc -l` = 10 (verified: 10)
-- [ ] 83 textbook MD: `find textbook/markdown -name "*.md" | wc -l` = 83 (verified: 83)
-- [ ] No wrong imports: `grep -rn "kailash_pact\|kailash_nexus\|kailash_mcp" --include="*.py" modules/` = 0 (verified: 0)
-- [ ] Remote current: `git log --oneline -1` = 46fb9a0 (verified)
+- [ ] `uv run python -c "import kailash_ml; print(kailash_ml.__version__)"` should print `0.7.0` (verified)
+- [ ] `cat .claude/VERSION | grep version` should show `3.0.0` (verified)
+- [ ] `grep "node_modules" .gitignore` should match (verified: present)
+- [ ] `grep -c pickle shared/data_loader.py` should return `0` (verified: 0)
+- [ ] `uv run pytest tests/test_imports.py tests/test_datasets.py` should show 138 passed
 
 ## Oversight — Verify After Completing
 
-- [ ] Push: `git log --oneline -1 origin/main` matches local HEAD
-- [ ] Clean: `git status --short | wc -l` = 0
+- [ ] Non-slow tests pass: `uv run pytest tests/test_solutions.py -m "not slow"` → 75 passed
+- [ ] No regressions on fixed files: spot-check M2/ex_4 sign test, M4/ex_2 EM init, M6/ex_1 LoRA formula
+- [ ] No new pandas: `grep -r "import pandas" modules/ shared/ tests/` → 0 (quiz_ascent01 string is intentional)
+- [ ] No hardcoded models: `grep -rE 'model\s*=\s*"(gpt-|claude-|gemini-)' modules/*/solutions/` → 0
+- [ ] No broken textbook links: Grep tool for `\.md"` in textbook/html/ → 0 (verified)
 
 ## Blockers
 
-- M9 deck PDF requires Playwright fallback (decktape Reveal.js version detection fails on M9)
+- **Dataset hosting strategy** — Once datasets scale to real-world sizes (500MB+), gdown won't scale. See memory `project_data_hosting.md` for alternatives. User flagged for next session
+- **Curriculum vs deck content alignment** — Decks drift from CLAUDE.md by 1-2 module positions. Either curriculum or decks need realignment — needs human decision before re-authoring
