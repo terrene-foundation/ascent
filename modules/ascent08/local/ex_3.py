@@ -66,8 +66,7 @@ def build_skipgram_pairs(
     tokens: list[str], word_to_idx: dict[str, int], window: int = 2
 ) -> list[tuple[int, int]]:
     """Generate (center, context) index pairs within a sliding window."""
-    # TODO: For each in-vocab token, find context within window;
-    #   skip j==i and OOV; append (center_idx, context_idx)
+    # TODO: for each in-vocab token find context tokens within window; append (center_idx, ctx_idx)
     pairs = []
     for i, token in enumerate(tokens):
         if token not in word_to_idx:
@@ -94,7 +93,7 @@ print(f"Sample: {[(vocab[c], vocab[t]) for c, t in pairs[:5]]}")
 
 embedding_dim = 50
 
-# TODO: Initialize W_center and W_context (vocab_size × embedding_dim, Gaussian 0.1)
+# TODO: Initialize W_center and W_context: vocab_size x embedding_dim, Gaussian(0, 0.1)
 W_center = ____
 W_context = ____
 
@@ -119,22 +118,20 @@ def train_skipgram(
     n_negative: int = 5,
 ) -> list[float]:
     """Train skip-gram with negative sampling."""
+    # TODO: build unigram^0.75 neg_probs for negative sampling
     token_freq = [0] * vocab_size
     for c, t in pairs:
         token_freq[c] += 1
     freq_sum = sum(f**0.75 for f in token_freq)
     neg_probs = [(f**0.75) / freq_sum for f in token_freq]
-
+    # TODO: loop epochs; positive update: grad=(sigmoid(dot)-1)*lr; update W_center,W_context
+    # TODO: negative update: n_negative samples; grad=sigmoid(dot)*lr; update
     losses = []
     for epoch in range(epochs):
         epoch_loss = 0.0
         random.shuffle(pairs)
         for center, context in pairs[:5000]:
-            # TODO: positive-pair update via negative sampling
-            #   score=dot(W_center[center], W_context[context])
-            #   prob=sigmoid(score); grad=(prob-1)*lr
-            #   update W_center[center] and W_context[context]
-            score = ____
+            score = ____  # Hint: dot_product(W_center[center], W_context[context])
             prob = sigmoid(score)
             loss = -math.log(prob + 1e-10)
             grad = (prob - 1) * lr
@@ -142,19 +139,7 @@ def train_skipgram(
             for d in range(embedding_dim):
                 ____  # Hint: W_center[center][d] -= grad*W_context[context][d]
                 ____  # Hint: W_context[context][d] -= grad*center_orig[d]
-            # negative samples (provided — study this pattern)
-            for _ in range(n_negative):
-                neg = random.choices(range(vocab_size), weights=neg_probs, k=1)[0]
-                if neg == context:
-                    continue
-                score = dot_product(W_center[center], W_context[neg])
-                prob = sigmoid(score)
-                loss += -math.log(1 - prob + 1e-10)
-                grad = prob * lr
-                center_snap = W_center[center][:]
-                for d in range(embedding_dim):
-                    W_center[center][d] -= grad * W_context[neg][d]
-                    W_context[neg][d] -= grad * center_snap[d]
+            ____  # Hint: (negative sampling loop omitted — study solution)
             epoch_loss += loss
         avg_loss = epoch_loss / min(len(pairs), 5000)
         losses.append(avg_loss)
@@ -174,40 +159,29 @@ losses = train_skipgram(pairs, W_center, W_context, epochs=3, lr=0.01)
 def cosine_sim(a: list[float], b: list[float]) -> float:
     """Cosine similarity."""
     # TODO: dot(a,b) / (||a||*||b||); return 0.0 if either norm is zero
-    dot = ____
-    na = ____
-    nb = ____
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
+    ____
+    ____
+    ____
+    ____
 
 
 def most_similar(word: str, top_k: int = 5) -> list[tuple[str, float]]:
     """Find most similar words by cosine similarity."""
+    # TODO: get embedding; compute cosine_sim vs all vocab; sort descending; return top_k
     if word not in word_to_idx:
         return []
-    vec = W_center[word_to_idx[word]]
-    sims = [
-        (vocab[i], cosine_sim(vec, W_center[i]))
-        for i in range(vocab_size)
-        if i != word_to_idx[word]
-    ]
-    return sorted(sims, key=lambda x: x[1], reverse=True)[:top_k]
+    ____
+    ____
 
 
 def analogy(a: str, b: str, c: str, top_k: int = 3) -> list[tuple[str, float]]:
     """Solve a:b :: c:? via vector arithmetic b-a+c."""
     if any(w not in word_to_idx for w in [a, b, c]):
         return []
-    # TODO: analogy vector = emb(b) - emb(a) + emb(c)
+    # TODO: vec = emb(b) - emb(a) + emb(c); rank all non-excluded vocab by cosine_sim
     vec = ____
-    exclude = {a, b, c}
-    sims = [
-        (vocab[i], cosine_sim(vec, W_center[i]))
-        for i in range(vocab_size)
-        if vocab[i] not in exclude
-    ]
-    return sorted(sims, key=lambda x: x[1], reverse=True)[:top_k]
+    ____
+    ____
 
 
 for word in ["singapore", "economy", "government", "policy"]:

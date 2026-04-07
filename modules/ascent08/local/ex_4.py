@@ -87,7 +87,7 @@ class RNNCell:
 
     def forward(self, x: list[float], h_prev: list[float]) -> list[float]:
         """h_t = tanh(W_xh*x + W_hh*h_prev + b) for each hidden unit."""
-        # TODO: for each unit j: val = b_h[j] + sum_k(x[k]*W_xh[k][j]) + sum_k(h_prev[k]*W_hh[k][j]); h_new[j]=tanh(val)
+        # TODO: for each unit j: val = b_h[j] + sum x[k]*W_xh[k][j] + sum h_prev[k]*W_hh[k][j]; h_new[j]=tanh(val)
         h_new = [0.0] * self.hidden_dim
         for j in range(self.hidden_dim):
             val = self.b_h[j]
@@ -99,11 +99,10 @@ class RNNCell:
         return h_new
 
     def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
-        h = [0.0] * self.hidden_dim
-        hidden_states = []
-        for x_t in sequence:
-            h = self.forward(x_t, h)
-            hidden_states.append(h[:])
+        # TODO: init h=zeros; loop x_t; accumulate forward() results; return all states
+        ____
+        ____
+        ____
         return hidden_states
 
 
@@ -124,19 +123,15 @@ for t, h in enumerate(states):
 
 
 def measure_gradient_flow(cell: RNNCell, seq_len: int) -> list[float]:
-    """Sensitivity of final output to each input time step (perturbation)."""
+    """Sensitivity of final output to each input time step via perturbation."""
+    # TODO: for each t, perturb input[t][0] by epsilon; measure change in final hidden sum
     epsilon = 1e-5
-    sequence = [
-        [random.gauss(0, 0.5) for _ in range(input_dim)] for _ in range(seq_len)
-    ]
-    final_output = sum(cell.forward_sequence(sequence)[-1])
+    ____
+    ____
     sensitivities = []
     for t in range(seq_len):
-        perturbed = [row[:] for row in sequence]
-        perturbed[t][0] += epsilon
-        sensitivities.append(
-            abs(sum(cell.forward_sequence(perturbed)[-1]) - final_output) / epsilon
-        )
+        ____
+        ____
     return sensitivities
 
 
@@ -158,25 +153,16 @@ class LSTMCell:
     """LSTM with forget, input, cell-candidate, and output gates."""
 
     def __init__(self, input_dim: int, hidden_dim: int):
+        # TODO: init hidden_dim, scale, combined; W_f/W_i/W_c/W_o as (combined x hidden) Gaussian;
+        #   b_f=[1.0]*hidden_dim; b_i/b_c/b_o=[0.0]*hidden_dim
         self.hidden_dim = hidden_dim
-        scale = 1.0 / math.sqrt(hidden_dim)
-        combined = input_dim + hidden_dim
-        self.W_f = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.W_i = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.W_c = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.W_o = [
-            [random.gauss(0, scale) for _ in range(hidden_dim)] for _ in range(combined)
-        ]
-        self.b_f = [1.0] * hidden_dim
-        self.b_i = [0.0] * hidden_dim
-        self.b_c = [0.0] * hidden_dim
-        self.b_o = [0.0] * hidden_dim
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
     def _gate(
         self, combined: list[float], W: list[list[float]], b: list[float], activation
@@ -191,7 +177,7 @@ class LSTMCell:
     ) -> tuple[list[float], list[float]]:
         """Single LSTM step: forget→input→cell→output gates → (h_t, c_t)."""
         combined = x + h_prev
-        # TODO: compute four gates using _gate; then c_t and h_t
+        # TODO: compute four gates using _gate; then c_t = f*c_prev + i*c_hat; h_t = o*tanh(c_t)
         f_t = ____  # Hint: self._gate(combined, self.W_f, self.b_f, sigmoid)
         i_t = ____  # Hint: self._gate(combined, self.W_i, self.b_i, sigmoid)
         c_hat = ____  # Hint: self._gate(combined, self.W_c, self.b_c, tanh)
@@ -231,7 +217,7 @@ class BiLSTM:
 
     def forward_sequence(self, sequence: list[list[float]]) -> list[list[float]]:
         """Concatenate [forward; backward] hidden states."""
-        # TODO: forward pass; backward pass on reversed sequence (re-reverse result); concatenate
+        # TODO: forward pass; backward pass on reversed sequence (re-reverse); concatenate
         fwd_states = ____  # Hint: self.forward_lstm.forward_sequence(sequence)
         bwd_states = (
             ____  # Hint: self.backward_lstm.forward_sequence(sequence[::-1])[::-1]

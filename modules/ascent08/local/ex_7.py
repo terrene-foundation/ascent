@@ -46,9 +46,8 @@ print(f"=== Singapore Product Reviews: {reviews.shape} ===")
 print(f"Columns: {reviews.columns}")
 
 label_counts = reviews.group_by("rating").agg(pl.len().alias("count")).sort("rating")
-print(f"\nRating distribution:")
-for row in label_counts.iter_rows():
-    print(f"  Rating {row[0]}: {row[1]} reviews")
+# TODO: print rating distribution by iterating label_counts rows
+____
 
 # TODO: Add "sentiment" column — "positive" when rating >= 4, else "negative"
 reviews = reviews.with_columns(
@@ -71,9 +70,9 @@ print(f"Fine-tuning adapts to Singapore product reviews with fewer examples.")
 # ══════════════════════════════════════════════════════════════════════
 
 print(f"\n=== AutoMLEngine Configuration ===")
-print(f"AutoMLEngine(pipeline, search) automates model selection across")
-print(f"algorithms, hyperparameters, and text representations.")
-print(f"Building TF-IDF + nearest-centroid classifier below.")
+print(
+    f"AutoMLEngine(pipeline, search) automates model selection and hyperparameter search."
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -99,32 +98,22 @@ tfidf_idf = ____  # Hint: {w: math.log(train_reviews.height / (1 + c)) for w, c 
 
 
 def text_to_vec(text: str) -> list[float]:
-    tokens = tokenize_text(text)
-    tf = Counter(tokens)
-    total = len(tokens) if tokens else 1
-    vec = [0.0] * len(tfidf_vocab)
-    for t, count in tf.items():
-        if t in tfidf_idx:
-            vec[tfidf_idx[t]] = (count / total) * tfidf_idf.get(t, 0.0)
+    """TF-IDF vector: for each token, weight = (count/total) * idf[token]."""
+    # TODO: tokenize; compute tf; build zero vec; fill TF-IDF weights for in-vocab tokens
+    ____
+    ____
+    ____
     return vec
 
 
-# TODO: Compute per-class centroid vectors from training data
+# TODO: Accumulate class_vecs and class_cts; normalize each centroid
 class_vecs: dict[str, list[float]] = {}
 class_cts: dict[str, int] = {}
-for i in range(train_reviews.height):
-    label = train_reviews["sentiment"][i]
-    vec = text_to_vec(train_reviews["review_text"][i])
-    if label not in class_vecs:
-        class_vecs[label] = [0.0] * len(tfidf_vocab)
-        class_cts[label] = 0
-    for j in range(len(vec)):
-        ____  # Hint: class_vecs[label][j] += vec[j]
-    ____  # Hint: class_cts[label] += 1
-
-# TODO: Normalize each centroid
-for label in class_vecs:
-    class_vecs[label] = ____  # Hint: [v / class_cts[label] for v in class_vecs[label]]
+____
+____
+____
+____
+____
 
 print(f"Vocab: {len(tfidf_vocab)}, Classes: {list(class_vecs.keys())}")
 
@@ -141,15 +130,12 @@ for text in test_reviews["review_text"].to_list():
     best_label = ____  # Hint: min(class_vecs.keys(), key=lambda c: sum((a-b)**2 for a,b in zip(vec, class_vecs[c])))
     y_pred.append(best_label)
 
-correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
-accuracy = correct / len(y_true)
-tp = sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "positive")
-fp = sum(1 for t, p in zip(y_true, y_pred) if t == "negative" and p == "positive")
-fn = sum(1 for t, p in zip(y_true, y_pred) if t == "positive" and p == "negative")
-precision = tp / max(tp + fp, 1)
-recall = tp / max(tp + fn, 1)
-f1 = 2 * precision * recall / max(precision + recall, 1e-10)
-
+# TODO: Compute accuracy, tp/fp/fn, precision, recall, f1 from y_true and y_pred
+accuracy = ____
+tp, fp, fn = ____, ____, ____
+precision = ____
+recall = ____
+f1 = ____
 print(f"\n=== Test Evaluation ===")
 print(
     f"Accuracy={accuracy:.4f}, Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}"
@@ -170,35 +156,23 @@ print(f"Confusion matrix saved to sentiment_confusion_matrix.html")
 
 
 async def register_best():
-    # TODO: Initialize ConnectionManager and ModelRegistry
+    # TODO: (1) ConnectionManager("sqlite:///nlp_models.db") → conn.initialize()
+    # TODO: (2) ModelRegistry(conn) → register_model with f1/accuracy/precision/recall MetricSpec
+    # TODO: (3) promote_model to "production"; list_models; return registry
     conn = ____  # Hint: ConnectionManager("sqlite:///nlp_models.db")
     await conn.initialize()
     registry = ____  # Hint: ModelRegistry(conn)
-
-    # TODO: Register model with all four metrics
     version = await registry.register_model(
         name="sg_sentiment_classifier",
         artifact=pickle.dumps(class_vecs),
-        metrics=[
-            ____,  # Hint: MetricSpec(name="f1", value=f1)
-            ____,  # Hint: MetricSpec(name="accuracy", value=accuracy)
-            ____,  # Hint: MetricSpec(name="precision", value=precision)
-            ____,  # Hint: MetricSpec(name="recall", value=recall)
-        ],
+        metrics=[____, ____, ____, ____],  # Hint: MetricSpec(name=..., value=...) x4
     )
-
-    # TODO: Promote the registered version to "production" stage
     await registry.promote_model(
-        name="sg_sentiment_classifier",
-        version=____,  # Hint: version.version
-        target_stage="production",
+        name="sg_sentiment_classifier", version=____, target_stage="production"
     )
-
-    print(f"\n=== ModelRegistry ===")
-    print(f"Registered sg_sentiment_classifier v{version.version} → production")
-    print(f"F1={f1:.4f}, accuracy={accuracy:.4f}")
-    models = await registry.list_models()
-    print(f"Total registered: {len(models)}")
+    print(
+        f"Registered sg_sentiment_classifier v{version.version} → production | F1={f1:.4f}"
+    )
     return registry
 
 

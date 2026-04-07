@@ -75,8 +75,8 @@ print(f"Vocabulary: {vocab_size}, d_model: {d_model}")
 
 def sinusoidal_positional_encoding(max_len: int, d_model: int) -> list[list[float]]:
     """PE(pos, 2i) = sin(pos/10000^(2i/d_model)), PE(pos, 2i+1) = cos(...)"""
-    # TODO: Build max_len × d_model table; for each pos and even index i:
-    #   denom = 10000^(i/d_model); row[i] = sin(pos/denom); row[i+1] = cos(pos/denom)
+    # TODO: build max_len x d_model table; for each pos and even index i:
+    #   denom=10000^(i/d_model); row[i]=sin(pos/denom); row[i+1]=cos(pos/denom)
     pe = []
     for pos in range(max_len):
         row = [0.0] * d_model
@@ -114,11 +114,11 @@ def softmax(scores: list[float]) -> list[float]:
 
 def layer_norm(x: list[float], eps: float = 1e-6) -> list[float]:
     """Normalize across feature dimension."""
-    # TODO: Compute mean and variance; return (x - mean) / sqrt(var + eps)
+    # TODO: mean, variance, std; return (x-mean)/std for each element
     mean = ____  # Hint: sum(x) / len(x)
-    var = ____  # Hint: sum((v - mean) ** 2 for v in x) / len(x)
+    var = ____  # Hint: sum((v-mean)**2 for v in x) / len(x)
     std = math.sqrt(var + eps)
-    return ____  # Hint: [(v - mean) / std for v in x]
+    return ____  # Hint: [(v-mean)/std for v in x]
 
 
 def feed_forward(
@@ -129,17 +129,10 @@ def feed_forward(
     b2: list[float],
 ) -> list[float]:
     """FFN(x) = ReLU(xW1 + b1)W2 + b2."""
-    # TODO: First linear layer with ReLU activation
-    d_ff = len(W1[0])
-    hidden = [
-        max(0.0, b1[j] + sum(x[k] * W1[k][j] for k in range(len(x))))
-        for j in range(d_ff)
-    ]
-    # TODO: Second linear layer
-    d_out = len(W2[0])
-    return [
-        b2[j] + sum(hidden[k] * W2[k][j] for k in range(d_ff)) for j in range(d_out)
-    ]
+    # TODO: hidden = ReLU(x @ W1 + b1); output = hidden @ W2 + b2
+    ____
+    ____
+    return ____
 
 
 def residual_add(x: list[float], sublayer_out: list[float]) -> list[float]:
@@ -150,40 +143,21 @@ class TransformerEncoderLayer:
     """Self-attention + FFN + residual connections + LayerNorm."""
 
     def __init__(self, d_model: int, n_heads: int, d_ff: int):
+        # TODO: set d_model, n_heads, d_k=d_model//n_heads, scale=1/sqrt(d_k)
+        # TODO: W_q/W_k/W_v as [n_heads][d_model][d_k] Gaussian; W_o as [d_model][d_model]
+        # TODO: ff_scale=1/sqrt(d_ff); W1[d_model][d_ff]; b1=[0]*d_ff; W2[d_ff][d_model]; b2=[0]*d_model
         self.d_model = d_model
         self.n_heads = n_heads
         self.d_k = d_model // n_heads
-        scale = 1.0 / math.sqrt(self.d_k)
-        # Attention weights
-        self.W_q = [
-            [[random.gauss(0, scale) for _ in range(self.d_k)] for _ in range(d_model)]
-            for _ in range(n_heads)
-        ]
-        self.W_k = [
-            [[random.gauss(0, scale) for _ in range(self.d_k)] for _ in range(d_model)]
-            for _ in range(n_heads)
-        ]
-        self.W_v = [
-            [[random.gauss(0, scale) for _ in range(self.d_k)] for _ in range(d_model)]
-            for _ in range(n_heads)
-        ]
-        self.W_o = [
-            [random.gauss(0, scale) for _ in range(d_model)] for _ in range(d_model)
-        ]
-        # FFN weights
-        ff_scale = 1.0 / math.sqrt(d_ff)
-        self.W1 = [
-            [random.gauss(0, ff_scale) for _ in range(d_ff)] for _ in range(d_model)
-        ]
-        self.b1 = [0.0] * d_ff
-        self.W2 = [
-            [random.gauss(0, scale) for _ in range(d_model)] for _ in range(d_ff)
-        ]
-        self.b2 = [0.0] * d_model
+        ____
+        ____
+        ____
+        ____
+        ____
 
     def self_attention(self, X: list[list[float]]) -> tuple[list[list[float]], list]:
         """Multi-head self-attention with QKV projection."""
-        # TODO: For each head h: project X -> Q_h, K_h, V_h; compute scaled attention;
+        # TODO: for each head h project X→Q_h,K_h,V_h; compute scaled dot-product attention;
         #   concatenate heads; apply W_o projection
         all_heads, all_weights = [], []
         for h in range(self.n_heads):
@@ -223,10 +197,10 @@ class TransformerEncoderLayer:
 
     def forward(self, X: list[list[float]]) -> tuple[list[list[float]], list]:
         """Encoder layer: attn → Add&Norm → FFN → Add&Norm."""
-        # TODO: Sub-layer 1: self-attention + residual + LayerNorm
+        # TODO: sub-layer 1: self-attention + residual + LayerNorm
         attn_out, attn_weights = self.self_attention(X)
         normed1 = ____  # Hint: [layer_norm(residual_add(X[i], attn_out[i])) for i in range(len(X))]
-        # TODO: Sub-layer 2: FFN + residual + LayerNorm
+        # TODO: sub-layer 2: FFN + residual + LayerNorm
         ffn_out = ____  # Hint: [feed_forward(normed1[i], self.W1, self.b1, self.W2, self.b2) for i in range(len(normed1))]
         normed2 = ____  # Hint: [layer_norm(residual_add(normed1[i], ffn_out[i])) for i in range(len(normed1))]
         return normed2, attn_weights
@@ -238,7 +212,7 @@ layer = TransformerEncoderLayer(d_model, n_heads, d_ff)
 sample_tokens = tokenize(corpus[0] if corpus else "singapore economy growth")[:10]
 sample_indices = [word_to_idx.get(t, 2) for t in sample_tokens]
 # TODO: Build input embeddings by adding token embeddings and positional encodings
-sample_input = ____  # Hint: [[token_embeddings[idx][d] + pos_enc[pos][d] for d in range(d_model)] for pos, idx in enumerate(sample_indices)]
+sample_input = ____  # Hint: [[token_embeddings[idx][d]+pos_enc[pos][d] for d in range(d_model)] for pos,idx in enumerate(sample_indices)]
 
 layer_out, layer_attn = layer.forward(sample_input)
 print(f"\n--- Encoder Layer ---")
@@ -264,7 +238,7 @@ class TransformerEncoder:
         all_layer_attn = []
         hidden = X
         for lyr in self.layers:
-            # TODO: Forward through each layer; collect attention weights
+            # TODO: forward through each layer; collect attention weights
             hidden, attn_weights = ____  # Hint: lyr.forward(hidden)
             all_layer_attn.append(attn_weights)
         return hidden, all_layer_attn

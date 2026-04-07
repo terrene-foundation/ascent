@@ -48,34 +48,27 @@ print(f"Topics: {speeches['session'].unique().to_list()[:5]}...")
 
 def normalize_text(text: str) -> str:
     """Full NLP preprocessing pipeline."""
-    # TODO: Apply four cleaning steps in order:
-    #   1. lowercase  2. strip URLs  3. strip non-alphanumeric  4. collapse whitespace
-    text = ____  # Hint: text.lower()
-    text = ____  # Hint: re.sub(r"http\S+|www\.\S+", "", text)
-    text = ____  # Hint: re.sub(r"[^a-z0-9\s]", " ", text)
-    text = ____  # Hint: re.sub(r"\s+", " ", text).strip()
+    # TODO: lowercase → strip URLs → strip non-alphanumeric → collapse whitespace
+    ____
+    ____
+    ____
+    ____
     return text
 
 
 def tokenize(text: str) -> list[str]:
-    """Whitespace tokenizer keeping tokens of length 2–30."""
+    """Whitespace tokenizer keeping tokens of length 2-30."""
     return ____  # Hint: [t for t in text.split() if 2 <= len(t) <= 30]
 
 
-# TODO: Add "clean_text" column by applying normalize_text via map_elements
-speeches = speeches.with_columns(
-    ____  # Hint: pl.col("text").map_elements(normalize_text, return_dtype=pl.Utf8).alias("clean_text")
-)
-# TODO: Add "n_tokens" column: count tokens per clean_text
-speeches = speeches.with_columns(
-    ____  # Hint: pl.col("clean_text").map_elements(lambda t: len(tokenize(t)), return_dtype=pl.Int64).alias("n_tokens")
-)
+# TODO: Add "clean_text" column via map_elements(normalize_text, return_dtype=pl.Utf8)
+speeches = speeches.with_columns(____)
+# TODO: Add "n_tokens" column: map_elements(lambda t: len(tokenize(t)), return_dtype=pl.Int64)
+speeches = speeches.with_columns(____)
 
 print(f"\nPreprocessing complete:")
 print(f"  Avg tokens/speech: {speeches['n_tokens'].mean():.0f}")
 print(f"  Min: {speeches['n_tokens'].min()}, Max: {speeches['n_tokens'].max()}")
-print(f"  Original[:100]: {speeches['text'][0][:100]}...")
-print(f"  Cleaned[:100]:  {speeches['clean_text'][0][:100]}...")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -102,12 +95,12 @@ def text_to_tfidf(text: str, vocab_map: dict, idf: dict) -> list[float]:
     vec = [0.0] * len(vocab_map)
     for token, count in tf.items():
         if token in vocab_map:
-            # TODO: Compute TF-IDF weight: (count/total) * idf[token]
-            vec[vocab_map[token]] = ____  # Hint: (count / total) * idf.get(token, 0.0)
+            # TODO: compute TF-IDF weight: (count/total) * idf.get(token, 0.0)
+            vec[vocab_map[token]] = ____
     return vec
 
 
-# TODO: Compute IDF for each token: log(n_docs / (1 + doc_freq[t]))
+# TODO: Compute IDF: log(n_docs / (1 + doc_freq[t])) for each token
 n_docs = speeches.height
 doc_freq: Counter = Counter()
 for text in speeches["clean_text"].to_list():
@@ -120,7 +113,6 @@ embeddings = [
     text_to_tfidf(text, token_to_idx, idf) for text in speeches["clean_text"].to_list()
 ]
 
-# Cap features at 500 for tractability
 feature_cols = [f"feat_{i}" for i in range(min(500, len(vocab)))]
 embed_df = pl.DataFrame(
     {feature_cols[i]: [row[i] for row in embeddings] for i in range(len(feature_cols))}
@@ -140,25 +132,15 @@ test_set = speeches_with_features[n_train:]
 print(f"\n=== Training nearest-centroid classifier on TF-IDF features ===")
 start_time = time.time()
 
-# TODO: Compute per-class centroid vectors from training feature columns
+# TODO: Accumulate cls_sums and cls_counts per session label; normalize to cls_centroids
 cls_sums: dict[str, list[float]] = {}
 cls_counts: dict[str, int] = {}
-for i in range(train_set.height):
-    label = train_set["session"][i]
-    row = list(train_set.select(feature_cols).row(i))
-    if label not in cls_sums:
-        cls_sums[label] = [0.0] * len(feature_cols)
-        cls_counts[label] = 0
-    for j in range(len(row)):
-        ____  # Hint: cls_sums[label][j] += row[j]
-    ____  # Hint: cls_counts[label] += 1
-
-# TODO: Normalize each centroid by its count
 cls_centroids: dict[str, list[float]] = {}
-for label in cls_sums:
-    cls_centroids[label] = (
-        ____  # Hint: [v / cls_counts[label] for v in cls_sums[label]]
-    )
+____
+____
+____
+____
+____
 
 print(f"Training time: {time.time() - start_time:.1f}s, classes: {len(cls_centroids)}")
 
@@ -171,7 +153,7 @@ y_true = test_set["session"].to_list()
 y_pred = []
 for i in range(test_set.height):
     row = list(test_set.select(feature_cols).row(i))
-    # TODO: Classify by minimum L2 distance to class centroid
+    # TODO: classify by minimum L2 distance to class centroid
     best_cls = ____  # Hint: min(cls_centroids.keys(), key=lambda c: sum((a-b)**2 for a,b in zip(row, cls_centroids[c])))
     y_pred.append(best_cls)
 
@@ -179,14 +161,11 @@ accuracy = sum(1 for t, p in zip(y_true, y_pred) if t == p) / len(y_true)
 classes = sorted(set(y_true))
 
 print(f"\n=== Evaluation: overall accuracy={accuracy:.4f} ===")
+# TODO: for each class compute tp/fp/fn → precision/recall/F1; print per-class results
 for cls in classes:
-    tp = sum(1 for t, p in zip(y_true, y_pred) if t == cls and p == cls)
-    fp = sum(1 for t, p in zip(y_true, y_pred) if t != cls and p == cls)
-    fn = sum(1 for t, p in zip(y_true, y_pred) if t == cls and p != cls)
-    prec = tp / max(tp + fp, 1)
-    rec = tp / max(tp + fn, 1)
-    f1 = 2 * prec * rec / max(prec + rec, 1e-10)
-    print(f"  {cls}: P={prec:.3f}, R={rec:.3f}, F1={f1:.3f}")
+    ____
+    ____
+    ____
 
 # TODO: Instantiate ModelVisualizer and plot confusion matrix; save to HTML
 viz = ____  # Hint: ModelVisualizer()
@@ -214,7 +193,7 @@ samples = [list(test_set.select(feature_cols).row(i)) for i in range(n_bench)]
 
 start = time.time()
 for s in samples:
-    # TODO: Run nearest-centroid prediction on each benchmark sample
+    # TODO: run nearest-centroid prediction on each benchmark sample
     ____  # Hint: min(cls_centroids.keys(), key=lambda c: sum((a-b)**2 for a,b in zip(s, cls_centroids[c])))
 original_ms = (time.time() - start) / len(samples) * 1000
 
