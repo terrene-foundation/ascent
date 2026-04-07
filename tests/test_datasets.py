@@ -66,6 +66,7 @@ EXPECTED_DATASETS: list[tuple[str, str, int, int]] = [
     # ascent09
     ("ascent09", "sg_company_reports.parquet", 50, 2),
     ("ascent09", "sg_regulations.parquet", 50, 2),
+    ("ascent09", "safety_prompts.parquet", 100, 3),
     # ascent10
     ("ascent10", "inventory_demand.parquet", 50, 2),
     ("ascent10", "preference_pairs.parquet", 100, 2),
