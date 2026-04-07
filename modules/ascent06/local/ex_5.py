@@ -2,32 +2,40 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT06 — Exercise 5: Reinforcement Learning
+# ASCENT06 — Exercise 5: AI Governance with PACT
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Use RLTrainer with PPO/SAC on an inventory management
-#   environment. Compare RL policy vs heuristic baseline.
+# OBJECTIVE: Define a realistic organization in YAML, compile it, and
+#   create a GovernanceEngine. Grant clearances, set envelopes, and
+#   verify action decisions.
 #
 # TASKS:
-#   1. Set up Gymnasium environment (inventory management)
-#   2. Configure RLTrainer with PPO
-#   3. Train RL agent
-#   4. Implement heuristic baseline for comparison
-#   5. Evaluate and compare policies
-#   6. Track with ExperimentTracker
+#   1. Define organization structure in YAML (departments, teams, roles)
+#   2. Load and compile organization with load_org_yaml / compile_org
+#   3. Create GovernanceEngine and grant clearances
+#   4. Set operating envelopes and verify actions
+#   5. Demonstrate frozen GovernanceContext
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
+import tempfile
+from pathlib import Path
 
-import numpy as np
-import gymnasium as gym
-from gymnasium import spaces
-
-from kailash.db.connection import ConnectionManager
-from kailash_ml.rl.trainer import RLTrainer
-from kailash_ml.engines.experiment_tracker import ExperimentTracker
-from kailash_ml import ModelVisualizer
+from kailash.trust import ConfidentialityLevel
+from pact import GovernanceEngine, GovernanceContext
+from pact import compile_org, load_org_yaml
+from pact.governance import (
+    ClearanceSpec,
+    RoleClearance,
+    RoleEnvelope,
+)
+from kailash.trust.pact.config import (
+    ConstraintEnvelopeConfig,
+    OperationalConstraintConfig,
+    TemporalConstraintConfig,
+    DataAccessConstraintConfig,
+    CommunicationConstraintConfig,
+)
 
 from shared.kailash_helpers import setup_environment
 
@@ -35,259 +43,130 @@ setup_environment()
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Custom Gymnasium environment — inventory management
+# TASK 1: Define organization in YAML
 # ══════════════════════════════════════════════════════════════════════
+#
+# PACT YAML schema (top-level keys):
+#   org_id (str, required) — unique org identifier
+#   name (str, required) — human-readable org name
+#   departments (list of {id, name})
+#   teams (list of {id, name})
+#   roles (list of {id, name, reports_to?, is_primary_for_unit?, agent?})
+#   clearances (list of {role, level, compartments?, nda_signed?})
+#   envelopes (list of {target, defined_by, financial?, operational?})
+#
+# Clearance levels: public, restricted, confidential, secret, top_secret
 
+# TODO: Write an org_yaml string for "ASCENT Credit Bureau".
+# Include 3 departments (data_science, risk, operations), 4 teams
+# (modeling, mlops, model_validation, serving), 7 roles
+# (senior_data_scientist, junior_data_scientist, ml_engineer,
+# model_validator, compliance_officer, sre, customer_service[agent=true]).
+# Set clearances: senior_ds→secret[credit_data,feature_store],
+# junior_ds→confidential[credit_data], ml_engineer→secret[credit_data,feature_store,model_artifacts],
+# model_validator→top_secret[credit_data,audit_logs,model_artifacts](nda_signed=true),
+# compliance_officer→confidential[audit_logs], sre→secret[production_logs,model_artifacts],
+# customer_service→restricted[credit_decisions].
+____
 
-class InventoryEnv(gym.Env):
-    """Simplified inventory management environment.
-
-    State: [current_stock, day_of_week, demand_trend]
-    Action: order_quantity (0 to max_order)
-    Reward: revenue from sales - holding cost - stockout penalty - order cost
-    """
-
-    metadata = {"render_modes": []}
-
-    def __init__(self):
-        super().__init__()
-        self.max_stock = 100
-        self.max_order = 50
-        self.max_steps = 30  # One month
-
-        # TODO: define observation_space as spaces.Box with:
-        #   low=np.array([0, 0, 0], dtype=np.float32)
-        #   high=np.array([max_stock, 6, 2], dtype=np.float32)
-        self.observation_space = ____  # Hint: spaces.Box(low=np.array([0, 0, 0], dtype=np.float32), high=np.array([self.max_stock, 6, 2], dtype=np.float32))
-
-        # TODO: define action_space as spaces.Discrete(max_order + 1)
-        self.action_space = ____  # Hint: spaces.Discrete(self.max_order + 1)
-
-        self.rng = np.random.default_rng()
-        self.reset()
-
-    def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
-        self.rng = np.random.default_rng(seed)
-        self.stock = 50
-        self.day = 0
-        self.step_count = 0
-        self.total_revenue = 0
-        self.total_cost = 0
-        return self._get_obs(), {}
-
-    def _get_obs(self):
-        # TODO: compute weekly seasonality trend and return float32 observation array
-        # Hint: trend = 1 + 0.5 * np.sin(2 * np.pi * self.day / 7)
-        #       return np.array([self.stock, self.day % 7, trend], dtype=np.float32)
-        trend = ____
-        return ____
-
-    def step(self, action):
-        # TODO: implement one step of the inventory simulation
-        # 1. Receive order: stock = min(stock + order_qty, max_stock)
-        # 2. Generate stochastic demand: base=15, day_factor = 1.0 + 0.3*sin(2π*day/7)
-        #    demand = max(0, int(rng.poisson(base * day_factor)))
-        # 3. Fulfill: sold = min(demand, stock); stockout = demand - sold; stock -= sold
-        # 4. Economics per day:
-        #    revenue         = sold * 10.0      ($10 per unit sold)
-        #    holding_cost    = stock * 0.50     ($0.50 per unit per day)
-        #    stockout_penalty= stockout * 5.0   ($5 per lost sale)
-        #    order_cost      = order_qty * 3.0  ($3 per unit ordered)
-        #    reward = revenue - holding_cost - stockout_penalty - order_cost
-        # 5. Advance day; terminated = step_count >= max_steps
-        order_qty = int(action)
-
-        self.stock = ____  # Hint: min(self.stock + order_qty, self.max_stock)
-
-        base_demand = 15
-        day_factor = ____  # Hint: 1.0 + 0.3 * np.sin(2 * np.pi * self.day / 7)
-        demand = ____  # Hint: max(0, int(self.rng.poisson(base_demand * day_factor)))
-
-        sold = ____  # Hint: min(demand, self.stock)
-        stockout = ____  # Hint: demand - sold
-        self.stock -= sold
-
-        revenue = ____  # Hint: sold * 10.0
-        holding_cost = ____  # Hint: self.stock * 0.50
-        stockout_penalty = ____  # Hint: stockout * 5.0
-        order_cost = ____  # Hint: order_qty * 3.0
-
-        reward = ____  # Hint: revenue - holding_cost - stockout_penalty - order_cost
-        self.total_revenue += revenue
-        self.total_cost += holding_cost + stockout_penalty + order_cost
-
-        self.day += 1
-        self.step_count += 1
-        terminated = self.step_count >= self.max_steps
-        truncated = False
-
-        return (
-            self._get_obs(),
-            reward,
-            terminated,
-            truncated,
-            {
-                "sold": sold,
-                "demand": demand,
-                "stockout": stockout,
-                "stock": self.stock,
-                "order": order_qty,
-            },
-        )
-
-
-# Register environment
-env = InventoryEnv()
-print(f"=== Inventory Management Environment ===")
-print(f"Observation space: {env.observation_space}")
-print(f"Action space: {env.action_space}")
-print(f"Episode length: {env.max_steps} days")
+# Write to temp file
+org_file = Path(tempfile.mktemp(suffix=".yaml"))
+org_file.write_text(org_yaml)
+print(f"=== Organization YAML ===")
+print(f"Org ID: ascent_credit_bureau")
+print(f"Departments: 3 (data_science, risk, operations)")
+print(f"Teams: 4 (modeling, mlops, model_validation, serving)")
+print(f"Roles: 7 unique roles")
+print(f"Clearances: 7 (levels restricted → top_secret)")
+print(f"Written to: {org_file}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Configure RLTrainer with PPO
+# TASK 2: Load and compile organization
 # ══════════════════════════════════════════════════════════════════════
 
-
-async def train_rl():
-    # TODO: create an RLTrainer and call trainer.train() with the PPO config:
-    #   algorithm="ppo", total_timesteps=50_000, learning_rate=3e-4,
-    #   n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99,
-    #   gae_lambda=0.95, clip_range=0.2, seed=42
-    #   clip_range implements L^CLIP = min(r_t A_t, clip(r_t, 1-ε, 1+ε) A_t)
-    trainer = ____  # Hint: RLTrainer()
-
-    print(f"\n=== Training PPO Agent ===")
-    result = await ____  # Hint: trainer.train(env=env, algorithm="ppo", config={...})
-
-    print(f"Training complete:")
-    print(f"  Mean reward: {result.mean_reward:.2f}")
-    print(f"  Std reward: {result.std_reward:.2f}")
-    print(f"  Training time: {result.training_time_seconds:.0f}s")
-
-    return trainer, result
-
-
-trainer, rl_result = asyncio.run(train_rl())
+# TODO: Load the YAML file with load_org_yaml() and compile with compile_org().
+# Print: org_id, name, department count, team count, role count, clearance count.
+# Then print the compiled node addresses and types.
+____
+____
+____
+____
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Heuristic baseline — (s, S) policy
+# TASK 3: Create GovernanceEngine and grant clearances
 # ══════════════════════════════════════════════════════════════════════
-# Classic inventory policy: if stock < s, order up to S
 
+# TODO: Create GovernanceEngine(loaded_org.org_definition).
+# Build a level_map dict mapping string levels to ConfidentialityLevel enum values.
+# Iterate over loaded_org.clearances, build a RoleClearance for each role found
+# in role_addr, and call engine.grant_clearance(addr, clearance).
+# Print each granted clearance: role_id, level, compartments.
+____
+____
+____
+____
+____
+____
 
-def evaluate_policy(env, policy_fn, n_episodes=100, seed=42):
-    """Evaluate a policy over multiple episodes."""
-    rng = np.random.default_rng(seed)
-    rewards = []
-    for ep in range(n_episodes):
-        obs, _ = env.reset(seed=int(rng.integers(0, 10000)))
-        total_reward = 0
-        done = False
-        while not done:
-            action = policy_fn(obs)
-            obs, reward, terminated, truncated, _ = env.step(action)
-            total_reward += reward
-            done = terminated or truncated
-        rewards.append(total_reward)
-    return np.array(rewards)
+# TODO: Set operating envelopes for 4 role pairs using RoleEnvelope +
+# ConstraintEnvelopeConfig(operational=OperationalConstraintConfig(allowed_actions=...)).
+# Pairs: senior_ds→train/evaluate/profile (defined_by model_validator),
+# junior_ds→profile/evaluate (defined_by senior_ds),
+# ml_engineer→train/evaluate/deploy/monitor (defined_by model_validator),
+# customer_service→query_prediction (defined_by sre).
+# Call engine.set_role_envelope(envelope) for each.
+____
+____
+____
+____
+____
 
-
-# TODO: implement (s, S) reorder policy: if stock < s=20, order up to S=60
-# obs[0] is the current stock level. Return an int in [0, 50].
-def ss_policy(obs):
-    """(s, S) reorder policy: if stock < s, order up to S."""
-    stock = obs[0]
-    s, S = 20, 60
-    # TODO: return min(int(S - stock), 50) when stock < s, else 0
-    return ____  # Hint: min(int(S - stock), 50) if stock < s else 0
-
-
-# TODO: implement a random baseline policy returning a random int in [0, 50]
-def random_policy(obs):
-    return ____  # Hint: np.random.randint(0, 51)
-
-
-# Evaluate all policies
-heuristic_rewards = evaluate_policy(env, ss_policy)
-
-
-async def evaluate_rl():
-    # TODO: evaluate the trained RL agent over 100 episodes
-    rl_rewards = await ____  # Hint: trainer.evaluate(env, n_episodes=100)
-    return rl_rewards
-
-
-rl_rewards = asyncio.run(evaluate_rl())
-random_rewards = evaluate_policy(env, random_policy)
-
-print(f"\n=== Policy Comparison ===")
-print(f"{'Policy':<15} {'Mean':>10} {'Std':>10} {'Min':>10} {'Max':>10}")
-print("─" * 55)
-for name, rewards in [
-    ("Random", random_rewards),
-    ("(s,S) Heuristic", heuristic_rewards),
-    ("PPO", rl_rewards),
-]:
-    print(
-        f"{name:<15} {rewards.mean():>10.1f} {rewards.std():>10.1f} "
-        f"{rewards.min():>10.1f} {rewards.max():>10.1f}"
-    )
+print(f"\n=== GovernanceEngine Ready ===")
+print(f"Organization: {loaded_org.org_definition.name}")
+print(f"Enforcement mode: fail-closed (deny on error)")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Visualise training and comparison
+# TASK 4: Verify actions
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: create a ModelVisualizer and build a metric_comparison chart for all
-# three policies, each with Mean_Reward and Std_Reward keys. Save as HTML.
-viz = ____  # Hint: ModelVisualizer()
-fig = ____  # Hint: viz.metric_comparison({"Random": {"Mean_Reward": ..., "Std_Reward": ...}, ...})
-fig.update_layout(title="Inventory Management: Policy Comparison")
-fig.write_html("ex5_rl_comparison.html")
-print("\nSaved: ex5_rl_comparison.html")
+# TODO: Run 5 test cases through engine.verify_action(role_addr[role_id], action).
+# Test cases: senior_ds can train_model, junior_ds cannot train_model,
+# ml_engineer can deploy_model, customer_service cannot train_model,
+# customer_service can query_prediction.
+# Print each description, role, action, verdict.level, and verdict.reason.
+____
+____
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Track with ExperimentTracker
+# TASK 5: Frozen GovernanceContext
 # ══════════════════════════════════════════════════════════════════════
 
+# TODO: For senior_data_scientist, ml_engineer, customer_service:
+# call engine.get_context(role_addr[role_id]) and print address, posture,
+# effective_clearance_level, compartments, and allowed_actions.
+____
+____
+____
 
-async def track_experiment():
-    # TODO: create a ConnectionManager and ExperimentTracker, then log all
-    # three policies as separate runs under experiment "ascent06_reinforcement_learning".
-    # Each run should log params, four metrics (mean/std/min/max reward),
-    # and set tag "domain"="rl-inventory".
-    conn = ____  # Hint: ConnectionManager("sqlite:///ascent06_experiments.db")
-    await conn.initialize()
-    tracker = ____  # Hint: ExperimentTracker(conn)
-    await tracker.initialize()
+# TODO: Print the "Frozen Context Properties" explanation block explaining:
+# why GovernanceContext is a frozen dataclass, what it prevents,
+# and the 4 security guarantees it provides.
+____
 
-    exp_id = (
-        await ____
-    )  # Hint: tracker.create_experiment(name="ascent06_reinforcement_learning", description="RL inventory management — PPO vs heuristic")
+# TODO: Demonstrate immutability — try to set ctx.role_address = "hacked"
+# on the senior_data_scientist context; catch AttributeError/TypeError and print
+# the exception type plus an explanation that agents cannot self-modify.
+____
+____
+____
 
-    for run_name, rewards, run_params in [
-        ("random_baseline", random_rewards, {"policy": "random"}),
-        ("ss_heuristic", heuristic_rewards, {"policy": "(s,S)", "s": "20", "S": "60"}),
-        ("ppo_agent", rl_rewards, {"algorithm": "PPO", "timesteps": "50000"}),
-    ]:
-        # TODO: open a run context, log params, log metrics, set tag
-        # Hint: async with tracker.run(exp_id, run_name=run_name) as run:
-        #           await run.log_params(run_params)
-        #           await run.log_metrics({"mean_reward": float(rewards.mean()), ...})
-        #           await run.set_tag("domain", "rl-inventory")
-        async with ____:  # Hint: tracker.run(exp_id, run_name=run_name) as run
-            await ____  # Hint: run.log_params(run_params)
-            await ____  # Hint: run.log_metrics({...})
-            await ____  # Hint: run.set_tag("domain", "rl-inventory")
+# Clean up
+org_file.unlink()
 
-    print(f"\nLogged 3 runs to ExperimentTracker")
-    await conn.close()
-
-
-asyncio.run(track_experiment())
-
-print("\n✓ Exercise 5 complete — RL inventory management with PPO")
+print("\n✓ Exercise 5 complete — PACT governance setup with YAML org definition")

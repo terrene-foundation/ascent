@@ -5,7 +5,7 @@
 # ASCENT05 — Exercise 7: Multi-Agent Orchestration
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Implement formal multi-agent coordination patterns using
-#   A2A (Agent-to-Agent) protocol. Cover four production patterns:
+#   Delegate agents. Cover four production patterns:
 #   supervisor-worker, sequential pipeline, parallel fan-out, and handoff.
 #   Each pattern is demonstrated with a practical ML scenario.
 #
@@ -21,12 +21,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 
 import polars as pl
 
 from kaizen import Signature, InputField, OutputField
-from kaizen_agents import Delegate, SupervisorWorkerPattern, SequentialPattern
-from kaizen_agents import ParallelPattern, HandoffPattern
+from kaizen_agents import Delegate
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -34,6 +34,9 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
@@ -52,57 +55,16 @@ print(f"Dataset: {data_context}")
 print(f"Patterns: supervisor-worker, sequential, parallel, handoff")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Define shared Signatures used across patterns
-# ══════════════════════════════════════════════════════════════════════
+# ── Helper: collect Delegate text output ─────────────────────────────
 
 
-class WorkerResult(Signature):
-    """Generic worker agent output."""
-
-    task: str = InputField(description="Assigned task")
-    findings: list[str] = OutputField(description="Key findings")
-    recommendation: str = OutputField(description="Primary recommendation")
-    confidence: float = OutputField(description="Confidence in recommendation 0-1")
-
-
-class SupervisorDecision(Signature):
-    """Supervisor agent: plan tasks and synthesize worker results."""
-
-    goal: str = InputField(description="High-level goal to achieve")
-    worker_results: str = InputField(description="Aggregated results from workers")
-    final_recommendation: str = OutputField(description="Synthesized recommendation")
-    task_assignments: list[str] = OutputField(description="Tasks assigned to workers")
-    gaps: list[str] = OutputField(description="Identified gaps needing follow-up")
-
-
-class PipelineStageOutput(Signature):
-    """Output from one stage of a sequential pipeline."""
-
-    context: str = InputField(description="Context passed from previous stage")
-    stage_output: str = OutputField(description="This stage's output")
-    handoff_context: str = OutputField(description="Context to pass to next stage")
-    stage_complete: bool = OutputField(description="Whether this stage is complete")
-
-
-class ParallelAnalysisResult(Signature):
-    """Output from one parallel analysis worker."""
-
-    analysis_type: str = InputField(description="Type of analysis to perform")
-    data_context: str = InputField(description="Dataset context")
-    analysis: str = OutputField(description="Analysis results")
-    key_metrics: list[str] = OutputField(description="Key metrics found")
-    priority: str = OutputField(description="HIGH / MEDIUM / LOW priority")
-
-
-class HandoffDecision(Signature):
-    """Agent decides whether to handle task or hand off."""
-
-    task: str = InputField(description="Task to evaluate")
-    agent_capability: str = InputField(description="This agent's specialty")
-    handle_or_handoff: str = OutputField(description="HANDLE or HANDOFF")
-    handoff_reason: str = OutputField(description="Why handing off (if applicable)")
-    result: str = OutputField(description="Result if handling, empty if handing off")
+async def run_delegate(delegate: Delegate, prompt: str) -> str:
+    """Run a Delegate and collect the full text response."""
+    # TODO: Implement run_delegate — iterate async events from delegate.run(prompt)
+    #   and accumulate any event.text into a string; return the full text
+    text = ""
+    ____  # Hint: async for event in delegate.run(prompt): if hasattr(event, "text"): text += event.text
+    return text
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -122,6 +84,13 @@ class HandoffDecision(Signature):
 #       └── Worker C: model performance audit
 #           ↓
 #      Supervisor synthesizes
+#
+# In production, use SupervisorWorkerPattern from kaizen_agents.patterns:
+#   from kaizen_agents.patterns.patterns import SupervisorWorkerPattern
+#   pattern = SupervisorWorkerPattern(supervisor=supervisor_agent, workers=[...])
+#   result = await pattern.execute_task("Audit the model")
+#
+# Here we implement the pattern manually with Delegate to show the mechanics.
 
 
 async def pattern_supervisor_worker():
@@ -130,53 +99,31 @@ async def pattern_supervisor_worker():
     print(f"{'─' * 60}")
     print(f"Scenario: Autonomous model audit before production deployment")
 
-    # TODO: Create three Delegate worker agents, each with max_llm_cost_usd=0.5.
-    #   Names: data_quality_worker, bias_worker, performance_worker
-    data_quality_worker = ____  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-    bias_worker = ____  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-    performance_worker = ____  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-
-    # TODO: Build a SupervisorWorkerPattern with:
-    #   supervisor_model=model, supervisor_signature=SupervisorDecision,
-    #   workers={"data_quality": data_quality_worker,
-    #            "bias_fairness": bias_worker,
-    #            "model_performance": performance_worker},
-    #   supervisor_cost_budget=0.8, worker_cost_budget=0.5
-    pattern = ____  # Hint: SupervisorWorkerPattern(supervisor_model=..., supervisor_signature=..., workers=..., ...)
-
-    worker_prompts = {
-        "data_quality": (
-            f"You are a data quality auditor. Examine this credit dataset and report:\n"
-            f"{data_context}\n"
-            f"Assess: null rates, outliers, class imbalance, data leakage risk."
-        ),
-        "bias_fairness": (
-            f"You are a fairness auditor. Examine this credit dataset:\n"
-            f"{data_context}\n"
-            f"Assess: potential protected attributes, disparate impact, demographic parity."
-        ),
-        "model_performance": (
-            f"You are a model performance reviewer. Assess readiness of:\n"
-            f"{data_context}\n"
-            f"Assess: appropriate metrics (AUC-PR for imbalanced), validation strategy, "
-            f"production readiness criteria."
-        ),
-    }
-
-    # TODO: Run the pattern with a goal and worker_prompts.
-    result = await pattern.run(
-        goal=____,  # Hint: "Perform a comprehensive pre-deployment audit of the Singapore credit scoring model. Identify risks in data quality, fairness, and performance."
-        worker_prompts=____,  # Hint: worker_prompts
-    )
-
-    print(f"\nSupervisor task assignments:")
-    for t in result.task_assignments:
-        print(f"  -> {t}")
-    print(f"\nSynthesized recommendation:")
-    print(f"  {result.final_recommendation[:300]}...")
-    print(f"\nGaps identified: {result.gaps}")
-
-    return result
+    # TODO: Implement the Supervisor-Worker pattern:
+    #   1. Create three Delegate workers with budget_usd=0.5 each:
+    #      data_quality_worker, bias_worker, performance_worker
+    #   2. Build worker_prompts dict (keys: data_quality, bias_fairness, model_performance)
+    #      Each prompt asks a different specialist to audit the credit model using data_context
+    #   3. Build workers dict mapping names to agents
+    #   4. Run all workers concurrently via asyncio.gather(*[run_delegate(agent, prompt) ...])
+    #      zip results back to names → worker_results dict
+    #   5. Print worker results (first 200 chars each)
+    #   6. Create supervisor Delegate with budget_usd=0.8; build synthesis_prompt from worker outputs
+    #   7. Run supervisor via run_delegate; print synthesis[:400]; return (worker_results, synthesis)
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 supervisor_result = asyncio.run(pattern_supervisor_worker())
@@ -192,8 +139,13 @@ supervisor_result = asyncio.run(pattern_supervisor_worker())
 # ML use case: Feature engineering pipeline where each stage depends
 # on the prior stage's decisions.
 #
-#   DataProfiler -> FeatureSelector -> TransformDesigner -> ValidationPlan
-#       handoff      ->   handoff      ->   handoff       -> final output
+#   DataProfiler → FeatureSelector → TransformDesigner → ValidationPlan
+#       handoff       →   handoff      →   handoff       → final output
+#
+# In production, use SequentialPipelinePattern from kaizen_agents.patterns:
+#   from kaizen_agents.patterns.patterns import SequentialPipelinePattern
+#   pipeline = create_sequential_pipeline(stage_agents)
+#   result = await pipeline.execute("Build features for credit scoring")
 
 
 async def pattern_sequential():
@@ -202,56 +154,52 @@ async def pattern_sequential():
     print(f"{'─' * 60}")
     print(f"Scenario: Feature engineering — each stage depends on prior output")
 
-    # TODO: Create four Delegate stage agents, each with max_llm_cost_usd=0.5.
-    stage_agents = [
-        ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)  # Stage 1: profile
-        ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)  # Stage 2: select
-        ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)  # Stage 3: transform
-        ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)  # Stage 4: validate
-    ]
-
-    stage_prompts = [
+    stage_configs = [
         (
+            "data_profiler",
             "Stage 1 — Data Profiler: Profile this credit dataset and identify the "
             "most important characteristics for feature engineering:\n"
             f"{data_context}\n"
-            "Output a concise handoff context for the feature selector."
+            "Output a concise handoff context for the feature selector.",
         ),
         (
+            "feature_selector",
             "Stage 2 — Feature Selector: Based on the profiler's findings, select "
             "the most informative features for predicting default. Explain your "
-            "selection rationale. Output a handoff context for the transformer."
+            "selection rationale. Output a handoff context for the transformer.",
         ),
         (
+            "transform_designer",
             "Stage 3 — Transform Designer: Design the transformation pipeline for "
             "the selected features. Specify: encoding, scaling, imputation strategies. "
-            "Output a handoff context for the validation planner."
+            "Output a handoff context for the validation planner.",
         ),
         (
+            "validation_planner",
             "Stage 4 — Validation Planner: Design a validation strategy for this "
             "feature engineering pipeline. Specify: CV strategy, held-out test, "
-            "metrics to track. Output the final validation plan."
+            "metrics to track. Output the final validation plan.",
         ),
     ]
 
-    # TODO: Build a SequentialPattern with agents and stage_names.
-    pattern = ____  # Hint: SequentialPattern(agents=stage_agents, stage_names=["data_profiler","feature_selector","transform_designer","validation_planner"])
+    # TODO: Implement sequential execution — for each (stage_name, base_prompt):
+    #   1. Create a Delegate with budget_usd=0.5
+    #   2. Build prompt: f"Previous stage context:\n{context}\n\n{base_prompt}"
+    #   3. Await run_delegate(agent, prompt) to get output
+    #   4. Store output in stage_outputs[stage_name]
+    #   5. Update context = output (handoff to next stage)
+    stage_outputs = {}
+    context = data_context
+    ____  # Hint: for stage_name, base_prompt in stage_configs: agent = Delegate(model=model, budget_usd=0.5); ...
 
-    # TODO: Run the pattern with initial_context=data_context and stage_prompts.
-    result = await pattern.run(
-        initial_context=____,  # Hint: data_context
-        stage_prompts=____,  # Hint: stage_prompts
-    )
-
-    print(f"\nPipeline stages completed: {len(result.stage_outputs)}")
-    for i, (name, output) in enumerate(result.stage_outputs.items()):
-        print(f"\n  Stage {i+1} ({name}):")
-        print(f"    {output[:150]}...")
+    print(f"\nPipeline stages completed: {len(stage_outputs)}")
+    for i, (name, output) in enumerate(stage_outputs.items()):
+        print(f"\n  Stage {i+1} ({name}): {output[:150]}...")
 
     print(f"\nFinal stage output:")
-    print(f"  {result.final_output[:300]}...")
+    print(f"  {list(stage_outputs.values())[-1][:300]}...")
 
-    return result
+    return stage_outputs
 
 
 sequential_result = asyncio.run(pattern_sequential())
@@ -268,9 +216,13 @@ sequential_result = asyncio.run(pattern_sequential())
 # ML use case: Model comparison — evaluate 3 model architectures in
 # parallel and merge results for final selection.
 #
-#   +- LightGBM analyst --+
-#   +- XGBoost analyst ---+ -> Merge -> Final recommendation
-#   +- Neural Net analyst -+
+#   ┌─ LightGBM analyst ──┐
+#   ├─ XGBoost analyst ───┤ → Merge → Final recommendation
+#   └─ Neural Net analyst ┘
+#
+# Parallel fan-out uses asyncio.gather for concurrent execution.
+# There is no dedicated ParallelPattern class — concurrency is built
+# into Python's asyncio. The pattern is in the structure, not a class.
 
 
 async def pattern_parallel():
@@ -279,14 +231,10 @@ async def pattern_parallel():
     print(f"{'─' * 60}")
     print(f"Scenario: Model architecture comparison — 3 agents run concurrently")
 
-    # TODO: Create three independent Delegate agents, each with max_llm_cost_usd=0.5.
-    lgbm_agent = ____  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-    xgb_agent = ____  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-    nn_agent = ____  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-
+    # TODO: Create three independent Delegate agents, each with budget_usd=0.5
     parallel_tasks = {
         "lightgbm": (
-            lgbm_agent,
+            ____,  # Hint: Delegate(model=model, budget_usd=0.5)
             (
                 f"You are a LightGBM specialist. Assess whether LightGBM is the right "
                 f"model for this task:\n{data_context}\n"
@@ -295,7 +243,7 @@ async def pattern_parallel():
             ),
         ),
         "xgboost": (
-            xgb_agent,
+            ____,  # Hint: Delegate(model=model, budget_usd=0.5)
             (
                 f"You are an XGBoost specialist. Assess whether XGBoost is the right "
                 f"model for this task:\n{data_context}\n"
@@ -304,7 +252,7 @@ async def pattern_parallel():
             ),
         ),
         "neural_net": (
-            nn_agent,
+            ____,  # Hint: Delegate(model=model, budget_usd=0.5)
             (
                 f"You are a neural network specialist. Assess whether a TabNet/MLP is "
                 f"right for this task:\n{data_context}\n"
@@ -314,43 +262,40 @@ async def pattern_parallel():
         ),
     }
 
-    # TODO: Build a ParallelPattern with max_concurrency=3.
-    pattern = ____  # Hint: ParallelPattern(max_concurrency=3)
+    # TODO: Launch all agents concurrently with asyncio.gather; time the wall-clock duration
+    #   Build coroutines list: [run_delegate(agent, prompt) for agent, prompt in parallel_tasks.values()]
+    #   Capture t_start before, t_end after gather, compute wall_clock
+    t_start = time.perf_counter()
+    ____  # Hint: coros = [...]; results = await asyncio.gather(*coros); agent_results = dict(zip(parallel_tasks.keys(), results))
+    t_end = time.perf_counter()
+    wall_clock = t_end - t_start
 
-    # TODO: Launch all agents concurrently by calling pattern.run(tasks=parallel_tasks).
-    result = ____  # Hint: await pattern.run(tasks=parallel_tasks)
+    agent_results = dict(zip(parallel_tasks.keys(), results))
 
     print(f"\nParallel execution complete:")
-    print(f"  Wall-clock time: {result.wall_clock_seconds:.2f}s")
-    print(f"  Sum of individual times: {result.total_agent_seconds:.2f}s")
-    print(
-        f"  Speedup: {result.total_agent_seconds / max(result.wall_clock_seconds, 0.01):.1f}x"
-    )
+    print(f"  Wall-clock time: {wall_clock:.2f}s")
+    print(f"  Agents run: {len(agent_results)}")
 
     print(f"\nAgent results:")
-    for agent_name, agent_output in result.agent_results.items():
+    for agent_name, agent_output in agent_results.items():
         print(f"\n  [{agent_name}]: {agent_output[:200]}...")
 
-    # Merge phase: a synthesis agent picks the winner
-    # TODO: Create a merger Delegate with max_llm_cost_usd=0.5 and stream its
-    #   response to build merged_text. Use: async for event in merger.run(merge_prompt)
-    merger = ____  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+    # TODO: Create a merger Delegate with budget_usd=0.5 and collect its synthesis
+    merger = ____  # Hint: Delegate(model=model, budget_usd=0.5)
     merge_prompt = (
         f"Three ML specialists have assessed model architectures for credit default prediction.\n\n"
         + "\n\n".join(
-            f"--- {name} ---\n{output}" for name, output in result.agent_results.items()
+            f"--- {name} ---\n{output}" for name, output in agent_results.items()
         )
         + "\n\nSynthesize these assessments. Which architecture do you recommend and why?"
     )
-    merged_text = ""
-    async for event in ____:  # Hint: merger.run(merge_prompt)
-        if hasattr(event, "text"):
-            merged_text += event.text
+    # TODO: Run the merger agent using run_delegate
+    merged_text = ____  # Hint: await run_delegate(merger, merge_prompt)
 
     print(f"\nMerged recommendation:")
     print(f"  {merged_text[:300]}...")
 
-    return result, merged_text
+    return agent_results, merged_text
 
 
 parallel_result, merged_recommendation = asyncio.run(pattern_parallel())
@@ -367,10 +312,15 @@ parallel_result, merged_recommendation = asyncio.run(pattern_parallel())
 # ML use case: Intelligent request routing — an incoming model query
 # is routed to the right specialist based on query type.
 #
-#   Query -> Router Agent
-#                +-- HANDLE (within capability)
-#                +-- HANDOFF -> Specialist Agent
-#                                  +-- Result
+#   Query → Router Agent
+#                ├── HANDLE (within capability)
+#                └── HANDOFF → Specialist Agent
+#                                  └── Result
+#
+# In production, use HandoffPattern from kaizen_agents.patterns:
+#   from kaizen_agents.patterns.patterns import HandoffPattern
+#   pattern = create_handoff_pattern(handoff_agents)
+#   result = await pattern.execute("Route this query")
 
 
 async def pattern_handoff():
@@ -379,20 +329,23 @@ async def pattern_handoff():
     print(f"{'─' * 60}")
     print(f"Scenario: Query routing — route ML questions to the right specialist")
 
-    # TODO: Create four specialist Delegate agents, each with max_llm_cost_usd=0.5.
-    #   Keys: "data_quality", "model_performance", "deployment", "governance"
+    # TODO: Create four specialist Delegate agents, each with budget_usd=0.5
     specialists = {
-        "data_quality": ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-        "model_performance": ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-        "deployment": ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
-        "governance": ____,  # Hint: Delegate(model=model, max_llm_cost_usd=0.5)
+        "data_quality": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
+        "model_performance": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
+        "deployment": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
+        "governance": ____,  # Hint: Delegate(model=model, budget_usd=0.5)
     }
 
-    # TODO: Build a HandoffPattern with:
-    #   router_model=model, specialists=specialists,
-    #   router_cost_budget=0.3, specialist_cost_budget=0.5,
-    #   routing_criteria mapping each specialist key to a description string
-    pattern = ____  # Hint: HandoffPattern(router_model=model, specialists=specialists, router_cost_budget=0.3, specialist_cost_budget=0.5, routing_criteria={...})
+    routing_criteria = {
+        "data_quality": "data issues, null values, distributions, profiling",
+        "model_performance": "AUC, precision, recall, metrics, evaluation",
+        "deployment": "serving, latency, InferenceServer, production, scaling",
+        "governance": "fairness, bias, compliance, audit, PACT, regulations",
+    }
+
+    # TODO: Create a router Delegate with budget_usd=0.3
+    router = ____  # Hint: Delegate(model=model, budget_usd=0.3)
 
     queries = [
         "What is the null rate in the annual_income column?",
@@ -401,15 +354,34 @@ async def pattern_handoff():
         "Does the credit model satisfy MAS FEAT requirements?",
     ]
 
+    criteria_text = "\n".join(
+        f"  {name}: {desc}" for name, desc in routing_criteria.items()
+    )
+
     print(f"\nRouting {len(queries)} queries:")
     for q in queries:
-        # TODO: Run the pattern for each query using pattern.run(query=q).
-        result = ____  # Hint: await pattern.run(query=q)
-        print(f"\n  Query: {q}")
-        print(f"  Routed to: {result.routed_to}")
-        print(f"  Response: {result.response[:150]}...")
+        # TODO: Build a routing_prompt asking the router to respond with just the specialist name
+        routing_prompt = ____  # Hint: f"You are a query router. Route this query to the best specialist.\n\nAvailable specialists:\n{criteria_text}\n\nQuery: {q}\n\nRespond with ONLY the specialist name (one of: {list(specialists.keys())})"
 
-    return pattern
+        # TODO: Run the router with run_delegate to get route_decision
+        route_decision = ____  # Hint: await run_delegate(router, routing_prompt)
+
+        # Find the closest matching specialist
+        routed_to = "data_quality"  # default
+        for name in specialists:
+            if name in route_decision.lower():
+                routed_to = name
+                break
+
+        # TODO: Run the matched specialist with a domain-specific prompt
+        specialist = specialists[routed_to]
+        response = ____  # Hint: await run_delegate(specialist, f"You are a {routed_to} specialist. Answer this question about the Singapore credit scoring dataset:\n{q}\n\nDataset context: {data_context}")
+
+        print(f"\n  Query: {q}")
+        print(f"  Routed to: {routed_to}")
+        print(f"  Response: {response[:150]}...")
+
+    return specialists
 
 
 handoff_pattern = asyncio.run(pattern_handoff())
@@ -419,34 +391,39 @@ handoff_pattern = asyncio.run(pattern_handoff())
 # TASK 5: Pattern selection guide
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n{'=' * 60}")
+print(f"\n{'═' * 60}")
 print(f"   PATTERN SELECTION GUIDE")
-print(f"{'=' * 60}")
+print(f"{'═' * 60}")
 print(
     """
-+----------------------+------------------------------------------+
-| Pattern              | When to use                              |
-+----------------------+------------------------------------------+
-| Supervisor-Worker    | - Complex goal needing decomposition     |
-|                      | - Workers have different specialisations |
-|                      | - Need global synthesis across workers   |
-|                      | - Example: model audit, research report  |
-+----------------------+------------------------------------------+
-| Sequential Pipeline  | - Strict ordering required               |
-|                      | - Each stage needs prior output          |
-|                      | - State must accumulate progressively    |
-|                      | - Example: ETL, feature engineering      |
-+----------------------+------------------------------------------+
-| Parallel Fan-out     | - Independent subtasks                   |
-|                      | - Latency matters more than cost         |
-|                      | - Results need merging at end            |
-|                      | - Example: model comparison, search      |
-+----------------------+------------------------------------------+
-| Handoff              | - Heterogeneous query types              |
-|                      | - Single entry point, multiple handlers  |
-|                      | - Agents know their own limits           |
-|                      | - Example: support routing, triage       |
-+----------------------+------------------------------------------+
+┌──────────────────────┬──────────────────────────────────────────┐
+│ Pattern              │ When to use                              │
+├──────────────────────┼──────────────────────────────────────────┤
+│ Supervisor-Worker    │ - Complex goal needing decomposition     │
+│                      │ - Workers have different specialisations │
+│                      │ - Need global synthesis across workers   │
+│                      │ - Example: model audit, research report  │
+├──────────────────────┼──────────────────────────────────────────┤
+│ Sequential Pipeline  │ - Strict ordering required               │
+│                      │ - Each stage needs prior output          │
+│                      │ - State must accumulate progressively    │
+│                      │ - Example: ETL, feature engineering      │
+├──────────────────────┼──────────────────────────────────────────┤
+│ Parallel Fan-out     │ - Independent subtasks                   │
+│                      │ - Latency matters more than cost         │
+│                      │ - Results need merging at end            │
+│                      │ - Example: model comparison, search      │
+├──────────────────────┼──────────────────────────────────────────┤
+│ Handoff              │ - Heterogeneous query types              │
+│                      │ - Single entry point, multiple handlers  │
+│                      │ - Agents know their own limits           │
+│                      │ - Example: support routing, triage       │
+└──────────────────────┴──────────────────────────────────────────┘
+
+Production pattern classes (kaizen_agents.patterns.patterns):
+  SupervisorWorkerPattern — managed supervisor + worker lifecycle
+  SequentialPipelinePattern — stage-by-stage with handoff context
+  HandoffPattern — agent-to-agent ownership transfer
 
 Cost comparison (approx for this exercise):
   Supervisor-Worker: N_workers x worker_cost + supervisor_cost
@@ -461,4 +438,4 @@ In Module 6, all patterns are wrapped with PACT governance:
 """
 )
 
-print("Exercise 7 complete — four multi-agent orchestration patterns")
+print("✓ Exercise 7 complete — four multi-agent orchestration patterns")

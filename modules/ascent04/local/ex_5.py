@@ -2,350 +2,353 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT04 — Exercise 5: Deep Learning with ONNX Export
+# ASCENT04 — Exercise 5: NLP: Text to Topics
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Train a CNN on medical image data with LR scheduling and
-#   gradient monitoring. Export to ONNX via OnnxBridge for deployment.
+# OBJECTIVE: Full NLP pipeline from TF-IDF fundamentals to BERTopic —
+#   bag-of-words warmup, TF-IDF, NMF, then neural topic modelling.
 #
 # TASKS:
-#   1. Load and prepare image data
-#   2. Build CNN architecture with residual connections
-#   3. Train with cosine annealing LR scheduler
-#   4. Monitor gradients and training dynamics
-#   5. Export to ONNX with OnnxBridge
-#   6. Validate ONNX model matches PyTorch predictions
+#   1. TF-IDF warmup: bag-of-words, term frequency, inverse document frequency
+#   2. NMF topic extraction from TF-IDF matrix
+#   3. Load and preprocess Singapore news corpus
+#   4. Build BERTopic model (UMAP + HDBSCAN + c-TF-IDF)
+#   5. Evaluate topic coherence (NPMI) and visualise distributions
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import numpy as np
 import polars as pl
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from collections import Counter
 
 from kailash_ml import ModelVisualizer
-from kailash_ml.bridge.onnx_bridge import OnnxBridge
 
 from shared import ASCENTDataLoader
-from shared.kailash_helpers import setup_environment
 
-setup_environment()
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}")
+try:
+    from bertopic import BERTopic
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    BERTopic = None
+    SentenceTransformer = None
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load and prepare data
+# TASK 1: TF-IDF Warmup — from bag-of-words to term weighting
 # ══════════════════════════════════════════════════════════════════════
-# Using synthetic data matching ChestX-ray14 characteristics
-# In production, load from ascent04/chest_xray_subset/
+# Before neural topic models, understand the classical foundations.
+#
+# Bag-of-Words (BoW): represent each document as a word frequency vector.
+#   Ignores word order and grammar — just counts.
+#
+# TF-IDF = Term Frequency × Inverse Document Frequency
+#   TF(t, d)  = count(t in d) / count(all words in d)
+#   IDF(t)    = log(N / df(t))     where df(t) = number of docs containing t
+#   TF-IDF(t, d) = TF(t, d) × IDF(t)
+#
+# Intuition:
+#   - Common words (the, is, a) get low IDF → low TF-IDF
+#   - Rare but discriminative words get high IDF → high TF-IDF
+
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+
+# Toy corpus to demonstrate the math
+toy_corpus = [
+    "Singapore economy grew strongly in 2024",
+    "Singapore property market shows resilience",
+    "MAS tightens monetary policy amid global uncertainty",
+    "Property developers report strong demand",
+    "Singapore government announces new housing measures",
+]
+
+# TODO: Create CountVectorizer with stop_words="english" and fit_transform on toy_corpus
+bow_vectorizer = ____  # Hint: CountVectorizer(stop_words="english")
+X_bow = ____  # Hint: bow_vectorizer.fit_transform(toy_corpus)
+bow_vocab = bow_vectorizer.get_feature_names_out()
+
+print(f"=== Bag-of-Words Warmup ===")
+print(f"Vocabulary size: {len(bow_vocab)}")
+print(f"Matrix shape: {X_bow.shape} (docs × vocab)")
+print(f"\nDocument 0 non-zero terms:")
+doc0 = X_bow[0].toarray()[0]
+for term, count in zip(bow_vocab, doc0):
+    if count > 0:
+        print(f"  '{term}': {int(count)}")
+
+# TODO: Create TfidfVectorizer with stop_words="english", norm="l2"
+# and fit_transform on toy_corpus
+tfidf_vectorizer = ____  # Hint: TfidfVectorizer(stop_words="english", norm="l2")
+X_tfidf = ____  # Hint: tfidf_vectorizer.fit_transform(toy_corpus)
+tfidf_vocab = tfidf_vectorizer.get_feature_names_out()
+
+print(f"\n=== TF-IDF Weights (Document 0 vs Document 1) ===")
+print(f"{'Term':<20} {'Doc0 TF-IDF':>14} {'Doc1 TF-IDF':>14} {'IDF':>10}")
+print("─" * 62)
+idf_values = tfidf_vectorizer.idf_
+doc0_tfidf = X_tfidf[0].toarray()[0]
+doc1_tfidf = X_tfidf[1].toarray()[0]
+for term, idf, t0, t1 in sorted(
+    zip(tfidf_vocab, idf_values, doc0_tfidf, doc1_tfidf),
+    key=lambda x: -abs(x[2] + x[3]),
+)[:12]:
+    print(f"  {term:<20} {t0:>14.4f} {t1:>14.4f} {idf:>10.4f}")
+
+print("\nKey insight:")
+print("  'singapore' appears in 3/5 docs → lower IDF → penalised")
+print("  'monetary' appears in 1/5 docs  → higher IDF → rewarded")
+
+# TODO: Apply NMF to the TF-IDF matrix to extract 2 topics
+# W = document-topic matrix, H = topic-word matrix
+from sklearn.decomposition import NMF
+
+n_nmf_topics = 2
+# TODO: Create NMF with n_components=n_nmf_topics, random_state=42
+nmf_toy = ____  # Hint: NMF(n_components=n_nmf_topics, random_state=42)
+W_toy = ____  # Hint: nmf_toy.fit_transform(X_tfidf)
+H_toy = nmf_toy.components_
+
+print(f"\n=== NMF Topics from TF-IDF (toy corpus) ===")
+for t in range(n_nmf_topics):
+    top_words = [tfidf_vocab[i] for i in H_toy[t].argsort()[-5:][::-1]]
+    print(f"  Topic {t}: {', '.join(top_words)}")
+
+print("\nNMF factorises X ≈ W × H where:")
+print("  W[doc, topic] = document's weight for each topic")
+print("  H[topic, word] = topic's weight for each word")
+
+
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
+news = loader.load("ascent04", "sg_news_corpus.parquet")
 
-# Synthetic data matching medical image properties
-n_samples = 5000
-n_channels = 1  # Grayscale X-rays
-img_size = 64  # Downsampled for training speed
-n_classes = 5  # Multi-label: 5 conditions
-
-rng = np.random.default_rng(42)
-X_images = rng.standard_normal((n_samples, n_channels, img_size, img_size)).astype(
-    np.float32
-)
-# Multi-label: each sample can have multiple conditions
-y_labels = (rng.random((n_samples, n_classes)) > 0.85).astype(np.float32)
-
-print(f"=== Medical Image Data ===")
-print(f"Images: {X_images.shape} (N, C, H, W)")
-print(f"Labels: {y_labels.shape} (N, classes)")
-print(f"Positive rates per class: {y_labels.mean(axis=0).round(3)}")
-
-# Split
-split = int(0.8 * n_samples)
-X_train, X_test = X_images[:split], X_images[split:]
-y_train, y_test = y_labels[:split], y_labels[split:]
-
-# DataLoaders
-train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
-test_ds = TensorDataset(torch.from_numpy(X_test), torch.from_numpy(y_test))
-train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
-test_loader = DataLoader(test_ds, batch_size=64)
+print(f"\n=== Singapore News Corpus ===")
+print(f"Shape: {news.shape}")
+print(f"Columns: {news.columns}")
+print(f"Date range: {news['published_date'].min()} to {news['published_date'].max()}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Build CNN with residual connections
+# TASK 2 (was TASK 1): Text preprocessing with Polars
 # ══════════════════════════════════════════════════════════════════════
 
-
-class ResBlock(nn.Module):
-    """Residual block: skip connection preserves gradient flow."""
-
-    def __init__(self, channels: int):
-        super().__init__()
-        self.conv1 = nn.Conv2d(channels, channels, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(channels, channels, 3, padding=1)
-        self.bn2 = nn.BatchNorm2d(channels)
-
-    def forward(self, x):
-        residual = x
-        # TODO: pass x through conv1 -> bn1 -> relu
-        out = ____  # Hint: torch.relu(self.bn1(self.conv1(x)))
-        # TODO: pass out through conv2 -> bn2 (no relu yet)
-        out = ____  # Hint: self.bn2(self.conv2(out))
-        # TODO: return relu(out + residual) — the skip connection
-        return ____  # Hint: torch.relu(out + residual)
-
-
-class MedicalCNN(nn.Module):
-    """CNN for multi-label medical image classification."""
-
-    def __init__(self, n_classes: int = 5):
-        super().__init__()
-        # TODO: define self.features as nn.Sequential with:
-        #   Conv2d(1->32, 3, padding=1) -> BatchNorm2d(32) -> ReLU -> MaxPool2d(2)
-        #   -> ResBlock(32)
-        #   -> Conv2d(32->64, 3, padding=1) -> BatchNorm2d(64) -> ReLU -> MaxPool2d(2)
-        #   -> ResBlock(64)
-        #   -> AdaptiveAvgPool2d(4)
-        self.features = nn.Sequential(
-            ____,  # Hint: nn.Conv2d(1, 32, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(32)
-            ____,  # Hint: nn.ReLU()
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(32)
-            ____,  # Hint: nn.Conv2d(32, 64, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(64)
-            ____,  # Hint: nn.ReLU()
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(64)
-            ____,  # Hint: nn.AdaptiveAvgPool2d(4)
-        )
-        # TODO: define self.classifier as nn.Sequential:
-        #   Flatten -> Linear(64*4*4 -> 128) -> ReLU -> Dropout(0.3) -> Linear(128 -> n_classes)
-        self.classifier = nn.Sequential(
-            ____,  # Hint: nn.Flatten()
-            ____,  # Hint: nn.Linear(64 * 4 * 4, 128)
-            ____,  # Hint: nn.ReLU()
-            ____,  # Hint: nn.Dropout(0.3)
-            ____,  # Hint: nn.Linear(128, n_classes)
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        return self.classifier(x)
-
-
-model = MedicalCNN(n_classes=n_classes).to(device)
-print(f"\n=== Model Architecture ===")
-total_params = sum(p.numel() for p in model.parameters())
-trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Total parameters: {total_params:,}")
-print(f"Trainable: {trainable_params:,}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Train with cosine annealing LR
-# ══════════════════════════════════════════════════════════════════════
-
-criterion = nn.BCEWithLogitsLoss()  # Multi-label: BCE per class
-optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
-
-# Cosine annealing: LR decays from max to min following cosine curve
-n_epochs = 20
-# TODO: create CosineAnnealingLR scheduler with T_max=n_epochs, eta_min=1e-6
-scheduler = ____  # Hint: optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
-
-# Training loop with gradient monitoring
-history = {
-    "train_loss": [],
-    "val_loss": [],
-    "lr": [],
-    "grad_norm": [],
-}
-
-for epoch in range(n_epochs):
-    # Train
-    model.train()
-    train_losses = []
-    epoch_grad_norms = []
-
-    for X_batch, y_batch in train_loader:
-        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-        # TODO: zero gradients, forward pass, compute loss, backprop
-        ____  # Hint: optimizer.zero_grad()
-        logits = ____  # Hint: model(X_batch)
-        loss = ____  # Hint: criterion(logits, y_batch)
-        ____  # Hint: loss.backward()
-
-        # TODO: compute total gradient norm (sum of squared L2 norms, then sqrt)
-        total_norm = 0.0
-        for p in model.parameters():
-            if p.grad is not None:
-                # TODO: add squared L2 norm of p.grad.data to total_norm
-                total_norm += ____  # Hint: p.grad.data.norm(2).item() ** 2
-        total_norm = total_norm**0.5
-        epoch_grad_norms.append(total_norm)
-
-        # Gradient clipping (prevents exploding gradients)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-        # TODO: update model weights
-        ____  # Hint: optimizer.step()
-        train_losses.append(loss.item())
-
-    # Validate
-    model.eval()
-    val_losses = []
-    with torch.no_grad():
-        for X_batch, y_batch in test_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            # TODO: forward pass through model
-            logits = ____  # Hint: model(X_batch)
-            val_losses.append(criterion(logits, y_batch).item())
-
-    # Record
-    history["train_loss"].append(np.mean(train_losses))
-    history["val_loss"].append(np.mean(val_losses))
-    history["lr"].append(scheduler.get_last_lr()[0])
-    history["grad_norm"].append(np.mean(epoch_grad_norms))
-
-    # TODO: step the LR scheduler at end of each epoch
-    ____  # Hint: scheduler.step()
-
-    if (epoch + 1) % 5 == 0:
-        print(
-            f"Epoch {epoch + 1}/{n_epochs}: "
-            f"train_loss={history['train_loss'][-1]:.4f}, "
-            f"val_loss={history['val_loss'][-1]:.4f}, "
-            f"lr={history['lr'][-1]:.6f}, "
-            f"grad_norm={history['grad_norm'][-1]:.4f}"
-        )
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Evaluate model
-# ══════════════════════════════════════════════════════════════════════
-
-model.eval()
-all_preds = []
-all_labels = []
-
-with torch.no_grad():
-    for X_batch, y_batch in test_loader:
-        X_batch = X_batch.to(device)
-        logits = model(X_batch)
-        probs = torch.sigmoid(logits).cpu().numpy()
-        all_preds.append(probs)
-        all_labels.append(y_batch.numpy())
-
-y_pred = np.vstack(all_preds)
-y_true = np.vstack(all_labels)
-
-print(f"\n=== Model Evaluation ===")
-class_names = [
-    "Condition_A",
-    "Condition_B",
-    "Condition_C",
-    "Condition_D",
-    "Condition_E",
-]
-for i, name in enumerate(class_names):
-    if y_true[:, i].sum() > 0:
-        from sklearn.metrics import roc_auc_score as auc_fn
-
-        auc = auc_fn(y_true[:, i], y_pred[:, i])
-        print(f"  {name}: AUC={auc:.4f}, prevalence={y_true[:, i].mean():.3f}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Export to ONNX with OnnxBridge
-# ══════════════════════════════════════════════════════════════════════
-
-bridge = OnnxBridge()
-
-# Check compatibility
-compat = bridge.check_compatibility(model, framework="pytorch")
-print(f"\n=== ONNX Compatibility ===")
-print(f"Compatible: {compat.compatible}")
-print(f"Confidence: {compat.confidence}")
-
-# TODO: export model to ONNX using bridge.export()
-#       with framework="pytorch", output_path="medical_cnn.onnx", n_features=None
-export_result = bridge.export(
-    model=____,  # Hint: model
-    framework=____,  # Hint: "pytorch"
-    output_path=____,  # Hint: "medical_cnn.onnx"
-    n_features=____,  # Hint: None (not needed for CNN)
-)
-
-print(f"\nExport result: {export_result.success}")
-if export_result.onnx_path:
-    print(f"ONNX path: {export_result.onnx_path}")
-    if export_result.model_size_bytes:
-        print(f"Model size: {export_result.model_size_bytes / 1024:.1f} KB")
-    print(f"Export time: {export_result.export_time_seconds:.2f}s")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 6: Validate ONNX model
-# ══════════════════════════════════════════════════════════════════════
-
-if export_result.success and export_result.onnx_path:
-    sample_input = torch.from_numpy(X_test[:10]).to(device)
-
-    # TODO: validate ONNX model against PyTorch using bridge.validate()
-    #       with onnx_path=export_result.onnx_path, sample_input=sample_input,
-    #       tolerance=1e-4
-    validation = bridge.validate(
-        model=____,  # Hint: model
-        onnx_path=____,  # Hint: export_result.onnx_path
-        sample_input=____,  # Hint: sample_input
-        tolerance=____,  # Hint: 1e-4
+# TODO: Clean the news corpus with Polars string expressions:
+#   - Combine title and body into a "text" column (title + ". " + body)
+#   - Parse "published_date" to date type with format "%Y-%m-%d"
+#   - Filter articles with body length > 100 chars
+#   - Extract "year_month" via dt.strftime("%Y-%m")
+news_clean = (
+    news.with_columns(
+        ____,  # Hint: (pl.col("title") + ". " + pl.col("body")).alias("text")
+        ____,  # Hint: pl.col("published_date").str.to_date("%Y-%m-%d").alias("date")
     )
+    .filter(____)  # Hint: pl.col("body").str.len_chars() > 100
+    .with_columns(
+        ____,  # Hint: pl.col("date").dt.strftime("%Y-%m").alias("year_month")
+    )
+)
 
-    print(f"\n=== ONNX Validation ===")
-    print(f"Valid: {validation.valid}")
-    print(f"Max difference: {validation.max_diff:.8f}")
-    print(f"Mean difference: {validation.mean_diff:.8f}")
-    print(f"Samples tested: {validation.n_samples}")
+documents = news_clean["text"].to_list()
+dates = news_clean["date"].to_list()
+print(f"\nCleaned corpus: {len(documents):,} articles")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Visualise training dynamics
+# TASK 2: BERTopic model
+# ══════════════════════════════════════════════════════════════════════
+
+if BERTopic is not None:
+    # BERTopic pipeline:
+    # 1. Sentence embeddings (SBERT)
+    # 2. Dimensionality reduction (UMAP)
+    # 3. Clustering (HDBSCAN)
+    # 4. Topic representation (c-TF-IDF)
+
+    # TODO: Create BERTopic with embedding_model="all-MiniLM-L6-v2",
+    # min_topic_size=20, nr_topics="auto", verbose=True
+    topic_model = ____  # Hint: BERTopic(embedding_model="all-MiniLM-L6-v2", umap_model=None, hdbscan_model=None, min_topic_size=20, nr_topics="auto", verbose=True)
+    # TODO: Fit and transform the documents
+    topics, probs = ____  # Hint: topic_model.fit_transform(documents)
+
+    topic_info = topic_model.get_topic_info()
+    n_topics = len(topic_info) - 1  # Exclude outlier topic -1
+    print(f"\n=== BERTopic Results ===")
+    print(f"Topics found: {n_topics}")
+    print(f"Outlier documents: {(np.array(topics) == -1).sum():,}")
+
+    print(f"\nTop 10 Topics:")
+    for _, row in topic_info.head(11).iterrows():
+        if row["Topic"] == -1:
+            continue
+        print(f"  Topic {row['Topic']}: {row['Name'][:60]} (n={row['Count']})")
+
+else:
+    # Fallback: TF-IDF + NMF for environments without BERTopic
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.decomposition import NMF
+
+    print("\nBERTopic not installed, using TF-IDF + NMF fallback")
+
+    # TODO: Create TfidfVectorizer with max_features=5000, stop_words="english",
+    # max_df=0.95, min_df=5; fit_transform on documents
+    vectorizer = ____  # Hint: TfidfVectorizer(max_features=5000, stop_words="english", max_df=0.95, min_df=5)
+    tfidf_matrix = ____  # Hint: vectorizer.fit_transform(documents)
+    feature_names = vectorizer.get_feature_names_out()
+
+    n_topics = 15
+    # TODO: Create NMF with n_components=n_topics, random_state=42
+    nmf = ____  # Hint: NMF(n_components=n_topics, random_state=42)
+    W = ____  # Hint: nmf.fit_transform(tfidf_matrix)  — Document-topic matrix
+    H = nmf.components_  # Topic-word matrix
+
+    topics = W.argmax(axis=1).tolist()
+    probs = W / (W.sum(axis=1, keepdims=True) + 1e-10)
+
+    print(f"\nNMF Topics ({n_topics}):")
+    for topic_idx in range(n_topics):
+        top_words = [feature_names[i] for i in H[topic_idx].argsort()[-8:][::-1]]
+        count = sum(1 for t in topics if t == topic_idx)
+        print(f"  Topic {topic_idx}: {', '.join(top_words)} (n={count})")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Topic coherence evaluation (NPMI)
+# ══════════════════════════════════════════════════════════════════════
+# NPMI (Normalised Pointwise Mutual Information):
+# NPMI(w_i, w_j) = (log P(w_i,w_j)/(P(w_i)P(w_j))) / (-log P(w_i,w_j))
+# Range: [-1, 1]. Higher = more coherent topic.
+
+
+def compute_npmi(
+    documents: list[str], topic_words: list[list[str]], window_size: int = 10
+) -> list[float]:
+    """Compute NPMI coherence for each topic."""
+    word_doc_count = Counter()
+    pair_doc_count = Counter()
+    n_docs = len(documents)
+
+    for doc in documents:
+        words = set(doc.lower().split())
+        for w in words:
+            word_doc_count[w] += 1
+        word_list = list(words)
+        for i in range(len(word_list)):
+            for j in range(i + 1, len(word_list)):
+                pair = tuple(sorted([word_list[i], word_list[j]]))
+                pair_doc_count[pair] += 1
+
+    coherences = []
+    for topic in topic_words:
+        npmi_sum = 0
+        n_pairs = 0
+        for i in range(len(topic)):
+            for j in range(i + 1, len(topic)):
+                w_i, w_j = topic[i].lower(), topic[j].lower()
+                pair = tuple(sorted([w_i, w_j]))
+                p_i = word_doc_count.get(w_i, 0) / n_docs
+                p_j = word_doc_count.get(w_j, 0) / n_docs
+                p_ij = pair_doc_count.get(pair, 0) / n_docs
+
+                if p_ij > 0 and p_i > 0 and p_j > 0:
+                    pmi = np.log(p_ij / (p_i * p_j))
+                    npmi = pmi / (-np.log(p_ij))
+                    npmi_sum += npmi
+                    n_pairs += 1
+
+        coherences.append(npmi_sum / max(n_pairs, 1))
+    return coherences
+
+
+# Get topic words
+if BERTopic is not None:
+    topic_words = []
+    for topic_id in range(n_topics):
+        words = [w for w, _ in topic_model.get_topic(topic_id)[:10]]
+        topic_words.append(words)
+else:
+    topic_words = []
+    for topic_idx in range(n_topics):
+        words = [feature_names[i] for i in H[topic_idx].argsort()[-10:][::-1]]
+        topic_words.append(words)
+
+# TODO: Compute NPMI coherence for all topics (sample first 5000 docs for speed)
+coherences = ____  # Hint: compute_npmi(documents[:5000], topic_words)
+
+print(f"\n=== Topic Coherence (NPMI) ===")
+print(f"Mean NPMI: {np.mean(coherences):.4f}")
+print(f"Best topic: {np.argmax(coherences)} (NPMI={max(coherences):.4f})")
+print(f"Worst topic: {np.argmin(coherences)} (NPMI={min(coherences):.4f})")
+for i, c in enumerate(coherences[:10]):
+    bar = "█" * max(0, int((c + 0.5) * 20))
+    print(f"  Topic {i}: {c:+.4f} {bar}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Temporal topic evolution
+# ══════════════════════════════════════════════════════════════════════
+
+# TODO: Add topics column to news_clean and compute proportion per month
+news_with_topics = news_clean.with_columns(
+    pl.Series("topic", topics[: news_clean.height])
+)
+
+temporal = (
+    news_with_topics.filter(pl.col("topic") >= 0)  # Exclude outliers
+    .group_by("year_month", "topic")
+    .agg(pl.col("topic").count().alias("count"))
+    .sort("year_month", "topic")
+)
+
+monthly_totals = temporal.group_by("year_month").agg(
+    pl.col("count").sum().alias("total")
+)
+temporal = temporal.join(monthly_totals, on="year_month").with_columns(
+    # TODO: Compute proportion = count / total for each row
+    (____).alias("proportion")  # Hint: pl.col("count") / pl.col("total")
+)
+
+print(f"\n=== Temporal Evolution ===")
+print(f"Months covered: {temporal['year_month'].n_unique()}")
+
+months = sorted(temporal["year_month"].unique().to_list())
+if len(months) >= 6:
+    early = months[:3]
+    late = months[-3:]
+
+    print("\nTrending topics (last 3 months vs first 3 months):")
+    for topic_id in range(min(n_topics, 10)):
+        early_prop = temporal.filter(
+            (pl.col("year_month").is_in(early)) & (pl.col("topic") == topic_id)
+        )["proportion"].mean()
+        late_prop = temporal.filter(
+            (pl.col("year_month").is_in(late)) & (pl.col("topic") == topic_id)
+        )["proportion"].mean()
+
+        if early_prop is not None and late_prop is not None:
+            change = (late_prop - early_prop) * 100
+            arrow = "↑" if change > 1 else "↓" if change < -1 else "→"
+            print(f"  Topic {topic_id}: {change:+.1f}pp {arrow}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Visualise
 # ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
 
-# Loss curves
-fig_loss = viz.training_history(
-    {"Train Loss": history["train_loss"], "Val Loss": history["val_loss"]},
-    x_label="Epoch",
-)
-fig_loss.update_layout(title="Training and Validation Loss")
-fig_loss.write_html("ex5_loss_curves.html")
+# TODO: Build topic coherence comparison chart
+coherence_data = {f"Topic_{i}": {"NPMI": c} for i, c in enumerate(coherences[:10])}
+fig = ____  # Hint: viz.metric_comparison(coherence_data)
+fig.update_layout(title="Topic Coherence (NPMI)")
+fig.write_html("ex5_topic_coherence.html")
+print("\nSaved: ex5_topic_coherence.html")
 
-# LR schedule
-fig_lr = viz.training_history(
-    {"Learning Rate": history["lr"]},
-    x_label="Epoch",
-)
-fig_lr.update_layout(title="Cosine Annealing LR Schedule")
-fig_lr.write_html("ex5_lr_schedule.html")
+# TODO: Build topic size distribution chart
+topic_counts = Counter(t for t in topics if t >= 0)
+size_data = {"Topic Size": [topic_counts.get(i, 0) for i in range(min(n_topics, 15))]}
+fig_size = ____  # Hint: viz.training_history(size_data, x_label="Topic ID")
+fig_size.update_layout(title="Topic Size Distribution")
+fig_size.write_html("ex5_topic_sizes.html")
+print("Saved: ex5_topic_sizes.html")
 
-# Gradient norms
-fig_grad = viz.training_history(
-    {"Gradient Norm": history["grad_norm"]},
-    x_label="Epoch",
-)
-fig_grad.update_layout(title="Gradient Norm During Training")
-fig_grad.write_html("ex5_gradient_norms.html")
-
-print("\nSaved: ex5_loss_curves.html, ex5_lr_schedule.html, ex5_gradient_norms.html")
-
-print("\n✓ Exercise 5 complete — CNN training + ONNX export")
-print("  Next: Exercise 6 deploys this ONNX model via InferenceServer + Nexus")
+print("\n✓ Exercise 5 complete — topic modeling with BERTopic / NMF")

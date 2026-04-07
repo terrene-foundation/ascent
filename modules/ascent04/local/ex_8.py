@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT04 — Exercise 8: InferenceServer + Nexus Deployment
+# ASCENT04 — Exercise 8: M4 Capstone — Unsupervised + DL Pipeline
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Deploy the ONNX model from Exercise 7 via InferenceServer,
 #   expose through Nexus (API + CLI + MCP simultaneously). Use
@@ -40,62 +40,60 @@ setup_environment()
 
 
 async def register_onnx_model():
-    # TODO: Create a ConnectionManager for "sqlite:///ascent04_deployment.db"
-    #   and call await conn.initialize().
+    # TODO: Create a ConnectionManager for SQLite and initialize it
     conn = ____  # Hint: ConnectionManager("sqlite:///ascent04_deployment.db")
     ____  # Hint: await conn.initialize()
 
-    # TODO: Instantiate ModelRegistry(conn) and call await registry.initialize().
+    # TODO: Create a ModelRegistry with the connection
     registry = ____  # Hint: ModelRegistry(conn)
-    ____  # Hint: await registry.initialize()
 
-    # Load ONNX model bytes
+    import pickle
+    from sklearn.dummy import DummyClassifier
+
     onnx_path = Path("medical_cnn.onnx")
-    if onnx_path.exists():
+    _use_dummy = not onnx_path.exists()
+    if not _use_dummy:
         model_bytes = onnx_path.read_bytes()
     else:
-        # Create a placeholder for environments without the trained model
-        model_bytes = b"placeholder_onnx_model"
-        print("ONNX model not found — using placeholder. Run Exercise 7 first.")
+        dummy = DummyClassifier(strategy="prior")
+        dummy.fit(np.zeros((10, 5)), np.array([0] * 8 + [1] * 2))
+        model_bytes = pickle.dumps(dummy)
+        print("ONNX model not found — using dummy sklearn model. Run Exercise 7 first.")
 
-    # TODO: Define a ModelSignature with:
-    #   - input_schema: FeatureSchema named "medical_image_input",
-    #       one FeatureField(name="image", dtype="float32",
-    #                        description="Grayscale image tensor (1, 64, 64)"),
-    #       entity_id_column="patient_id"
-    #   - output_columns: ["condition_a","condition_b","condition_c","condition_d","condition_e"]
-    #   - output_dtypes: ["float32"] * 5
-    #   - model_type: "classifier"
+    # Define model signature
+    if _use_dummy:
+        input_features = [
+            FeatureField(name=f"feat_{i}", dtype="float32") for i in range(5)
+        ]
+    else:
+        input_features = [
+            FeatureField(
+                name="image",
+                dtype="float32",
+                description="Grayscale image tensor (1, 64, 64)",
+            ),
+        ]
+
+    # TODO: Create a ModelSignature with input_schema (FeatureSchema), output_columns,
+    # output_dtypes, and model_type="classifier"
     signature = ModelSignature(
         input_schema=FeatureSchema(
             name=____,  # Hint: "medical_image_input"
-            features=[
-                FeatureField(
-                    name=____,  # Hint: "image"
-                    dtype=____,  # Hint: "float32"
-                    description=____,  # Hint: "Grayscale image tensor (1, 64, 64)"
-                ),
-            ],
+            features=____,  # Hint: input_features
             entity_id_column=____,  # Hint: "patient_id"
         ),
-        output_columns=____,  # Hint: ["condition_a","condition_b","condition_c","condition_d","condition_e"]
+        output_columns=____,  # Hint: ["condition_a", "condition_b", "condition_c", "condition_d", "condition_e"]
         output_dtypes=____,  # Hint: ["float32"] * 5
         model_type=____,  # Hint: "classifier"
     )
 
-    # TODO: Register the model using registry.register_model.
-    #   name="medical_cnn_v1", artifact=model_bytes,
-    #   metrics=[MetricSpec(name="auc_condition_a", value=0.75),
-    #            MetricSpec(name="auc_condition_b", value=0.72)],
-    #   signature=signature
+    # TODO: Register the model with registry.register_model()
+    # name="medical_cnn_v1", artifact=model_bytes, metrics=[...], signature=signature
     from kailash_ml.types import MetricSpec
 
-    model_version = await registry.register_model(
-        name=____,  # Hint: "medical_cnn_v1"
-        artifact=____,  # Hint: model_bytes
-        metrics=____,  # Hint: [MetricSpec(name="auc_condition_a", value=0.75), MetricSpec(name="auc_condition_b", value=0.72)]
-        signature=____,  # Hint: signature
-    )
+    model_version = (
+        await ____
+    )  # Hint: registry.register_model(name="medical_cnn_v1", artifact=model_bytes, metrics=[MetricSpec(name="auc_condition_a", value=0.75), MetricSpec(name="auc_condition_b", value=0.72)], signature=signature)
 
     print(f"=== Model Registered ===")
     print(f"Name: {model_version.name}")
@@ -103,20 +101,16 @@ async def register_onnx_model():
     print(f"Stage: {model_version.stage}")
     print(f"ONNX status: {model_version.onnx_status}")
 
-    # TODO: Promote the model to "production" stage using registry.promote_model.
-    #   reason="Passed quality gates for ASCENT04 deployment exercise"
-    model_version = await registry.promote_model(
-        name=____,  # Hint: "medical_cnn_v1"
-        version=____,  # Hint: model_version.version
-        target_stage=____,  # Hint: "production"
-        reason=____,  # Hint: "Passed quality gates for ASCENT04 deployment exercise"
-    )
+    # TODO: Promote model to production stage using registry.promote_model()
+    model_version = (
+        await ____
+    )  # Hint: registry.promote_model(name="medical_cnn_v1", version=model_version.version, target_stage="production", reason="Passed quality gates for ASCENT04 deployment exercise")
     print(f"Promoted to: {model_version.stage}")
 
-    return conn, registry, signature
+    return conn, registry, signature, _use_dummy
 
 
-conn, registry, signature = asyncio.run(register_onnx_model())
+conn, registry, signature, USE_DUMMY_MODEL = asyncio.run(register_onnx_model())
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -125,14 +119,17 @@ conn, registry, signature = asyncio.run(register_onnx_model())
 
 
 async def setup_inference():
-    # TODO: Instantiate InferenceServer with cache_size=5.
+    # TODO: Create InferenceServer with the registry and cache_size=5
     server = ____  # Hint: InferenceServer(registry, cache_size=5)
 
-    # TODO: Warm the cache for "medical_cnn_v1" using server.warm_cache.
-    ____  # Hint: await server.warm_cache(["medical_cnn_v1"])
+    # Warm the cache with our model
+    try:
+        await server.warm_cache(["medical_cnn_v1"])
+    except Exception as exc:
+        print(f"Cache warming skipped: {exc}")
 
-    # TODO: Retrieve model info using server.get_model_info.
-    info = ____  # Hint: await server.get_model_info("medical_cnn_v1")
+    # TODO: Get and print model info using server.get_model_info()
+    info = await ____  # Hint: server.get_model_info("medical_cnn_v1")
     print(f"\n=== InferenceServer ===")
     print(f"Model info: {info}")
 
@@ -148,18 +145,20 @@ server = asyncio.run(setup_inference())
 
 
 async def test_inference():
-    # Single prediction
     rng = np.random.default_rng(42)
-    sample_features = {
-        "image": rng.standard_normal((1, 64, 64)).tolist(),
-        "patient_id": "patient_001",
-    }
+    if USE_DUMMY_MODEL:
+        sample_features = {f"feat_{i}": float(rng.standard_normal()) for i in range(5)}
+        sample_features["patient_id"] = "patient_001"
+    else:
+        sample_features = {
+            "image": rng.standard_normal((1, 64, 64)).tolist(),
+            "patient_id": "patient_001",
+        }
 
-    # TODO: Call server.predict with model_name="medical_cnn_v1" and features.
-    result = await server.predict(
-        model_name=____,  # Hint: "medical_cnn_v1"
-        features=____,  # Hint: sample_features
-    )
+    # TODO: Run a single prediction through server.predict()
+    result = (
+        await ____
+    )  # Hint: server.predict(model_name="medical_cnn_v1", features=sample_features)
 
     print(f"\n=== Single Prediction ===")
     print(f"Prediction: {result.prediction}")
@@ -168,20 +167,27 @@ async def test_inference():
     print(f"Inference time: {result.inference_time_ms:.2f}ms")
     print(f"Inference path: {result.inference_path}")
 
-    # Batch prediction
-    batch = [
-        {
-            "image": rng.standard_normal((1, 64, 64)).tolist(),
-            "patient_id": f"patient_{i:03d}",
-        }
-        for i in range(10)
-    ]
+    if USE_DUMMY_MODEL:
+        batch = [
+            {
+                **{f"feat_{j}": float(rng.standard_normal()) for j in range(5)},
+                "patient_id": f"patient_{i:03d}",
+            }
+            for i in range(10)
+        ]
+    else:
+        batch = [
+            {
+                "image": rng.standard_normal((1, 64, 64)).tolist(),
+                "patient_id": f"patient_{i:03d}",
+            }
+            for i in range(10)
+        ]
 
-    # TODO: Call server.predict_batch with model_name and records=batch.
-    batch_results = await server.predict_batch(
-        model_name=____,  # Hint: "medical_cnn_v1"
-        records=____,  # Hint: batch
-    )
+    # TODO: Run batch prediction through server.predict_batch()
+    batch_results = (
+        await ____
+    )  # Hint: server.predict_batch(model_name="medical_cnn_v1", records=batch)
 
     print(f"\n=== Batch Prediction ({len(batch_results)} samples) ===")
     avg_time = np.mean([r.inference_time_ms for r in batch_results])
@@ -202,24 +208,26 @@ async def deploy_nexus():
     """Deploy via Nexus — API + CLI + MCP from a single registration."""
     from nexus import Nexus
 
-    # TODO: Instantiate a Nexus app.
+    # TODO: Create a Nexus app and register inference endpoints
     app = ____  # Hint: Nexus()
 
-    # TODO: Register inference endpoints with Nexus using server.register_endpoints.
-    ____  # Hint: server.register_endpoints(app)
+    try:
+        ____  # Hint: server.register_endpoints(app)
+    except (ImportError, ModuleNotFoundError):
+        print("kailash_nexus not installed — skipping endpoint auto-registration")
 
     print(f"\n=== Nexus Multi-Channel Deployment ===")
     print("Registered channels:")
-    print("  REST API:  POST /predict/medical_cnn_v1")
-    print("  CLI:       nexus predict medical_cnn_v1 --input data.json")
-    print("  MCP Tool:  predict_medical_cnn_v1(features)")
+    print("  • REST API:  POST /predict/medical_cnn_v1")
+    print("  • CLI:       nexus predict medical_cnn_v1 --input data.json")
+    print("  • MCP Tool:  predict_medical_cnn_v1(features)")
     print()
     print("All three channels share:")
     print("  - Same InferenceServer (model loaded once)")
     print("  - Same ModelSignature (input validation)")
     print("  - Same caching and batching")
 
-    # TODO: Create a unified session using app.create_session().
+    # TODO: Create a Nexus session for stateful interaction
     session = ____  # Hint: app.create_session()
     print(f"\nNexus session created: {session}")
 
@@ -237,21 +245,27 @@ app, session = asyncio.run(deploy_nexus())
 async def test_nexus_prediction():
     """Test prediction through Nexus unified session."""
     rng = np.random.default_rng(99)
-    test_input = {
-        "image": rng.standard_normal((1, 64, 64)).tolist(),
-        "patient_id": "patient_nexus_test",
-    }
+    if USE_DUMMY_MODEL:
+        test_input = {
+            **{f"feat_{i}": float(rng.standard_normal()) for i in range(5)},
+            "patient_id": "patient_nexus_test",
+        }
+    else:
+        test_input = {
+            "image": rng.standard_normal((1, 64, 64)).tolist(),
+            "patient_id": "patient_nexus_test",
+        }
 
-    # TODO: Call server.predict with "medical_cnn_v1" and test_input.
-    result = await server.predict(____, ____)  # Hint: "medical_cnn_v1", test_input
+    # TODO: Run prediction through InferenceServer (same path regardless of channel)
+    result = await ____  # Hint: server.predict("medical_cnn_v1", test_input)
 
     print(f"\n=== Nexus Prediction Test ===")
     print(f"Input: patient_nexus_test")
     print(f"Output: {result.prediction}")
     print(f"Inference path: {result.inference_path}")
 
-    # TODO: Retrieve server metrics using server.get_metrics("medical_cnn_v1").
-    metrics = await server.get_metrics(____)  # Hint: "medical_cnn_v1"
+    # TODO: Retrieve server metrics for the deployed model
+    metrics = await ____  # Hint: server.get_metrics("medical_cnn_v1")
     print(f"\nServer metrics: {metrics}")
 
     return result
@@ -296,7 +310,7 @@ companies that can PROVE their AI is governed win regulated markets.
 # Clean up
 asyncio.run(conn.close())
 
-print("Exercise 8 complete — InferenceServer + Nexus multi-channel deployment")
+print("✓ Exercise 8 complete — InferenceServer + Nexus multi-channel deployment")
 print(
-    "  Module 4 complete: 6 exercises covering unsupervised ML, NLP, DL, and deployment"
+    "  Module 4 complete: 8 exercises covering unsupervised ML, NLP, DL, and deployment"
 )

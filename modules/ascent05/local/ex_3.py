@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT05 — Exercise 3: ReActAgent with Tools
+# ASCENT05 — Exercise 3: ReAct Agents with Tools
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Build a ReActAgent with custom tools for autonomous data
 #   exploration. Observe reasoning-action traces and tool selection.
@@ -32,6 +32,9 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
@@ -45,56 +48,65 @@ credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 # ══════════════════════════════════════════════════════════════════════
 
 
-# Tools are functions the agent can call during reasoning
 async def tool_profile_data(dataset_name: str) -> str:
     """Profile a dataset using DataExplorer and return summary."""
-    # TODO: Import DataExplorer from kailash_ml and profile the credit dataset
-    # Hint: from kailash_ml import DataExplorer
-    #       explorer = DataExplorer()
-    #       profile = await explorer.profile(credit.sample(...))
-    # TODO: Return a formatted string with: dataset name, rows, columns,
-    #       alert count, type summary, and top 5 alert types
-    # Hint: profile has .n_rows, .n_columns, .alerts, .type_summary attributes
+    # TODO: Import DataExplorer from kailash_ml; profile a 10_000-row sample of credit (seed=42)
+    #   Return formatted string: "Dataset: {dataset_name}\nRows: ...\nColumns: ...\nAlerts: ...\nTypes: ...\nTop alerts: ..."
+    #   profile attributes: .n_rows, .n_columns, .alerts, .type_summary
+    ____
+    ____
+    ____
+    ____
     ____
 
 
 async def tool_check_correlations(threshold: float = 0.8) -> str:
     """Find highly correlated features."""
-    # TODO: Import DataExplorer and AlertConfig from kailash_ml
-    # Hint: from kailash_ml import DataExplorer, AlertConfig
-    #       Use AlertConfig(high_correlation_threshold=threshold)
-    # TODO: Profile a 5000-row sample and extract pairs where abs(corr) > threshold
-    # Hint: profile.correlation_matrix is a dict[str, dict[str, float]]
-    #       Skip self-correlations (col_a != col_b) and duplicates
-    # TODO: Return formatted string listing high-correlation pairs
+    # TODO: Import DataExplorer and AlertConfig(high_correlation_threshold=threshold)
+    #   Profile a 5000-row sample; iterate profile.correlation_matrix (dict[str, dict[str, float]])
+    #   Collect pairs where abs(corr) > threshold, skip self-pairs and duplicates (use seen set)
+    #   Return formatted string listing high-correlation pairs up to 10
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
     ____
 
 
 def tool_describe_column(column_name: str) -> str:
     """Get statistics for a specific column."""
-    # TODO: Check if column_name exists in credit.columns; return error message if not
-    # Hint: if column_name not in credit.columns: return f"Column '____' not found..."
-    # TODO: For numeric columns (Float64, Float32, Int64, Int32): return mean, std, min, max, nulls
-    # Hint: col.dtype in (pl.Float64, pl.Float32, pl.Int64, pl.Int32)
-    # TODO: For categorical columns: return unique count, null count, top 5 value_counts
+    # TODO: Return error string if column_name not in credit.columns
+    #   For numeric (Float64/Float32/Int64/Int32): return mean, std, min, max, null_count
+    #   For categorical: return n_unique, null_count, top 5 value_counts
+    ____
+    ____
+    ____
+    ____
     ____
 
 
 def tool_default_rate_by(column_name: str) -> str:
     """Compute default rate grouped by a column."""
-    # TODO: Check if column_name exists; return error if not
-    # TODO: Group credit by column_name, aggregate default mean (rate) and count
-    # Hint: credit.group_by(column_name).agg(
-    #           pl.col("default").mean().alias("default_rate"),
-    #           pl.col("default").count().alias("n"),
-    #       ).sort("default_rate", descending=True).head(10)
-    # TODO: Format and return the grouped result as a readable string
+    # TODO: Return error string if column_name not in credit.columns
+    #   Group credit by column_name; agg default mean (alias "default_rate") and count (alias "n")
+    #   Sort descending, head(10); format rows as "  {val}: {rate:.3f} (n={n})"
+    ____
+    ____
+    ____
+    ____
+    ____
     ____
 
 
-# TODO: Build the tool registry dict mapping string names to functions
-# Hint: tools = {"profile_data": tool_profile_data, "check_correlations": ____, ...}
-tools = ____
+# Tool registry
+tools = {
+    "profile_data": tool_profile_data,
+    "check_correlations": tool_check_correlations,
+    "describe_column": tool_describe_column,
+    "default_rate_by": tool_default_rate_by,
+}
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -102,24 +114,20 @@ tools = ____
 # ══════════════════════════════════════════════════════════════════════
 
 
-class DataExplorationResult(Signature):
-    """Autonomous data exploration result."""
-
-    # TODO: Define one InputField: task (data exploration task description)
-    task: str = ____
-
-    # TODO: Define three OutputFields: findings (list[str] of key findings),
-    #       tools_used (list[str] of tools invoked), recommendation (str)
-    findings: list[str] = ____
-    tools_used: list[str] = ____
-    recommendation: str = ____
+# TODO: Define DataExplorationResult(Signature) with:
+#   InputField:  task (str)
+#   OutputField: findings (list[str]), tools_used (list[str]), recommendation (str)
+____
+____
+____
+____
+____
+____
 
 
-async def run_react_agent():
-    # TODO: Create a ReActAgent with DataExplorationResult signature,
-    #       the tools dict, budget $3.00, and max_iterations=10
-    # Hint: ReActAgent(signature=____, model=____, tools=____, max_llm_cost_usd=____, max_iterations=____)
-    agent = ____
+def run_react_agent():
+    # TODO: Create ReActAgent(model=model)
+    agent = ____  # Hint: ReActAgent(model=model)
 
     task = (
         "Explore the Singapore credit scoring dataset. "
@@ -128,27 +136,32 @@ async def run_react_agent():
         "and recommend preprocessing steps for a classification model."
     )
 
+    tool_descriptions = "\n".join(
+        f"  {name}: {func.__doc__ or 'no description'}" for name, func in tools.items()
+    )
+    context = (
+        f"Available analysis functions:\n{tool_descriptions}\n\n"
+        f"Dataset: sg_credit_scoring.parquet with {credit.height:,} rows "
+        f"and columns: {credit.columns}"
+    )
+
     print(f"\n=== ReActAgent Exploration ===")
     print(f"Task: {task}")
     print(f"Available tools: {list(tools.keys())}")
-    print(f"Max iterations: 10")
-    print(f"Cost budget: $3.00\n")
+    print(f"Budget: governed by Delegate-level budget_usd\n")
 
-    # TODO: Run the agent passing task as a keyword argument
-    # Hint: await agent.run(task=____)
-    result = ____
+    # TODO: Run agent with task=task, context=context (sync call, not async)
+    result = ____  # Hint: agent.run(task=task, context=context)
 
     print(f"\n=== Results ===")
-    print(f"Tools used: {result.tools_used}")
-    print(f"\nFindings:")
-    for i, finding in enumerate(result.findings):
-        print(f"  {i+1}. {finding}")
-    print(f"\nRecommendation: {result.recommendation}")
+    print(f"Result keys: {list(result.keys())}")
+    for key, value in result.items():
+        print(f"  {key}: {str(value)[:200]}")
 
     return result
 
 
-react_result = asyncio.run(run_react_agent())
+react_result = run_react_agent()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -177,7 +190,7 @@ What happens if you REMOVE the cost budget?
 3. What if the agent calls DataExplorer on a 100GB dataset?
    → Memory exhaustion, cluster costs, timeout failures
 
-max_llm_cost_usd is NOT optional. It is a governance requirement.
+budget_usd is NOT optional. It is a governance requirement.
 
 In production:
   - Set budgets proportional to task complexity

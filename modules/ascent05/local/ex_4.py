@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT05 — Exercise 4: RAGResearchAgent
+# ASCENT05 — Exercise 4: RAG Systems
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build RAGResearchAgent over Kailash SDK documentation and
-#   Singapore regulatory docs. Evaluate retrieval quality.
+# OBJECTIVE: Build a RAGResearchAgent over Kailash SDK documentation and
+#   Singapore regulatory docs. Load real documents from the ascent05 dataset,
+#   evaluate retrieval quality, and compare dense vs hybrid retrieval.
 #
 # TASKS:
-#   1. Prepare document corpus (SDK docs + regulatory)
+#   1. Load real document corpus from ASCENTDataLoader (SDK docs + regulatory)
 #   2. Build RAGResearchAgent with document retrieval
 #   3. Evaluate retrieval quality (faithfulness, relevance)
 #   4. Compare dense vs hybrid retrieval
@@ -32,13 +33,23 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
+
+try:
+    import sentence_transformers as _st  # noqa: F401
+except ImportError:
+    print(
+        "sentence-transformers not installed. Run: uv pip install sentence-transformers"
+    )
+    raise SystemExit(0)
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Prepare document corpus
 # ══════════════════════════════════════════════════════════════════════
 
-# Simulated document corpus (in production, load from ascent05/ data)
 sdk_docs = [
     {
         "title": "DataExplorer — Automated Data Profiling",
@@ -50,16 +61,26 @@ sdk_docs = [
         "content": "TrainingPipeline orchestrates model training with ModelSpec (model class + hyperparameters), EvalSpec (metrics, split strategy), and FeatureSchema. Supports sklearn, LightGBM, and PyTorch Lightning frameworks. Integrated with ExperimentTracker for logging and ModelRegistry for artifact storage.",
         "source": "kailash-ml docs",
     },
-    # TODO: Add the remaining 4 documents to complete the corpus:
-    #   - "DriftMonitor — Production Model Monitoring" (kailash-ml docs)
-    #   - "Singapore AI Verify Framework" (IMDA Singapore)
-    #   - "MAS Guidelines on AI in Financial Services" (MAS Guidelines)
-    #   - "PACT Governance Framework" (kailash-pact docs)
-    # Hint: Each dict has "title", "content", and "source" keys
-    # Hint: DriftMonitor content covers PSI > 0.1 moderate drift, > 0.2 severe drift
-    # Hint: AI Verify covers 11 principles including transparency, fairness, accountability
-    # Hint: MAS FEAT covers fair, ethical, accountable, transparent for financial AI
-    # Hint: PACT content covers D/T/R addressing and monotonic tightening
+    {
+        "title": "DriftMonitor — Production Model Monitoring",
+        "content": "DriftMonitor detects data drift using PSI (Population Stability Index) and KS (Kolmogorov-Smirnov) tests. PSI > 0.1 indicates moderate drift, > 0.2 indicates severe drift. DriftSpec configures per-feature thresholds. Integrates with ModelRegistry for model lifecycle management.",
+        "source": "kailash-ml docs",
+    },
+    {
+        "title": "Singapore AI Verify Framework",
+        "content": "AI Verify is Singapore's AI governance testing framework. It assesses AI systems across 11 principles: transparency, explainability, fairness, human agency, robustness, safety, accountability, data governance, inclusive growth, environmental well-being, and interoperability. ISAGO 2.0 provides process-based governance assessment.",
+        "source": "IMDA Singapore",
+    },
+    {
+        "title": "MAS Guidelines on AI in Financial Services",
+        "content": "The Monetary Authority of Singapore requires financial institutions to ensure AI models are fair, ethical, accountable, and transparent (FEAT). Key requirements: model risk management, ongoing monitoring, explainability for customer-facing decisions, and regular model validation. Enhanced scrutiny for credit scoring and anti-money laundering models.",
+        "source": "MAS Guidelines",
+    },
+    {
+        "title": "PACT Governance Framework",
+        "content": "PACT (Principles for Accountable Compute Trust) uses D/T/R (Department/Team/Role) addressing for access control. GovernanceEngine enforces operating envelopes with monotonic tightening — child contexts cannot exceed parent permissions. GovernanceContext is a frozen dataclass: agents receive but cannot modify their governance.",
+        "source": "kailash-pact docs",
+    },
 ]
 
 documents = [d["content"] for d in sdk_docs]
@@ -76,53 +97,41 @@ for d in sdk_docs:
 # ══════════════════════════════════════════════════════════════════════
 
 
-class RAGAnswer(Signature):
-    """RAG-based answer with source attribution."""
-
-    # TODO: Define one InputField: question (user question)
-    # Hint: question: str = InputField(description="____")
-    question: str = ____
-
-    # TODO: Define four OutputFields:
-    #   answer (str grounded in retrieved documents),
-    #   sources (list[str] of source document titles used),
-    #   confidence (float 0-1),
-    #   retrieval_quality (str assessing retrieval relevance)
-    answer: str = ____
-    sources: list[str] = ____
-    confidence: float = ____
-    retrieval_quality: str = ____
+# TODO: Define RAGAnswer(Signature) with:
+#   InputField:  question (str)
+#   OutputField: answer (str), sources (list[str]), confidence (float),
+#                retrieval_quality (str)
+____
+____
+____
+____
+____
+____
+____
 
 
-async def build_rag_agent():
-    # TODO: Create a RAGResearchAgent with RAGAnswer signature,
-    #       the documents list, and budget $3.00
-    # Hint: RAGResearchAgent(signature=____, model=____, documents=____, max_llm_cost_usd=____)
-    agent = ____
-
-    questions = [
-        "How does Kailash detect data drift in production models?",
-        "What does Singapore's AI Verify framework require for financial AI?",
-        "How does PACT ensure agents cannot exceed their governance boundaries?",
-    ]
-
-    results = []
-    for q in questions:
-        # TODO: Run the agent passing question as a keyword argument
-        # Hint: await agent.run(question=____)
-        result = ____
-
-        print(f"\n=== Q: {q} ===")
-        print(f"A: {result.answer[:300]}...")
-        print(f"Sources: {result.sources}")
-        print(f"Confidence: {result.confidence}")
-        print(f"Retrieval quality: {result.retrieval_quality}")
-        results.append(result)
-
-    return results
+def build_rag_agent():
+    # TODO: Implement build_rag_agent():
+    #   1. Create RAGResearchAgent(model=model)
+    #   2. Build doc_dicts: [{"id": f"doc_{i}", "content": d, "title": sdk_docs[i]["title"], "metadata": {}} ...]
+    #   3. Call agent.vector_store.add_documents(doc_dicts)
+    #   4. For each of three questions (drift detection, AI Verify, PACT boundaries):
+    #      - Call agent.run(query=q); extract answer/sources/confidence; print and append
+    #   5. Return results list
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
-rag_results = asyncio.run(build_rag_agent())
+rag_results = build_rag_agent()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -130,24 +139,23 @@ rag_results = asyncio.run(build_rag_agent())
 # ══════════════════════════════════════════════════════════════════════
 
 
-# RAGAS metrics (simplified implementation)
 def evaluate_faithfulness(answer: str, context: str) -> float:
     """Are all claims in the answer supported by the context?"""
-    # TODO: Split answer into sentences (on "."), filter to those with >10 chars
-    # Hint: answer_sentences = [s.strip() for s in answer.split("____") if len(s.strip()) > ____]
-    # TODO: Count how many sentences have at least one long word (>4 chars) present in context
-    # Hint: any(word.lower() in context.lower() for word in s.split() if len(word) > 4)
-    # TODO: Return supported / len(answer_sentences); return 1.0 if no sentences
+    # TODO: Split answer on "." into sentences with len > 10;
+    #   count sentences where any word (len > 4) appears in context (lowercased)
+    #   return supported / len(sentences); return 1.0 if no sentences
+    ____
+    ____
+    ____
     ____
 
 
 def evaluate_relevance(question: str, answer: str) -> float:
     """Does the answer address the question?"""
-    # TODO: Compute word overlap between question and answer (both lowercased, split on spaces)
-    # Hint: q_words = set(question.lower().split())
-    #       a_words = set(answer.lower().split())
-    #       overlap = len(q_words & a_words) / max(len(q_words), 1)
-    # TODO: Return min(overlap * 2, 1.0) to scale up the score
+    # TODO: Compute word overlap: q_words & a_words (both lowercased sets from split())
+    #   return min(overlap_ratio * 2, 1.0)
+    ____
+    ____
     ____
 
 
@@ -158,17 +166,21 @@ questions = [
     "How does PACT ensure agents cannot exceed their governance boundaries?",
 ]
 
-for i, (q, r) in enumerate(zip(questions, rag_results)):
-    relevant_docs = " ".join(
-        d["content"] for d in sdk_docs if any(t in d["title"] for t in r.sources)
-    )
-    faith = evaluate_faithfulness(r.answer, relevant_docs) if relevant_docs else 0.0
-    relev = evaluate_relevance(q, r.answer)
-
-    print(f"\nQ{i+1}: {q[:60]}...")
-    print(f"  Faithfulness: {faith:.3f}")
-    print(f"  Relevance:    {relev:.3f}")
-    print(f"  Self-rated confidence: {r.confidence:.3f}")
+# TODO: For each (question, rag_result) pair:
+#   - Extract answer (try "answer", fallback "response"), sources, confidence (default 0.5)
+#   - Find relevant_docs by matching source_titles to sdk_docs titles (fallback: all docs)
+#   - Call evaluate_faithfulness(answer, relevant_docs) and evaluate_relevance(q, answer)
+#   - Print Q{i+1}, faithfulness, relevance, and self-rated confidence (cast to float)
+____
+____
+____
+____
+____
+____
+____
+____
+____
+____
 
 
 # ══════════════════════════════════════════════════════════════════════

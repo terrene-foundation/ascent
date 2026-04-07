@@ -63,14 +63,9 @@ print(
 )
 print(f"Class balance: {y_simple.mean():.2f}")
 
-# TODO: Create a single-layer PyTorch network for binary classification.
-#   nn.Linear takes (in_features, out_features). For binary output: out_features=1.
+# TODO: Create a single linear layer, SGD optimiser (lr=0.1), BCEWithLogitsLoss
 simple_net = ____  # Hint: nn.Linear(n_feats_simple, 1)
-
-# TODO: Create SGD optimizer with lr=0.1 for simple_net parameters.
 simple_opt = ____  # Hint: torch.optim.SGD(simple_net.parameters(), lr=0.1)
-
-# TODO: Choose the correct loss for binary classification with raw logits.
 simple_crit = ____  # Hint: nn.BCEWithLogitsLoss()
 
 X_t = torch.from_numpy(X_simple)
@@ -78,21 +73,12 @@ y_t = torch.from_numpy(y_simple).unsqueeze(1)
 
 simple_losses = []
 for epoch in range(50):
-    # TODO: Zero the gradients before each forward pass.
+    # TODO: Zero gradients, forward pass, compute loss, backward, step
     ____  # Hint: simple_opt.zero_grad()
-
-    # TODO: Run forward pass through simple_net.
     logits = ____  # Hint: simple_net(X_t)
-
-    # TODO: Compute the loss using simple_crit.
     loss = ____  # Hint: simple_crit(logits, y_t)
-
-    # TODO: Backpropagate the loss.
     ____  # Hint: loss.backward()
-
-    # TODO: Update the parameters.
     ____  # Hint: simple_opt.step()
-
     simple_losses.append(loss.item())
 
 with torch.no_grad():
@@ -102,17 +88,13 @@ with torch.no_grad():
 print(f"After 50 epochs: loss={simple_losses[-1]:.4f}, accuracy={acc:.4f}")
 print(f"  Note: linear model cannot learn XOR — needs hidden layers (non-linearity)")
 
-# Add one hidden layer — now it CAN learn XOR
-# TODO: Define a 2-layer network using nn.Sequential.
-#   Layer 1: Linear(n_feats_simple, 16) + ReLU
-#   Layer 2: Linear(16, 1)
+# TODO: Build a two-layer network with a 16-unit hidden layer + ReLU,
+# use Adam optimiser (lr=0.01), train for 100 epochs
 hidden_net = nn.Sequential(
     ____,  # Hint: nn.Linear(n_feats_simple, 16)
     ____,  # Hint: nn.ReLU()
     ____,  # Hint: nn.Linear(16, 1)
 )
-
-# TODO: Create Adam optimizer with lr=0.01 for hidden_net parameters.
 hidden_opt = ____  # Hint: torch.optim.Adam(hidden_net.parameters(), lr=0.01)
 
 hidden_losses = []
@@ -138,23 +120,18 @@ print(f"  Depth:  stacking layers = composing functions = exponential expressivi
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1b: Load and prepare image data
 # ══════════════════════════════════════════════════════════════════════
-# Using synthetic data matching ChestX-ray14 characteristics
-# In production, load from ascent04/chest_xray_subset/
 
 loader = ASCENTDataLoader()
 
-# Load pre-extracted features (flattened images or embeddings)
-# For the exercise, we create synthetic data matching medical image properties
 n_samples = 5000
 n_channels = 1  # Grayscale X-rays
-img_size = 64  # Downsampled for training speed
+img_size = 64
 n_classes = 5  # Multi-label: 5 conditions
 
 rng = np.random.default_rng(42)
 X_images = rng.standard_normal((n_samples, n_channels, img_size, img_size)).astype(
     np.float32
 )
-# Multi-label: each sample can have multiple conditions
 y_labels = (rng.random((n_samples, n_classes)) > 0.85).astype(np.float32)
 
 print(f"=== Medical Image Data ===")
@@ -162,12 +139,10 @@ print(f"Images: {X_images.shape} (N, C, H, W)")
 print(f"Labels: {y_labels.shape} (N, classes)")
 print(f"Positive rates per class: {y_labels.mean(axis=0).round(3)}")
 
-# Split
 split = int(0.8 * n_samples)
 X_train, X_test = X_images[:split], X_images[split:]
 y_train, y_test = y_labels[:split], y_labels[split:]
 
-# DataLoaders
 train_ds = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
 test_ds = TensorDataset(torch.from_numpy(X_test), torch.from_numpy(y_test))
 train_loader = DataLoader(train_ds, batch_size=64, shuffle=True)
@@ -184,8 +159,8 @@ class ResBlock(nn.Module):
 
     def __init__(self, channels: int):
         super().__init__()
-        # TODO: Define two Conv2d layers (3x3 kernel, same padding) and
-        #   two BatchNorm2d layers. Both convolutions keep channels constant.
+        # TODO: Define conv1, bn1, conv2, bn2 — two Conv2d(channels, channels, 3, padding=1)
+        # blocks each paired with BatchNorm2d(channels)
         self.conv1 = ____  # Hint: nn.Conv2d(channels, channels, 3, padding=1)
         self.bn1 = ____  # Hint: nn.BatchNorm2d(channels)
         self.conv2 = ____  # Hint: nn.Conv2d(channels, channels, 3, padding=1)
@@ -193,11 +168,9 @@ class ResBlock(nn.Module):
 
     def forward(self, x):
         residual = x
-        # TODO: Apply conv1 → bn1 → relu, then conv2 → bn2.
-        out = ____  # Hint: torch.relu(self.bn1(self.conv1(x)))
-        out = ____  # Hint: self.bn2(self.conv2(out))
-        # TODO: Add the skip connection (residual) and apply relu.
-        return ____  # Hint: torch.relu(out + residual)
+        out = torch.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        return torch.relu(out + residual)  # Skip connection
 
 
 class MedicalCNN(nn.Module):
@@ -205,34 +178,18 @@ class MedicalCNN(nn.Module):
 
     def __init__(self, n_classes: int = 5):
         super().__init__()
-        # TODO: Define the feature extractor using nn.Sequential.
-        #   Block: Conv2d(1→32, 3x3, pad=1) → BN → ReLU → MaxPool2d(2)
-        #          → ResBlock(32)
-        #          → Conv2d(32→64, 3x3, pad=1) → BN → ReLU → MaxPool2d(2)
-        #          → ResBlock(64)
-        #          → AdaptiveAvgPool2d(4)
-        self.features = nn.Sequential(
-            ____,  # Hint: nn.Conv2d(1, 32, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(32)
-            nn.ReLU(),
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(32)
-            ____,  # Hint: nn.Conv2d(32, 64, 3, padding=1)
-            ____,  # Hint: nn.BatchNorm2d(64)
-            nn.ReLU(),
-            ____,  # Hint: nn.MaxPool2d(2)
-            ____,  # Hint: ResBlock(64)
-            ____,  # Hint: nn.AdaptiveAvgPool2d(4)
-        )
-        # TODO: Define the classifier head.
-        #   Flatten → Linear(64*4*4, 128) → ReLU → Dropout(0.3) → Linear(128, n_classes)
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            ____,  # Hint: nn.Linear(64 * 4 * 4, 128)
-            nn.ReLU(),
-            ____,  # Hint: nn.Dropout(0.3)
-            ____,  # Hint: nn.Linear(128, n_classes)
-        )
+        # TODO: Build the feature extractor as nn.Sequential:
+        #   Conv2d(1→32, 3x3 padding=1) → BatchNorm2d(32) → ReLU → MaxPool2d(2)
+        #   → ResBlock(32)
+        #   → Conv2d(32→64, 3x3 padding=1) → BatchNorm2d(64) → ReLU → MaxPool2d(2)
+        #   → ResBlock(64) → AdaptiveAvgPool2d(4)
+        # Hint: self.features = nn.Sequential(Conv2d, BN, ReLU, MaxPool, ResBlock, ...)
+        self.features = ____
+
+        # TODO: Build the classifier head as nn.Sequential:
+        #   Flatten → Linear(64*4*4 → 128) → ReLU → Dropout(0.3) → Linear(128 → n_classes)
+        # Hint: self.classifier = nn.Sequential(Flatten, Linear, ReLU, Dropout, Linear)
+        self.classifier = ____
 
     def forward(self, x):
         x = self.features(x)
@@ -251,18 +208,14 @@ print(f"Trainable: {trainable_params:,}")
 # TASK 3: Train with cosine annealing LR
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Choose the correct multi-label loss (BCE per class, with raw logits).
-criterion = ____  # Hint: nn.BCEWithLogitsLoss()
-
-# TODO: Create AdamW optimizer with lr=1e-3, weight_decay=1e-4.
+criterion = nn.BCEWithLogitsLoss()  # Multi-label: BCE per class
+# TODO: Create AdamW optimiser (lr=1e-3, weight_decay=1e-4) and
+# CosineAnnealingLR scheduler (T_max=n_epochs, eta_min=1e-6)
 optimizer = ____  # Hint: optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
-# Cosine annealing: LR decays from max to min following cosine curve
 n_epochs = 20
-# TODO: Create CosineAnnealingLR scheduler. T_max=n_epochs, eta_min=1e-6.
 scheduler = ____  # Hint: optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs, eta_min=1e-6)
 
-# Training loop with gradient monitoring
 history = {
     "train_loss": [],
     "val_loss": [],
@@ -284,15 +237,15 @@ for epoch in range(n_epochs):
         loss = criterion(logits, y_batch)
         loss.backward()
 
-        # Gradient monitoring: track gradient norm
+        # TODO: Compute gradient norm across all parameters (L2 norm of all grad tensors)
         total_norm = 0.0
         for p in model.parameters():
             if p.grad is not None:
-                total_norm += p.grad.data.norm(2).item() ** 2
+                total_norm += ____  # Hint: p.grad.data.norm(2).item() ** 2
         total_norm = total_norm**0.5
         epoch_grad_norms.append(total_norm)
 
-        # TODO: Clip gradients to max_norm=1.0 to prevent exploding gradients.
+        # TODO: Clip gradients with max_norm=1.0 to prevent exploding gradients
         ____  # Hint: torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
         optimizer.step()
@@ -307,13 +260,12 @@ for epoch in range(n_epochs):
             logits = model(X_batch)
             val_losses.append(criterion(logits, y_batch).item())
 
-    # Record
     history["train_loss"].append(np.mean(train_losses))
     history["val_loss"].append(np.mean(val_losses))
     history["lr"].append(scheduler.get_last_lr()[0])
     history["grad_norm"].append(np.mean(epoch_grad_norms))
 
-    # TODO: Step the LR scheduler at the end of each epoch.
+    # TODO: Advance the LR scheduler one step
     ____  # Hint: scheduler.step()
 
     if (epoch + 1) % 5 == 0:
@@ -338,7 +290,8 @@ with torch.no_grad():
     for X_batch, y_batch in test_loader:
         X_batch = X_batch.to(device)
         logits = model(X_batch)
-        probs = torch.sigmoid(logits).cpu().numpy()
+        # TODO: Apply sigmoid and collect numpy predictions
+        probs = ____  # Hint: torch.sigmoid(logits).cpu().numpy()
         all_preds.append(probs)
         all_labels.append(y_batch.numpy())
 
@@ -365,18 +318,15 @@ for i, name in enumerate(class_names):
 # TASK 5: Export to ONNX with OnnxBridge
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Instantiate OnnxBridge.
+# TODO: Create OnnxBridge and check model compatibility
 bridge = ____  # Hint: OnnxBridge()
 
-# TODO: Check model compatibility using bridge.check_compatibility.
-#   Pass framework="pytorch".
 compat = ____  # Hint: bridge.check_compatibility(model, framework="pytorch")
 print(f"\n=== ONNX Compatibility ===")
 print(f"Compatible: {compat.compatible}")
 print(f"Confidence: {compat.confidence}")
 
-# TODO: Export the model to ONNX using bridge.export.
-#   output_path="medical_cnn.onnx", framework="pytorch", n_features=None (CNN).
+# TODO: Export the model to ONNX format
 export_result = ____  # Hint: bridge.export(model=model, framework="pytorch", output_path="medical_cnn.onnx", n_features=None)
 
 print(f"\nExport result: {export_result.success}")
@@ -394,8 +344,8 @@ if export_result.onnx_path:
 if export_result.success and export_result.onnx_path:
     sample_input = torch.from_numpy(X_test[:10]).to(device)
 
-    # TODO: Validate the ONNX model against PyTorch using bridge.validate.
-    #   Pass model, onnx_path, sample_input, tolerance=1e-4.
+    # TODO: Validate the ONNX model against the PyTorch model predictions
+    # Use bridge.validate() with tolerance=1e-4
     validation = ____  # Hint: bridge.validate(model=model, onnx_path=export_result.onnx_path, sample_input=sample_input, tolerance=1e-4)
 
     print(f"\n=== ONNX Validation ===")
@@ -411,31 +361,20 @@ if export_result.success and export_result.onnx_path:
 
 viz = ModelVisualizer()
 
-# Loss curves
-fig_loss = viz.training_history(
-    {"Train Loss": history["train_loss"], "Val Loss": history["val_loss"]},
-    x_label="Epoch",
-)
+# TODO: Build loss curves, LR schedule, and gradient norm charts
+fig_loss = ____  # Hint: viz.training_history({"Train Loss": history["train_loss"], "Val Loss": history["val_loss"]}, x_label="Epoch")
 fig_loss.update_layout(title="Training and Validation Loss")
-fig_loss.write_html("ex5_loss_curves.html")
+fig_loss.write_html("ex7_loss_curves.html")
 
-# LR schedule
-fig_lr = viz.training_history(
-    {"Learning Rate": history["lr"]},
-    x_label="Epoch",
-)
+fig_lr = ____  # Hint: viz.training_history({"Learning Rate": history["lr"]}, x_label="Epoch")
 fig_lr.update_layout(title="Cosine Annealing LR Schedule")
-fig_lr.write_html("ex5_lr_schedule.html")
+fig_lr.write_html("ex7_lr_schedule.html")
 
-# Gradient norms
-fig_grad = viz.training_history(
-    {"Gradient Norm": history["grad_norm"]},
-    x_label="Epoch",
-)
+fig_grad = ____  # Hint: viz.training_history({"Gradient Norm": history["grad_norm"]}, x_label="Epoch")
 fig_grad.update_layout(title="Gradient Norm During Training")
-fig_grad.write_html("ex5_gradient_norms.html")
+fig_grad.write_html("ex7_gradient_norms.html")
 
-print("\nSaved: ex5_loss_curves.html, ex5_lr_schedule.html, ex5_gradient_norms.html")
+print("\nSaved: ex7_loss_curves.html, ex7_lr_schedule.html, ex7_gradient_norms.html")
 
-print("\nExercise 7 complete — CNN training + ONNX export")
+print("\n✓ Exercise 7 complete — CNN training + ONNX export")
 print("  Next: Exercise 8 deploys this ONNX model via InferenceServer + Nexus")

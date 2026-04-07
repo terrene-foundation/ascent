@@ -2,20 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT05 — Exercise 5: ML Agent Pipeline (All 6 ML Agents)
+# ASCENT05 — Exercise 5: MCP Servers and Tool Integration
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Chain all 6 kailash-ml agents in a full ML pipeline:
-#   DataScientist → FeatureEngineer → ModelSelector → ExperimentInterpreter
-#   → DriftAnalyst → RetrainingDecision. Demonstrate the double opt-in
-#   pattern (AgentInfusionProtocol).
+# OBJECTIVE: Build an MCP server that exposes kailash-ml tools (DataExplorer,
+#   ModelVisualizer) to agents at scale. Understand the MCP protocol, tool
+#   registration pattern, and SSE transport setup.
 #
 # TASKS:
-#   1. Set up the 6 ML agents with cost budgets
-#   2. DataScientistAgent: initial data analysis
-#   3. FeatureEngineerAgent: suggest features
-#   4. ModelSelectorAgent: recommend model architecture
-#   5. ExperimentInterpreterAgent: interpret results
-#   6. DriftAnalyst + RetrainingDecision: production monitoring
+#   1. Understand the MCP architecture (server / client / protocol)
+#   2. Create an MCP server with MCPServer
+#   3. Register ML tools (profile_data, visualize_feature, describe_column)
+#   4. Configure SSE transport for production use
+#   5. Test tool invocation through the MCP protocol
+#   6. Connect an agent to the MCP server as a tool provider
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -24,14 +23,9 @@ import asyncio
 import os
 
 import polars as pl
-from dotenv import load_dotenv
 
-from kailash_ml.agents.data_scientist import DataScientistAgent
-from kailash_ml.agents.model_selector import ModelSelectorAgent
-from kailash_ml.agents.feature_engineer import FeatureEngineerAgent
-from kailash_ml.agents.experiment_interpreter import ExperimentInterpreterAgent
-from kailash_ml.agents.drift_analyst import DriftAnalystAgent
-from kailash_ml.agents.retraining_decision import RetrainingDecisionAgent
+from kailash.mcp_server import MCPServer
+from kaizen_agents import Delegate
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -39,233 +33,272 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 
 
 # ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
+customers = loader.load("ascent04", "ecommerce_customers.parquet")
 
-data_context = {
-    "dataset": "Singapore Credit Scoring",
-    "rows": credit.height,
-    "columns": credit.columns,
-    "target": "default",
-    "default_rate": float(credit["default"].mean()),
-    "features": len(credit.columns) - 1,
-}
-
-print(f"=== ML Agent Pipeline ===")
-print(f"Dataset: {data_context['dataset']}")
-print(f"Shape: {data_context['rows']:,} × {data_context['features']} features")
-print(f"Default rate: {data_context['default_rate']:.2%}")
+print(f"=== MCP Server Exercise ===")
+print(f"Credit dataset: {credit.shape}")
+print(f"Customers dataset: {customers.shape}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: DataScientistAgent — initial analysis
+# TASK 1: MCP Architecture
+# ══════════════════════════════════════════════════════════════════════
+#
+# MCP (Model Context Protocol) is a standard for agents to discover and
+# call tools hosted on a server, independent of agent implementation.
+#
+# Architecture:
+#
+#   ┌─────────────────────┐       MCP protocol        ┌──────────────────────┐
+#   │   Agent / Client    │ ─────────────────────────► │    MCPServer         │
+#   │  (Delegate/ReAct)   │ ◄───────────────────────── │  (tool registry)     │
+#   └─────────────────────┘   tool_call / tool_result  └──────────────────────┘
+#                                                                │
+#                                                    ┌───────────┼───────────┐
+#                                                    ▼           ▼           ▼
+#                                             profile_data  visualize   describe
+#                                             (DataExplorer)(ModelViz)  (column)
+#
+# Transport options:
+#   StdioTransport  — subprocess pipe, great for local/testing
+#   SSETransport    — HTTP Server-Sent Events, production/remote
+#   WebSocketTransport — bidirectional, streaming use cases
+#
+# Why MCP?
+#   - Tool definitions live on the server, not hardcoded in agent
+#   - Agents discover tools dynamically at runtime
+#   - Same server can serve many different agents
+#   - Centralised tool versioning and access control
+
+print(f"\n=== MCP Architecture ===")
+print(f"Protocol: tool_list → tool_call → tool_result")
+print(f"Transport: StdioTransport (local), SSETransport (production)")
+print(f"Discovery: agent calls list_tools() at startup")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Create MCPServer with metadata
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def step_1_data_scientist():
-    # TODO: Create a DataScientistAgent with budget $1.00
-    # Hint: DataScientistAgent(model=____, max_llm_cost_usd=____)
+def create_ml_mcp_server() -> MCPServer:
+    """Build an MCPServer that wraps kailash-ml tools."""
+    # TODO: Instantiate MCPServer with name="kailash-ml-tools"
+    server = ____  # Hint: MCPServer(name="kailash-ml-tools")
+    return server
+
+
+server = create_ml_mcp_server()
+print(f"\n=== MCPServer Created ===")
+print(f"Name: {server.name}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Register ML tools
+# ══════════════════════════════════════════════════════════════════════
+# Each tool has: name, description, input_schema, and an async handler.
+# The input_schema uses JSON Schema so agents know what arguments to pass.
+
+
+# TODO: Register profile_dataset as an MCP tool using the @server.tool() decorator.
+#   The function must be async and accept dataset (str) and sample_size (int = 5000).
+#   It should use DataExplorer to profile a sample of credit or customers,
+#   then return a formatted string with: dataset name, rows, columns, types, and alerts.
+# Hint: @server.tool()
+#       async def profile_dataset(dataset: str, sample_size: int = 5000) -> str:
+#           from kailash_ml import DataExplorer
+#           df = credit if dataset == "credit" else customers
+#           ...
+____
+
+
+# TODO: Register describe_column as an MCP tool.
+#   Accepts dataset (str) and column (str).
+#   Returns per-column stats: for numeric — mean, std, min, max, nulls, P25, median, P75;
+#   for categorical — unique count, nulls, top 5 value_counts.
+# Hint: @server.tool()
+#       async def describe_column(dataset: str, column: str) -> str: ...
+____
+
+
+# TODO: Register target_analysis as an MCP tool.
+#   Accepts dataset (str), feature (str), target (str).
+#   For numeric features: bin into quartiles using pl.col(feature).cut(breaks=[...]).
+#   For categorical features: group directly.
+#   Return target rate by feature group (top 10 rows).
+# Hint: @server.tool()
+#       async def target_analysis(dataset: str, feature: str, target: str) -> str: ...
+____
+
+
+# TODO: Register list_columns as an MCP tool.
+#   Accepts dataset (str).
+#   Returns all column names and their dtypes for the selected dataset.
+# Hint: @server.tool()
+#       async def list_columns(dataset: str) -> str: ...
+____
+
+
+print(f"\n=== Tools Registered ===")
+stats = server.get_server_stats()
+for tool_name, tool_info in stats.get("tools", {}).get("tools", {}).items():
+    print(f"  {tool_name}: registered")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Configure transports
+# ══════════════════════════════════════════════════════════════════════
+#
+# StdioTransport: used for local testing and subprocess-based agent
+#   connections. The server reads JSON-RPC from stdin, writes to stdout.
+#
+# SSETransport: used for production. Clients connect via HTTP GET to
+#   an /events endpoint, receive events as a stream. Tool calls go via
+#   HTTP POST to /call. This is what hosted MCP servers use.
+
+# MCPServer supports two transport modes:
+#   stdio  — default, used for local dev and subprocess-based agent connections
+#   sse    — HTTP Server-Sent Events, used for production/remote access
+#
+# In production you'd run:
+#   server.run()                          # stdio (default)
+#   server.run(transport="sse", port=8765) # SSE
+#
+# For this exercise we test tools in-process (no transport needed).
+
+print(f"\n=== Transport Configuration ===")
+print(f"stdio: stdin/stdout (local dev / subprocess) — default")
+print(f"sse:   HTTP Server-Sent Events (production / remote)")
+print(f"  → tool list:  GET  /mcp/tools")
+print(f"  → tool call:  POST /mcp/call")
+print(f"  → events:     GET  /mcp/events (SSE stream)")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Test tool invocation directly
+# ══════════════════════════════════════════════════════════════════════
+# Before wiring the agent, verify each tool works in isolation.
+
+
+async def test_tools_directly():
+    """Invoke registered tools directly to verify they work."""
+    print(f"\n=== Direct Tool Tests ===")
+
+    # TODO: Call list_columns with dataset="credit" and print first 300 chars
+    result = ____  # Hint: await list_columns(dataset="credit")
+    print(f"\ntool: list_columns(credit)")
+    print(result[:300])
+
+    # TODO: Call describe_column on dataset="credit", column="annual_income"
+    result = (
+        ____  # Hint: await describe_column(dataset="credit", column="annual_income")
+    )
+    print(f"\ntool: describe_column(credit, annual_income)")
+    print(result)
+
+    # TODO: Call target_analysis with dataset="credit", feature="late_payments_12m", target="default"
+    result = ____  # Hint: await target_analysis(dataset="credit", feature="late_payments_12m", target="default")
+    print(f"\ntool: target_analysis(credit, late_payments_12m, default)")
+    print(result[:400])
+
+    # TODO: Call profile_dataset with dataset="credit" and sample_size=2000
+    result = ____  # Hint: await profile_dataset(dataset="credit", sample_size=2000)
+    print(f"\ntool: profile_dataset(credit, sample_size=2000)")
+    print(result[:400])
+
+
+asyncio.run(test_tools_directly())
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 6: Connect an agent to the MCP server
+# ══════════════════════════════════════════════════════════════════════
+# Rather than hard-coding tool functions in the agent, the agent
+# discovers tools from the MCP server at runtime. This decouples
+# agent logic from tool implementation.
+
+
+async def agent_with_mcp_tools():
+    """Run a Delegate agent with tools sourced from the MCP server."""
+
+    # In production, tools are discovered via MCP protocol over a transport:
+    #   agent.connect_mcp("http://host:8765/mcp")
+    #
+    # For this exercise, we wire the registered tool functions directly into
+    # a Delegate. The MCP server's @server.tool() decorated functions are
+    # standard async callables — the agent calls them the same way it would
+    # call any tool, but the server provides the canonical registry.
+
+    print(f"\n=== Agent Tool Discovery via MCP ===")
+    tool_stats = server.get_server_stats().get("tools", {}).get("tools", {})
+    print(f"Tools available: {list(tool_stats.keys())}")
+
+    # TODO: Create a Delegate with model, the four registered tool functions as the
+    #   tools list, and a budget_usd=3.0 cap
+    # Hint: Delegate(model=model, tools=[list_columns, describe_column, target_analysis, profile_dataset], budget_usd=3.0)
     agent = ____
 
-    # TODO: Call agent.analyze() with data, target column, and context string
-    # Hint: await agent.analyze(data=____, target="____", context="____")
-    # Context: "Singapore credit scoring for a bank. 12% default rate. Need production model."
-    result = ____
+    task = (
+        "Analyse the Singapore credit scoring dataset. "
+        "List the columns, profile the data, and investigate which features "
+        "are most strongly associated with default. "
+        "Recommend the top 5 predictive features."
+    )
 
-    print(f"\n=== Step 1: DataScientistAgent ===")
-    print(f"Data quality assessment: {result.quality_summary}")
-    print(f"Key issues: {result.issues}")
-    print(f"Recommendations: {result.recommendations}")
+    print(f"\n=== Agent via MCP Tools ===")
+    print(f"Task: {task}")
 
-    return result
+    # TODO: Stream the agent response into response_text
+    response_text = ""
+    ____  # Hint: async for event in agent.run(task): if hasattr(event, "text"): response_text += event.text
 
+    print(f"\nAgent response:")
+    print(f"  {response_text[:500]}...")
 
-ds_result = asyncio.run(step_1_data_scientist())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: FeatureEngineerAgent — suggest features
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def step_2_feature_engineer():
-    # TODO: Create a FeatureEngineerAgent with budget $1.00
-    # Hint: FeatureEngineerAgent(model=____, max_llm_cost_usd=____)
-    agent = ____
-
-    # TODO: Call agent.suggest() with data, target, existing_features, and domain
-    # Hint: await agent.suggest(data=____, target="____",
-    #           existing_features=____, domain="credit_scoring")
-    result = ____
-
-    print(f"\n=== Step 2: FeatureEngineerAgent ===")
-    print(f"Suggested features: {result.suggested_features}")
-    print(f"Transformation recommendations: {result.transformations}")
-    print(f"Features to drop: {result.drop_candidates}")
-
-    return result
+    return response_text
 
 
-fe_result = asyncio.run(step_2_feature_engineer())
+mcp_result = asyncio.run(agent_with_mcp_tools())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: ModelSelectorAgent — recommend model
+# Summary: MCP in Production
 # ══════════════════════════════════════════════════════════════════════
 
-
-async def step_3_model_selector():
-    # TODO: Create a ModelSelectorAgent with budget $1.00
-    # Hint: ModelSelectorAgent(model=____, max_llm_cost_usd=____)
-    agent = ____
-
-    # TODO: Call agent.recommend() with task_type, dataset_size, n_features,
-    #       target_metric="auc_pr", and constraints dict
-    # Hint: await agent.recommend(
-    #           task_type="binary_classification",
-    #           dataset_size=____,
-    #           n_features=____,
-    #           target_metric="____",
-    #           constraints={"interpretability": "high", "latency_ms": ____},
-    #       )
-    result = ____
-
-    print(f"\n=== Step 3: ModelSelectorAgent ===")
-    print(f"Recommended model: {result.recommended_model}")
-    print(f"Alternatives: {result.alternatives}")
-    print(f"Reasoning: {result.reasoning}")
-    print(f"Hyperparameter suggestions: {result.hyperparameters}")
-
-    return result
-
-
-ms_result = asyncio.run(step_3_model_selector())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: ExperimentInterpreterAgent — interpret M3 results
-# ══════════════════════════════════════════════════════════════════════
-
-# Simulated experiment results from Module 3
-experiment_results = {
-    "LightGBM": {"auc_roc": 0.89, "auc_pr": 0.62, "brier": 0.08, "log_loss": 0.31},
-    "XGBoost": {"auc_roc": 0.88, "auc_pr": 0.60, "brier": 0.09, "log_loss": 0.33},
-    "CatBoost": {"auc_roc": 0.87, "auc_pr": 0.58, "brier": 0.10, "log_loss": 0.35},
-}
-
-
-async def step_4_experiment_interpreter():
-    # TODO: Create an ExperimentInterpreterAgent with budget $1.00
-    # Hint: ExperimentInterpreterAgent(model=____, max_llm_cost_usd=____)
-    agent = ____
-
-    # TODO: Call agent.interpret() with experiment_results dict, target_metric,
-    #       and a context string describing the comparison
-    # Hint: await agent.interpret(
-    #           experiment_results=____,
-    #           target_metric="auc_pr",
-    #           context="____",
-    #       )
-    result = ____
-
-    print(f"\n=== Step 4: ExperimentInterpreterAgent ===")
-    print(f"Winner: {result.best_model}")
-    print(f"Interpretation: {result.interpretation}")
-    print(f"Production readiness: {result.production_ready}")
-    print(f"Remaining concerns: {result.concerns}")
-
-    return result
-
-
-ei_result = asyncio.run(step_4_experiment_interpreter())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: DriftAnalyst + RetrainingDecision
-# ══════════════════════════════════════════════════════════════════════
-
-# Simulated drift report from Module 4
-drift_report = {
-    "model": "credit_default_lgbm",
-    "overall_severity": "moderate",
-    "features_drifted": 3,
-    "max_psi": 0.18,
-    "drifted_features": ["annual_income", "total_debt", "credit_utilisation"],
-    "current_auc_pr": 0.55,
-    "baseline_auc_pr": 0.62,
-}
-
-
-async def step_5_drift_and_retrain():
-    # TODO: Create a DriftAnalystAgent with budget $1.00
-    # Hint: DriftAnalystAgent(model=____, max_llm_cost_usd=____)
-    drift_agent = ____
-
-    # TODO: Call drift_agent.analyze() with the drift_report dict and a context string
-    # Hint: await drift_agent.analyze(drift_report=____, context="____")
-    # Context: "Credit model in production for 6 months, economic downturn in Singapore"
-    drift_analysis = ____
-
-    print(f"\n=== Step 5a: DriftAnalystAgent ===")
-    print(f"Root cause: {drift_analysis.root_cause}")
-    print(f"Severity assessment: {drift_analysis.severity}")
-    print(f"Affected segments: {drift_analysis.affected_segments}")
-
-    # TODO: Create a RetrainingDecisionAgent with budget $1.00
-    # Hint: RetrainingDecisionAgent(model=____, max_llm_cost_usd=____)
-    retrain_agent = ____
-
-    # TODO: Call retrain_agent.decide() with drift_analysis, performance_degradation,
-    #       model_age_days=180, and retraining_cost_estimate=500.0
-    # Hint: performance_degradation = drift_report["baseline_auc_pr"] - drift_report["current_auc_pr"]
-    # Hint: await retrain_agent.decide(
-    #           drift_analysis=____,
-    #           performance_degradation=____,
-    #           model_age_days=____,
-    #           retraining_cost_estimate=____,
-    #       )
-    retrain_decision = ____
-
-    print(f"\n=== Step 5b: RetrainingDecisionAgent ===")
-    print(f"Decision: {retrain_decision.decision}")
-    print(f"Urgency: {retrain_decision.urgency}")
-    print(f"Reasoning: {retrain_decision.reasoning}")
-    print(f"Recommended actions: {retrain_decision.actions}")
-
-    return drift_analysis, retrain_decision
-
-
-drift_analysis, retrain_decision = asyncio.run(step_5_drift_and_retrain())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# Summary: Full ML Agent Pipeline
-# ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Full Pipeline Summary ===")
+print(f"\n=== MCP in Production ===")
 print(
     """
-DataScientistAgent → FeatureEngineerAgent → ModelSelectorAgent
-       ↓                    ↓                      ↓
-  Data quality         Feature ideas          Model choice
-       ↓                    ↓                      ↓
-       └──────────→ Train + Evaluate ←─────────────┘
-                         ↓
-              ExperimentInterpreterAgent
-                         ↓
-                   Deploy to production
-                         ↓
-                 DriftAnalystAgent (monitor)
-                         ↓
-              RetrainingDecisionAgent (trigger)
+Why MCP matters at scale:
 
-Each agent has max_llm_cost_usd — governance at every step.
-The double opt-in pattern: agent=True in config + kailash-ml[agents] installed.
+  Traditional (M3-M5 pattern):
+    - Tool functions defined inside each agent script
+    - Changing a tool requires redeploying the agent
+    - Different agents duplicate the same tool logic
+
+  MCP server pattern:
+    - Tools live on the server, agents discover them at runtime
+    - Update the server → all agents get the updated tool
+    - Add auth, rate limiting, versioning at the server layer
+    - One server can serve many agents (internal + external)
+
+Production deployment flow:
+  1. python -m kailash.mcp_server serve ex_5_server.py --transport sse --port 8765
+  2. Agent: await delegate.connect_mcp("http://localhost:8765/mcp")
+  3. Agent discovers tools automatically → uses them in reasoning loop
+
+In Module 6, MCP tool access is governed by PACT:
+  → GovernanceEngine controls which agents can call which MCP tools
+  → MCPServer validates the GovernanceContext token on each call
 """
 )
 
-print("✓ Exercise 5 complete — full ML agent pipeline with 6 agents")
+print("✓ Exercise 5 complete — MCP server with tool registration and SSE transport")

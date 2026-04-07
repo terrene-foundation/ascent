@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT05 — Exercise 2: ChainOfThoughtAgent
+# ASCENT05 — Exercise 2: Chain-of-Thought Reasoning
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Build a ChainOfThoughtAgent that reasons step-by-step about
 #   Module 4 clustering results. Compare CoT vs direct answering.
@@ -33,6 +33,9 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 
 
 # ── Prepare clustering context from M4 ───────────────────────────────
@@ -40,7 +43,6 @@ model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
 loader = ASCENTDataLoader()
 customers = loader.load("ascent04", "ecommerce_customers.parquet")
 
-# Simulate clustering results (from M4 Exercise 1)
 cluster_summary = """
 Clustering Results (K-means, K=4, Silhouette=0.42):
 
@@ -67,22 +69,18 @@ Cluster 3 (n=11,300 — "Bargain Hunters"):
 # ══════════════════════════════════════════════════════════════════════
 
 
-class ClusterInterpretation(Signature):
-    """Interpret clustering results with step-by-step reasoning."""
-
-    # TODO: Define two InputFields: cluster_data (clustering results summary)
-    #       and question (interpretation question)
-    # Hint: field_name: type = InputField(description="____")
-    cluster_data: str = ____
-    question: str = ____
-
-    # TODO: Define four OutputFields: reasoning_steps (list[str]),
-    #       interpretation (str), actionable_insights (list[str]), confidence (float)
-    # Hint: field_name: type = OutputField(description="____")
-    reasoning_steps: list[str] = ____
-    interpretation: str = ____
-    actionable_insights: list[str] = ____
-    confidence: float = ____
+# TODO: Define ClusterInterpretation(Signature) with:
+#   InputField:  cluster_data (str), question (str)
+#   OutputField: reasoning_steps (list[str]), interpretation (str),
+#                actionable_insights (list[str]), confidence (float)
+____
+____
+____
+____
+____
+____
+____
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -91,35 +89,23 @@ class ClusterInterpretation(Signature):
 
 
 async def cot_analysis():
-    # TODO: Create a ChainOfThoughtAgent with ClusterInterpretation signature
-    # Hint: ChainOfThoughtAgent(signature=____, model=____, max_llm_cost_usd=____)
-    cot_agent = ____
-
-    questions = [
-        "Why did Cluster 2 form separately from Cluster 0? Both have low revenue.",
-        "Which cluster represents the highest ROI opportunity for marketing spend?",
-        "If we could only target one cluster for a retention campaign, which one and why?",
-    ]
-
-    results = []
-    for q in questions:
-        # TODO: Run the cot_agent passing cluster_data and question keyword arguments
-        # Hint: await cot_agent.run(cluster_data=____, question=____)
-        result = await cot_agent.run(
-            cluster_data=____,
-            question=____,
-        )
-
-        print(f"\n=== Q: {q} ===")
-        print(f"Reasoning steps ({len(result.reasoning_steps)}):")
-        for i, step in enumerate(result.reasoning_steps):
-            print(f"  {i+1}. {step}")
-        print(f"\nInterpretation: {result.interpretation}")
-        print(f"Confidence: {result.confidence}")
-        print(f"Actions: {result.actionable_insights}")
-        results.append(result)
-
-    return results
+    # TODO: Implement cot_analysis():
+    #   1. Create ChainOfThoughtAgent(model=model)
+    #   2. Define three interpretation questions (why clusters differ, ROI opportunity, retention target)
+    #   3. For each question: call cot_agent.run(problem=q, context=cluster_summary) — sync call
+    #   4. Extract reasoning, answer, confidence from result dict (check both key variants)
+    #   5. Print Q/Reasoning/Answer/Confidence; append result to list
+    #   6. Return results list
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 cot_results = asyncio.run(cot_analysis())
@@ -131,28 +117,18 @@ cot_results = asyncio.run(cot_analysis())
 
 
 async def direct_analysis():
-    # TODO: Create a Delegate for direct (non-CoT) answering with budget $1.00
-    # Hint: Delegate(model=____, max_llm_cost_usd=____)
-    delegate = ____
-
-    question = (
-        "Why did Cluster 2 form separately from Cluster 0? Both have low revenue."
-    )
-    prompt = (
-        f"{cluster_summary}\n\nAnswer directly (no step-by-step reasoning): {question}"
-    )
-
-    # TODO: Stream the Delegate response into direct_answer
-    # Hint: async for event in delegate.run(____):
-    #           if hasattr(event, "text"):
-    #               direct_answer += event.text
-    direct_answer = ""
-    # ... your streaming loop here ...
-
-    print(f"\n=== Direct Answer (no CoT) ===")
-    print(direct_answer[:500])
-
-    return direct_answer
+    # TODO: Implement direct_analysis():
+    #   1. Create Delegate(model=model, budget_usd=1.0)
+    #   2. Build prompt asking the cluster question WITHOUT step-by-step reasoning
+    #   3. Stream the Delegate response into direct_answer (async for / event.text)
+    #   4. Print and return direct_answer[:500]
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
 
 direct_answer = asyncio.run(direct_analysis())
@@ -162,18 +138,19 @@ direct_answer = asyncio.run(direct_analysis())
 # TASK 4: Evaluate reasoning quality
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== CoT vs Direct Comparison ===")
-print(f"CoT reasoning steps: {len(cot_results[0].reasoning_steps)}")
-print(f"CoT has structured output: segments, confidence, actions")
-print(f"Direct is free-form text: no guaranteed structure")
-print()
-print("Key insight: CoT forces the model to SHOW its work.")
-print("This is critical for:")
-print("  1. Debugging: when the agent is wrong, you can see WHERE")
-print("  2. Trust: stakeholders can verify the reasoning chain")
-print("  3. Reproducibility: reasoning steps are logged and auditable")
-print()
-print("In Module 6, CoT reasoning chains become governance artifacts —")
-print("PACT's AuditChain records every step for regulatory compliance.")
+# TODO: Print a CoT vs Direct comparison showing:
+#   - Extract CoT reasoning from cot_results[0] (check "reasoning_steps" or "reasoning" key)
+#   - Print first 200 chars of reasoning
+#   - Explain: CoT has structured output (chain, answer, confidence); Direct is free-form
+#   - Explain why CoT matters: debugging, trust, reproducibility, Module 6 AuditChain
+____
+____
+____
+____
+____
+____
+____
+____
+____
 
 print("\n✓ Exercise 2 complete — ChainOfThoughtAgent with reasoning evaluation")

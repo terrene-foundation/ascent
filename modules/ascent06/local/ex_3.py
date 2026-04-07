@@ -2,28 +2,32 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT06 — Exercise 3: PACT Governance Setup
+# ASCENT06 — Exercise 3: Reinforcement Learning
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Define a realistic organization in YAML, compile it, and
-#   create a GovernanceEngine. Verify access decisions.
+# OBJECTIVE: Use RLTrainer with PPO on an inventory management
+#   environment. Compare RL policy vs heuristic baseline.
 #
 # TASKS:
-#   1. Define organization structure in YAML (3 departments, 8 roles)
-#   2. Compile organization with compile_org()
-#   3. Create GovernanceEngine
-#   4. Test access decisions: can_access(), explain_access()
-#   5. Verify monotonic tightening and fail-closed behavior
+#   1. Set up Gymnasium environment (inventory management)
+#   2. Configure RLTrainer with PPO
+#   3. Train RL agent
+#   4. Implement heuristic baseline for comparison
+#   5. Evaluate and compare policies
+#   6. Track with ExperimentTracker
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
-import tempfile
-from pathlib import Path
 
-from pact import GovernanceEngine, GovernanceContext
-from pact import Address, RoleEnvelope, TaskEnvelope
-from pact import compile_org, load_org_yaml
+import numpy as np
+import gymnasium as gym
+from gymnasium import spaces
+
+from kailash.db.connection import ConnectionManager
+from kailash_ml.rl.trainer import RLTrainer, RLTrainingConfig
+from kailash_ml.engines.experiment_tracker import ExperimentTracker
+from kailash_ml import ModelVisualizer
 
 from shared.kailash_helpers import setup_environment
 
@@ -31,237 +35,196 @@ setup_environment()
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define organization in YAML
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Write a PACT organization YAML string with 3 departments and 6+ roles.
-# Hint: The org_yaml string must follow this structure:
-#
-#   organization:
-#     name: "ASCENT Credit Bureau"
-#     version: "1.0"
-#     departments:
-#       - name: "data_science"
-#         description: "..."
-#         teams:
-#           - name: "modeling"
-#             roles:
-#               - name: "senior_data_scientist"
-#                 permissions:
-#                   data_access: ["credit_data", "feature_store", "experiment_logs"]
-#                   tools: ["training_pipeline", "hyperparameter_search", "model_registry"]
-#                   max_cost_usd: 50.0
-#                   can_deploy: false
-#               - name: "junior_data_scientist"
-#                 permissions:
-#                   data_access: ["credit_data", "feature_store"]
-#                   tools: ["training_pipeline"]
-#                   max_cost_usd: 10.0
-#                   can_deploy: false
-#           - name: "mlops"
-#             roles:
-#               - name: "ml_engineer"
-#                 permissions:
-#                   data_access: ["credit_data", "feature_store", "model_artifacts", "production_logs"]
-#                   tools: ["training_pipeline", "model_registry", "inference_server", "drift_monitor"]
-#                   max_cost_usd: 100.0
-#                   can_deploy: true
-#       - name: "risk"   (model_validator: can_approve_production: true, compliance_officer: read-only)
-#       - name: "operations"   (sre: can_deploy: true, customer_service: decisions only)
-#     policies:
-#       - name: "model_promotion"
-#         rule: "promote_to_production requires model_validator.can_approve_production"
-#       - name: "data_classification"
-#         classifications:
-#           credit_data: "confidential"
-#           audit_logs: "restricted"
-org_yaml = ____
-
-# Write to temp file
-org_file = Path(tempfile.mktemp(suffix=".yaml"))
-org_file.write_text(org_yaml)
-print(f"=== Organization YAML ===")
-print(f"Departments: 3 (data_science, risk, operations)")
-print(f"Roles: 6 unique roles across 5 teams")
-print(f"Written to: {org_file}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compile organization
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Load the YAML file and compile it.
-# Hint: org = load_org_yaml(str(org_file))
-#   compiled = compile_org(org)
-#   compiled has: .valid (bool), .errors (list), .warnings (list),
-#                 .departments (list), .total_roles (int), .name (str)
-org = ____
-compiled = ____
-
-print(f"\n=== Compiled Organization ===")
-print(f"Valid: {compiled.valid}")
-if compiled.errors:
-    print(f"Errors: {compiled.errors}")
-if compiled.warnings:
-    print(f"Warnings: {compiled.warnings}")
-print(f"Departments: {[d.name for d in compiled.departments]}")
-print(f"Total roles: {compiled.total_roles}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Create GovernanceEngine
+# TASK 1: Custom Gymnasium environment — inventory management
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def setup_governance():
-    # TODO: Create a GovernanceEngine from the compiled organization.
-    # Hint: engine = GovernanceEngine(compiled)
-    #   The engine is fail-closed: any error during access check → DENY
-    engine = ____
+class InventoryEnv(gym.Env):
+    """Simplified inventory management environment.
 
-    print(f"\n=== GovernanceEngine ===")
-    print(f"Organization: {compiled.name}")
-    print(f"Enforcement mode: fail-closed (deny on error)")
-
-    return engine
-
-
-engine = asyncio.run(setup_governance())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Test access decisions
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def test_access():
-    # TODO: Use Address to create D/T/R addresses, then call engine.can_access()
-    # and engine.explain_access() to test access control decisions.
-    #
-    # Hint: Address("department", "team", "role") — matches the YAML structure.
-    #   decision = await engine.can_access(address, resource_name)  → bool
-    #   explanation = await engine.explain_access(address, resource_name)
-    #     explanation has: .decision (str), .reason (str), .chain (list)
-    #
-    # Test cases to verify:
-    #   senior_data_scientist → "credit_data": ALLOW (in permissions)
-    #   junior_data_scientist → "experiment_logs": DENY (not in permissions)
-    #   ml_engineer → "production_logs": ALLOW
-    #   model_validator → "audit_logs": ALLOW
-    #   customer_service → "credit_data": DENY (can only access credit_decisions)
-    #   customer_service → "credit_decisions": ALLOW
-
-    # TODO: Create Address objects for each role.
-    # Hint: Address("data_science", "modeling", "senior_data_scientist")
-    senior_ds = ____
-    junior_ds = ____
-    ml_eng = ____
-    validator = ____
-    cust_svc = ____
-
-    test_cases = [
-        (senior_ds, "credit_data", True, "Senior DS can access credit data"),
-        (
-            junior_ds,
-            "experiment_logs",
-            False,
-            "Junior DS cannot access experiment logs",
-        ),
-        (ml_eng, "production_logs", True, "ML Engineer can access production logs"),
-        (validator, "audit_logs", True, "Validator can access audit logs"),
-        (
-            cust_svc,
-            "credit_data",
-            False,
-            "Customer service cannot access raw credit data",
-        ),
-        (cust_svc, "credit_decisions", True, "Customer service can access decisions"),
-    ]
-
-    print(f"\n=== Access Control Tests ===")
-    for address, resource, expected, description in test_cases:
-        # TODO: Call engine.can_access() to get the access decision.
-        # Hint: decision = await engine.can_access(address, resource)  → bool
-        decision = await ____
-        status = "✓" if decision == expected else "✗ UNEXPECTED"
-        print(f"  {status} {description}")
-        print(f"     {address} → {resource}: {'ALLOW' if decision else 'DENY'}")
-
-    # Explain access
-    print(f"\n=== Access Explanations ===")
-    # TODO: Call engine.explain_access() to get a detailed explanation.
-    # Hint: explanation = await engine.explain_access(junior_ds, "production_logs")
-    #   explanation.decision, explanation.reason, explanation.chain
-    explanation = await ____
-    print(f"Junior DS → production_logs:")
-    print(f"  Decision: {explanation.decision}")
-    print(f"  Reason: {explanation.reason}")
-    print(f"  Chain: {explanation.chain}")
-
-
-asyncio.run(test_access())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Monotonic tightening and fail-closed
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def test_monotonic_tightening():
+    State: [current_stock, day_of_week, demand_trend]
+    Action: order_quantity (0 to max_order)
+    Reward: revenue from sales - holding cost - stockout penalty - order cost
     """
-    Monotonic tightening: child envelopes CANNOT exceed parent.
-    If parent budget is $50, child cannot have $100.
-    """
-    # TODO: Create a RoleEnvelope and a TaskEnvelope that tries to exceed it.
-    # Hint: RoleEnvelope(
-    #   address=Address("data_science", "modeling", "senior_data_scientist"),
-    #   max_cost_usd=50.0,
-    #   data_access=["credit_data", "feature_store"],
-    # )
-    # TaskEnvelope(
-    #   parent=parent_envelope,
-    #   max_cost_usd=100.0,  # will be clamped to 50 (parent's limit)
-    #   data_access=["credit_data", "feature_store", "production_logs"],  # production_logs removed
-    # )
-    # Check: child_task.effective_max_cost_usd and child_task.effective_data_access
-    parent_envelope = ____
-    child_task = ____
 
-    print(f"\n=== Monotonic Tightening ===")
-    print(f"Parent budget: ${parent_envelope.max_cost_usd}")
-    print(f"Child requested: ${100.0}")
-    print(f"Child actual:   ${child_task.effective_max_cost_usd}")
-    print(f"  → Tightened to parent's limit")
-    print(f"\nParent data access: {parent_envelope.data_access}")
-    print(f"Child requested:    {['credit_data', 'feature_store', 'production_logs']}")
-    print(f"Child actual:       {child_task.effective_data_access}")
-    print(f"  → production_logs removed (not in parent's scope)")
+    metadata = {"render_modes": []}
 
-    print(f"\n=== Fail-Closed Behavior ===")
-    print(f"If GovernanceEngine encounters an error during access check:")
-    print(f"  → Access is DENIED (not allowed)")
-    print(f"  → Error is logged to AuditChain")
-    print(f"  → This prevents privilege escalation through bugs")
+    def __init__(self):
+        # TODO: Implement __init__.
+        # Set max_stock=100, max_order=50, max_steps=30.
+        # Define observation_space as Box(low=[0,0,0], high=[max_stock,6,2], dtype=float32)
+        # and action_space as Discrete(max_order + 1).
+        # Create self.rng and call self.reset().
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
-    # TODO: Create a GovernanceContext using engine.create_context() and demonstrate
-    # that it is frozen (cannot be modified).
-    # Hint: ml_eng = Address("data_science", "mlops", "ml_engineer")
-    #   context = await engine.create_context(ml_eng)
-    #   context.max_cost_usd, context.data_access, context.can_deploy
-    ml_eng = Address("data_science", "mlops", "ml_engineer")
-    context = await ____
-    print(f"\n=== Frozen GovernanceContext ===")
-    print(f"Context for ML Engineer:")
-    print(f"  max_cost_usd: {context.max_cost_usd}")
-    print(f"  data_access: {context.data_access}")
-    print(f"  can_deploy: {context.can_deploy}")
-    print(f"\n  context.max_cost_usd = 999  # Raises FrozenInstanceError!")
-    print(f"  → Agents RECEIVE governance but CANNOT modify it")
+    def reset(self, seed=None, options=None):
+        # TODO: Implement reset.
+        # Call super().reset(seed=seed), create new rng, set stock=50, day=0,
+        # step_count=0, total_revenue=0, total_cost=0.
+        # Return (self._get_obs(), {}).
+        ____
+        ____
+        ____
+
+    def _get_obs(self):
+        # TODO: Implement _get_obs.
+        # Demand trend uses weekly seasonality: 1 + 0.5 * sin(2π * day / 7).
+        # Return np.array([stock, day % 7, trend], dtype=float32).
+        ____
+
+    def step(self, action):
+        # TODO: Implement step.
+        # 1. Receive order: add action to stock (capped at max_stock).
+        # 2. Generate stochastic demand: base_demand=15, day_factor = 1 + 0.3*sin(2π*day/7),
+        #    demand = max(0, int(rng.poisson(base_demand * day_factor))).
+        # 3. Fulfill demand: sold = min(demand, stock), stockout = demand - sold.
+        # 4. Compute reward: revenue($10/unit) - holding($0.50/unit) -
+        #    stockout_penalty($5/lost sale) - order_cost($3/unit ordered).
+        # 5. Increment day and step_count; terminated when step_count >= max_steps.
+        # 6. Return (obs, reward, terminated, truncated=False, info_dict).
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
+        ____
 
 
-asyncio.run(test_monotonic_tightening())
+# Register custom environment with Gymnasium
+gym.register(
+    id="InventoryManagement-v0",
+    entry_point=lambda: InventoryEnv(),
+)
 
-# Clean up
-org_file.unlink()
+env = InventoryEnv()
+print(f"=== Inventory Management Environment ===")
+print(f"Observation space: {env.observation_space}")
+print(f"Action space: {env.action_space}")
+print(f"Episode length: {env.max_steps} days")
 
-print("\n✓ Exercise 3 complete — PACT governance setup with access control")
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Configure RLTrainer with PPO
+# ══════════════════════════════════════════════════════════════════════
+
+
+def train_rl():
+    # TODO: Implement train_rl.
+    # Create RLTrainer(). Build RLTrainingConfig with algorithm="PPO",
+    # total_timesteps=50_000, seed=42, and PPO hyperparameters:
+    #   learning_rate=3e-4, n_steps=2048, batch_size=64, n_epochs=10,
+    #   gamma=0.99, gae_lambda=0.95, clip_range=0.2.
+    # Call trainer.train(env_name="InventoryManagement-v0",
+    #   policy_name="inventory_ppo", config=rl_config).
+    # Print: algorithm, mean_reward, std_reward, training_time_seconds, artifact_path.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+
+    return trainer, result
+
+
+trainer, rl_result = train_rl()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Heuristic baseline — (s, S) policy
+# ══════════════════════════════════════════════════════════════════════
+# Classic inventory policy: if stock < s, order up to S
+
+
+def evaluate_policy(env, policy_fn, n_episodes=100, seed=42):
+    """Evaluate a policy over multiple episodes."""
+    rng = np.random.default_rng(seed)
+    rewards = []
+    for ep in range(n_episodes):
+        obs, _ = env.reset(seed=int(rng.integers(0, 10000)))
+        total_reward = 0
+        done = False
+        while not done:
+            action = policy_fn(obs)
+            obs, reward, terminated, truncated, _ = env.step(action)
+            total_reward += reward
+            done = terminated or truncated
+        rewards.append(total_reward)
+    return np.array(rewards)
+
+
+def ss_policy(obs):
+    """(s, S) reorder policy: if stock < s, order up to S."""
+    # TODO: Implement (s, S) policy with s=20, S=60.
+    # If stock < s: return min(int(S - stock), 50), else return 0.
+    ____
+
+
+def random_policy(obs):
+    # TODO: Implement random policy: return random int in [0, 50].
+    ____
+
+
+# Evaluate all policies
+heuristic_rewards = evaluate_policy(env, ss_policy)
+random_rewards = evaluate_policy(env, random_policy)
+
+# Use RL result metrics directly (already evaluated during training)
+rl_mean = rl_result.mean_reward
+rl_std = rl_result.std_reward
+# Create synthetic array for comparison display using mean/std
+rl_rewards = np.array(
+    [rl_mean + rl_std * x for x in np.random.default_rng(42).standard_normal(100)]
+)
+
+# TODO: Print comparison table.
+# Rows: Random, (s,S) Heuristic, PPO — columns: Mean, Std, Min, Max.
+____
+____
+____
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Visualise training and comparison
+# ══════════════════════════════════════════════════════════════════════
+
+# TODO: Use ModelVisualizer.metric_comparison() to create a bar chart comparing
+# the three policies on Mean_Reward and Std_Reward.
+# Save to "ex3_rl_comparison.html".
+____
+____
+____
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Track with ExperimentTracker
+# ══════════════════════════════════════════════════════════════════════
+
+
+async def track_experiment():
+    # TODO: Implement track_experiment.
+    # 1. Open ConnectionManager("sqlite:///ascent06_experiments.db") and initialize.
+    # 2. Create ExperimentTracker(conn).
+    # 3. Create experiment "ascent06_reinforcement_learning".
+    # 4. Log 3 runs: random_baseline, ss_heuristic, ppo_agent.
+    #    Each run: log_params (policy type / algorithm), log_metrics
+    #    (mean_reward, std_reward, min_reward, max_reward), set_tag("domain","rl-inventory").
+    # 5. Close connection.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
+
+
+asyncio.run(track_experiment())
+
+print("\n✓ Exercise 3 complete — RL inventory management with PPO")

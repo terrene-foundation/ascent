@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT05 — Exercise 1: Delegate + SimpleQAAgent
+# ASCENT05 — Exercise 1: LLM Fundamentals and Kaizen
 # ════════════════════════════════════════════════════════════════════════
 # OBJECTIVE: Use Delegate for autonomous data analysis Q&A and build a
 #   SimpleQAAgent with custom Signature for structured answers. Set
-#   max_llm_cost_usd from Exercise 1 — mandatory for all M5 exercises.
+#   budget_usd from Exercise 1 — mandatory for all M5 exercises.
 #
 # TASKS:
 #   1. Set up Delegate with cost budget governance
@@ -34,6 +34,9 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+if not model or not os.environ.get("OPENAI_API_KEY"):
+    print("Set OPENAI_API_KEY and DEFAULT_LLM_MODEL in .env to run this exercise")
+    raise SystemExit(0)
 print(f"LLM Model: {model}")
 
 
@@ -42,7 +45,6 @@ print(f"LLM Model: {model}")
 loader = ASCENTDataLoader()
 customers = loader.load("ascent04", "ecommerce_customers.parquet")
 
-# Prepare a text summary of the data for the agents
 data_summary = f"""
 E-commerce Customer Dataset:
 - {customers.height:,} customers
@@ -63,9 +65,8 @@ print(data_summary)
 async def delegate_analysis():
     """Use Delegate for autonomous data analysis Q&A."""
 
-    # TODO: Create a Delegate with model and a hard cost budget of $2.00
-    # Hint: Delegate(model=____, max_llm_cost_usd=____)
-    delegate = ____
+    # TODO: Create Delegate with model and budget_usd=2.0 (MANDATORY for all M5 exercises)
+    delegate = ____  # Hint: Delegate(model=model, budget_usd=2.0)
 
     questions = [
         "Based on this customer data, what are the top 3 customer segments you'd recommend for targeted marketing?",
@@ -79,12 +80,12 @@ async def delegate_analysis():
         prompt = f"{data_summary}\n\nQuestion: {question}"
         print(f"\nQ{i+1}: {question}")
 
-        # TODO: Stream the Delegate response using async for
-        # Hint: async for event in delegate.run(____):
-        #           if hasattr(event, "____"):
-        #               response_text += event.____
+        # TODO: Stream Delegate response — async for event in delegate.run(prompt);
+        #   accumulate event.text if hasattr(event, "text")
         response_text = ""
-        # ... your streaming loop here ...
+        ____
+        ____
+        ____
 
         print(f"A{i+1}: {response_text[:300]}...")
         results.append({"question": question, "answer": response_text})
@@ -100,34 +101,30 @@ delegate, delegate_results = asyncio.run(delegate_analysis())
 # ══════════════════════════════════════════════════════════════════════
 
 
-class CustomerSegmentAnalysis(Signature):
-    """Analyse customer data and return structured segment recommendations."""
-
-    # TODO: Define two InputFields: data_context (dataset summary) and question (analysis question)
-    # Hint: field_name: type = InputField(description="____")
-    data_context: str = ____
-    question: str = ____
-
-    # TODO: Define four OutputFields: segments (list[str]), reasoning (str),
-    #       confidence (float 0-1), next_steps (list[str])
-    # Hint: field_name: type = OutputField(description="____")
-    segments: list[str] = ____
-    reasoning: str = ____
-    confidence: float = ____
-    next_steps: list[str] = ____
+# TODO: Define CustomerSegmentAnalysis(Signature) with:
+#   InputField: data_context (str), question (str)
+#   OutputField: segments (list[str]), reasoning (str),
+#                confidence (float), next_steps (list[str])
+____
+____
+____
+____
+____
+____
+____
+____
 
 
-class ChurnPrediction(Signature):
-    """Predict churn risk factors from customer data context."""
-
-    # TODO: Define one InputField: data_context (dataset summary)
-    data_context: str = ____
-
-    # TODO: Define three OutputFields: risk_factors (list[str]),
-    #       key_metrics (list[str]), model_recommendation (str)
-    risk_factors: list[str] = ____
-    key_metrics: list[str] = ____
-    model_recommendation: str = ____
+# TODO: Define ChurnPrediction(Signature) with:
+#   InputField: data_context (str)
+#   OutputField: risk_factors (list[str]), key_metrics (list[str]),
+#                model_recommendation (str)
+____
+____
+____
+____
+____
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -135,43 +132,33 @@ class ChurnPrediction(Signature):
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def structured_analysis():
+def structured_analysis():
     """Use SimpleQAAgent for structured output."""
 
-    # TODO: Create a SimpleQAAgent using CustomerSegmentAnalysis signature
-    # Hint: SimpleQAAgent(signature=____, model=____, max_llm_cost_usd=____)
-    segment_agent = ____
-
-    # TODO: Run the segment_agent with data_context and question keyword arguments
-    # Hint: await segment_agent.run(data_context=____, question=____)
-    segment_result = await segment_agent.run(
-        data_context=____,
-        question="What customer segments should we target for a premium loyalty programme?",
-    )
+    # TODO: Create SimpleQAAgent(model=model) for segment analysis;
+    #   run with question="What customer segments should we target for a premium loyalty programme?"
+    #   and context=data_summary; store result in segment_result
+    segment_agent = ____  # Hint: SimpleQAAgent(model=model)
+    segment_result = ____  # Hint: segment_agent.run(question=..., context=data_summary)
 
     print(f"\n=== Structured Segment Analysis ===")
-    print(f"Segments: {segment_result.segments}")
-    print(f"Confidence: {segment_result.confidence}")
-    print(f"Reasoning: {segment_result.reasoning[:200]}...")
-    print(f"Next steps: {segment_result.next_steps}")
+    for key, value in segment_result.items():
+        print(f"  {key}: {str(value)[:200]}")
 
-    # TODO: Create a SimpleQAAgent using ChurnPrediction signature with budget $1.00
-    churn_agent = ____
-
-    # TODO: Run the churn_agent with only data_context
-    churn_result = await churn_agent.run(
-        data_context=____,
-    )
+    # TODO: Create a second SimpleQAAgent(model=model) for churn analysis;
+    #   run with a question about top churn risk factors and metrics;
+    #   store result in churn_result
+    churn_agent = ____  # Hint: SimpleQAAgent(model=model)
+    churn_result = ____  # Hint: churn_agent.run(question=..., context=data_summary)
 
     print(f"\n=== Structured Churn Analysis ===")
-    print(f"Risk factors: {churn_result.risk_factors}")
-    print(f"Key metrics: {churn_result.key_metrics}")
-    print(f"Model recommendation: {churn_result.model_recommendation}")
+    for key, value in churn_result.items():
+        print(f"  {key}: {str(value)[:200]}")
 
     return segment_result, churn_result
 
 
-segment_result, churn_result = asyncio.run(structured_analysis())
+segment_result, churn_result = structured_analysis()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -192,11 +179,11 @@ print(f"  → Signature = contract. Like ModelSignature for models, but for agen
 # ══════════════════════════════════════════════════════════════════════
 
 print(f"\n=== LLM Cost Governance ===")
-print(f"max_llm_cost_usd is MANDATORY for all M5 exercises.")
+print(f"budget_usd is MANDATORY for all M5 exercises.")
 print(f"CO methodology: human-on-the-loop, not in-the-loop.")
 print(f"The budget cap ensures agents cannot run away with API costs.")
 print(f"\nIn production:")
-print(f"  1. Set max_llm_cost_usd per agent based on expected task complexity")
+print(f"  1. Set budget_usd per agent based on expected task complexity")
 print(f"  2. Monitor actual spend vs budget")
 print(f"  3. Alert if spend approaches limit")
 print(f"  4. Module 6: PACT GovernanceEngine formalises cost envelopes")

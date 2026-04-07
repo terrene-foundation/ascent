@@ -2,18 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT06 — Exercise 4: Governed Agents
+# ASCENT06 — Exercise 4: LoRA Adapter Merging and Evaluation
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Wrap Module 5's ReActAgent with PactGovernedAgent. Define
-#   operating envelopes and demonstrate that agents cannot modify their
-#   own governance (frozen GovernanceContext).
+# OBJECTIVE: Register SFT and DPO adapters, merge a LoRA adapter into its
+#   base model using AdapterMerger, and evaluate merged vs adapter-loaded
+#   inference. Understand the adapter lifecycle: train → register → merge.
 #
 # TASKS:
-#   1. Create GovernanceEngine from Exercise 3's organization
-#   2. Wrap a ReActAgent with PactGovernedAgent
-#   3. Define operating envelopes (cost, tools, data)
-#   4. Test governance enforcement
-#   5. Demonstrate frozen context and monotonic tightening
+#   1. Register SFT and DPO adapters in AdapterRegistry
+#   2. Demonstrate AdapterMerger (LoRA merge into base model)
+#   3. Understand merging strategies (TIES, DARE) conceptually
+#   4. Compare adapter-loaded vs merged inference trade-offs
+#   5. Manage adapter lifecycle: staging → production → merged
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -21,223 +21,214 @@ from __future__ import annotations
 import asyncio
 import os
 
-from dotenv import load_dotenv
+import polars as pl
 
-from pact import GovernanceEngine, GovernanceContext, PactGovernedAgent
-from pact import Address, compile_org, load_org_yaml
-from kaizen_agents import Delegate
+from kailash_align import (
+    AlignmentConfig,
+    AlignmentPipeline,
+    AdapterRegistry,
+)
+from kailash_align.config import SFTConfig, DPOConfig, LoRAConfig
+from kailash_align.registry import AdapterSignature
+from kailash_align.merge import AdapterMerger
 
+from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+base_model = os.environ.get("SFT_BASE_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+
+
+# ── Evaluation Dataset ────────────────────────────────────────────────
+
+eval_prompts = [
+    {
+        "prompt": "What is the HDB resale flat application procedure in Singapore?",
+        "category": "housing",
+        "reference": (
+            "The HDB resale process involves: (1) register intent to buy/sell on HDB portal, "
+            "(2) grant of option (14 days), (3) exercise option (21 days), (4) submit resale "
+            "application (both parties), (5) HDB approval (8 weeks), (6) completion appointment. "
+            "Buyers must secure an HLE or bank loan before exercising the option."
+        ),
+    },
+    {
+        "prompt": "Explain CPF contribution rates for Singapore employees aged 35-45.",
+        "category": "cpf",
+        "reference": (
+            "For employees aged 35-45, CPF contributions are: employer 16%, employee 20%, "
+            "total 36%. Allocation: OA 23%, SA 6%, MA 8% (approximate). Contributions apply "
+            "to ordinary wages up to $6,000/month and additional wages up to the annual limit."
+        ),
+    },
+    {
+        "prompt": "How does MAS regulate AI systems used in financial services?",
+        "category": "regulation",
+        "reference": (
+            "MAS regulates AI in financial services through FEAT principles (Fairness, Ethics, "
+            "Accountability, Transparency). Key requirements: model risk management framework, "
+            "ongoing monitoring, explainability for customer-facing decisions (especially credit), "
+            "board oversight of AI governance, and regular model validation by independent parties."
+        ),
+    },
+    {
+        "prompt": "What is Singapore's SingPass MyInfo system and how does it work?",
+        "category": "digital_gov",
+        "reference": (
+            "MyInfo is a government-managed personal data platform. Citizens store verified "
+            "personal data once; services retrieve it with consent. Data includes NRIC details, "
+            "income records, CPF balances, and property ownership. Authentication via SingPass "
+            "with 2FA. Pre-fills forms for banking, insurance, and government applications."
+        ),
+    },
+    {
+        "prompt": "Explain the key differences between HDB BTO, SBF, and resale flats.",
+        "category": "housing",
+        "reference": (
+            "BTO (Build-To-Order): new flats built to demand, 3-5 year wait, subsidised price. "
+            "SBF (Sale of Balance Flats): unsold BTO flats, shorter wait, similar subsidy. "
+            "Resale: existing flats on open market, immediate occupancy, market price + CPF grant "
+            "if eligible. BTO/SBF require citizenship and income ceiling; resale has fewer restrictions."
+        ),
+    },
+]
+
+print(f"=== LoRA Adapter Merging Exercise ===")
+print(f"Base model: {base_model}")
+print(f"Evaluation prompts: {len(eval_prompts)}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Set up GovernanceEngine
-# ══════════════════════════════════════════════════════════════════════
-
-# TODO: Define a minimal org dict with one department/team/role and compile it.
-# Hint: The dict mirrors the YAML structure from Exercise 3 but as a Python dict:
-#   org_dict = {
-#     "organization": {
-#       "name": "ASCENT Demo",
-#       "departments": [{
-#         "name": "data_science",
-#         "teams": [{
-#           "name": "modeling",
-#           "roles": [{
-#             "name": "ml_agent",
-#             "permissions": {
-#               "data_access": ["credit_data", "feature_store"],
-#               "tools": ["profile_data", "describe_column", "default_rate_by"],
-#               "max_cost_usd": 5.0,
-#               "can_deploy": False,
-#             }
-#           }]
-#         }]
-#       }]
-#     }
-#   }
-org_dict = ____
-
-
-async def setup():
-    # TODO: Compile the org dict and create a GovernanceEngine.
-    # Then create a GovernanceContext for the ml_agent role.
-    # Hint: compiled = compile_org(org_dict)  — accepts dict directly (no YAML file needed)
-    #   engine = GovernanceEngine(compiled)
-    #   agent_address = Address("data_science", "modeling", "ml_agent")
-    #   context = await engine.create_context(agent_address)
-    #   context has: .max_cost_usd, .data_access, .tools_allowed, .can_deploy
-    compiled = ____
-    engine = ____
-
-    agent_address = ____
-    context = await ____
-
-    print(f"=== GovernanceContext ===")
-    print(f"Address: {agent_address}")
-    print(f"Max cost: ${context.max_cost_usd}")
-    print(f"Data access: {context.data_access}")
-    print(f"Tools allowed: {context.tools_allowed}")
-    print(f"Can deploy: {context.can_deploy}")
-
-    return engine, context
-
-
-engine, governance_context = asyncio.run(setup())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Wrap agent with PactGovernedAgent
+# TASK 1: Register SFT and DPO adapters in AdapterRegistry
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def create_governed_agent():
-    # TODO: Create a Delegate (base agent) and wrap it with PactGovernedAgent.
-    # Hint: base_agent = Delegate(model=model)
-    #   governed_agent = PactGovernedAgent(
-    #       agent=base_agent,
-    #       governance_context=governance_context,
-    #   )
-    base_agent = ____
-    governed_agent = ____
+async def register_adapters():
+    """Register SFT and DPO adapters (simulating output from Ex1 and Ex2)."""
+    # TODO: Implement register_adapters.
+    # 1. Create AdapterRegistry().
+    # 2. Register an SFT adapter: AdapterSignature(base_model_id, adapter_type="lora",
+    #    rank=16, alpha=32, target_modules=("q_proj","v_proj"), training_method="sft").
+    #    Call registry.register_adapter(name="sg_domain_sft_v1",
+    #    adapter_path="./sft_output/sg_domain_sft_v1", signature=sft_sig,
+    #    training_metrics={"train_loss":0.42,"eval_loss":0.51}, tags=[...]).
+    # 3. Register a DPO adapter with training_method="dpo",
+    #    metrics {"train_loss":0.35,"eval_loss":0.43}.
+    # 4. List all adapters and print name, version, method, stage, merge_status.
+    # 5. Return (registry, sft_adapter, dpo_adapter).
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
-    print(f"\n=== PactGovernedAgent ===")
-    print(f"Base agent: Delegate")
-    print(f"Governance: ASCENT Demo / data_science / modeling / ml_agent")
-    print(f"Cost budget: ${governance_context.max_cost_usd}")
-
-    return governed_agent
-
-
-governed_agent = asyncio.run(create_governed_agent())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Test governance enforcement
-# ══════════════════════════════════════════════════════════════════════
+    return registry, sft_adapter, dpo_adapter
 
 
-async def test_enforcement():
-    """Test that governance restricts agent behavior."""
-    print(f"\n=== Governance Tests ===")
-
-    # TODO: Test all six governance checks using governed_agent methods.
-    # Hint: governed_agent.check_permission(action="use_tool", resource="...") → bool
-    #       governed_agent.check_permission(action="access_data", resource="...") → bool
-    #       governed_agent.check_permission(action="deploy", resource="...") → bool
-    #       governed_agent.check_cost(amount=float) → bool
-    #
-    # Expected results:
-    #   "profile_data" tool → ALLOW (in permissions)
-    #   "training_pipeline" tool → DENY (not in allowed tools)
-    #   "production_logs" data → DENY (not in allowed data)
-    #   $3.00 cost → ALLOW (within $5 budget)
-    #   $10.00 cost → DENY (exceeds $5 budget)
-    #   deploy action → DENY (can_deploy: False)
-
-    allowed = await ____  # use_tool / profile_data
-    print(f"1. Use profile_data tool: {'ALLOW' if allowed else 'DENY'} ✓")
-
-    denied_tool = await ____  # use_tool / training_pipeline
-    print(f"2. Use training_pipeline: {'ALLOW' if denied_tool else 'DENY'} ✓")
-
-    denied_data = await ____  # access_data / production_logs
-    print(f"3. Access production_logs: {'ALLOW' if denied_data else 'DENY'} ✓")
-
-    within_budget = await ____  # check_cost 3.0
-    over_budget = await ____  # check_cost 10.0
-    print(f"4. Spend $3.00 (budget $5): {'ALLOW' if within_budget else 'DENY'} ✓")
-    print(f"5. Spend $10.00 (budget $5): {'ALLOW' if over_budget else 'DENY'} ✓")
-
-    can_deploy = await ____  # deploy / model_v1
-    print(f"6. Deploy model: {'ALLOW' if can_deploy else 'DENY'} ✓")
-
-
-asyncio.run(test_enforcement())
+registry, sft_adapter, dpo_adapter = asyncio.run(register_adapters())
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Run governed agent on a real task
+# TASK 2: Demonstrate AdapterMerger (LoRA merge into base model)
 # ══════════════════════════════════════════════════════════════════════
+#
+# AdapterMerger merges LoRA adapter weights INTO the base model:
+#   W_merged = W_base + B × A   (where B, A are LoRA matrices)
+#
+# After merging:
+#   - No adapter loading overhead at inference time
+#   - Model is a standard HuggingFace model (no PEFT dependency)
+#   - Cannot un-merge (the adapter is baked in)
+#   - Suitable for GGUF export and Ollama deployment
+#
+# Pipeline: train → register → [optional: evaluate] → merge → export → deploy
 
 
-async def run_governed_task():
-    """Run the governed agent — governance is transparent to the task."""
-    prompt = (
-        "Analyse the credit scoring dataset. Profile the data and "
-        "identify which features predict default. Keep analysis under $5."
-    )
+def demonstrate_merger():
+    """Show the AdapterMerger API without requiring GPU."""
+    # TODO: Implement demonstrate_merger.
+    # Create AdapterMerger(adapter_registry=registry).
+    # Print the merge equation (W_merged = W_base + B x A), the SDK API
+    # (merger.merge("sg_domain_sft_v1")), the convenience function pattern,
+    # and the merge lifecycle states: separate → merged → exported.
+    ____
+    ____
+    ____
+    ____
 
-    print(f"\n=== Governed Agent Execution ===")
-    print(f"Task: {prompt}")
-    print(
-        f"Governance active: cost≤$5, tools=[profile_data, describe_column, default_rate_by]"
-    )
-
-    # TODO: Run the governed agent and stream its response.
-    # Hint: async for event in governed_agent.run(prompt):
-    #           if hasattr(event, "text"): response_text += event.text
-    #   After running: governed_agent.cost_tracker.total_spent shows cost used.
-    response_text = ""
-    async for event in ____:
-        if hasattr(event, "text"):
-            response_text += event.text
-
-    print(f"\nResponse: {response_text[:300]}...")
-
-    cost_spent = governed_agent.cost_tracker.total_spent
-    print(f"\nCost spent: ${cost_spent:.4f} / ${governance_context.max_cost_usd}")
+    return merger
 
 
-asyncio.run(run_governed_task())
+merger = demonstrate_merger()
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 5: Frozen context demonstration
+# TASK 3: Merging strategies — conceptual overview
+# ══════════════════════════════════════════════════════════════════════
+#
+# Multi-adapter merging strategies (not in SDK — research frontier):
+#
+# TIES (Task-Interference Elimination Strategy):
+#   1. Trim: zero out low-magnitude delta weights per adapter
+#   2. Elect sign: resolve sign conflicts via majority vote
+#   3. Disjoint merge: only merge where adapters agree on sign
+#   Key parameter: density (fraction kept after trimming)
+#
+# DARE (Drop And REscale):
+#   1. Drop: randomly zero out delta weights with probability p
+#   2. Rescale: multiply remaining by 1/(1-p) to preserve expectation
+#   Simpler than TIES but often competitive
+#
+# Linear merge: W_merged = α·W_adapter1 + (1-α)·W_adapter2
+#   Simplest approach; works when adapters are similar
+
+# TODO: Print the conceptual overview of multi-adapter merging strategies.
+# Explain: single-adapter merge (SDK), TIES, DARE, and linear merge.
+# Describe when multi-adapter merge matters and the current production pattern.
+____
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Compare adapter-loaded vs merged inference
 # ══════════════════════════════════════════════════════════════════════
 
-print(
-    f"""
-=== Frozen GovernanceContext ===
+# TODO: Print a comparison table of adapter-loaded vs merged inference.
+# Rows: inference latency, memory overhead, flexibility, PEFT dependency,
+# GGUF export, Ollama deployment, un-merge possible, multi-adapter support.
+____
+____
+____
 
-GovernanceContext is a frozen dataclass:
 
-  @dataclass(frozen=True)
-  class GovernanceContext:
-      max_cost_usd: float
-      data_access: tuple[str, ...]
-      tools_allowed: tuple[str, ...]
-      can_deploy: bool
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Adapter lifecycle management
+# ══════════════════════════════════════════════════════════════════════
 
-  # This RAISES FrozenInstanceError:
-  context.max_cost_usd = 999.0
 
-WHY frozen?
-  1. Agents cannot escalate their own privileges
-  2. Context is immutable proof of what was authorized
-  3. AuditChain can verify context wasn't tampered with
-  4. Monotonic tightening is guaranteed (child <= parent)
+async def demonstrate_lifecycle():
+    """Show the full adapter lifecycle: staging → production → merged."""
+    # TODO: Implement demonstrate_lifecycle.
+    # 1. Promote the SFT adapter to "production" via registry.promote().
+    # 2. Retrieve the updated adapter and print its stage and merge_status.
+    # 3. Print the 6-step full lifecycle: Train → Register → Stage → Merge → Export → Deploy.
+    # 4. List all adapters and print their stage and merge_status.
+    ____
+    ____
+    ____
+    ____
+    ____
+    ____
 
-Attack prevention:
-  Agent modifies its budget: FrozenInstanceError
-  Agent creates child with higher permissions: tightened to parent
-  Agent accesses data outside scope: fail-closed DENY
-  Governance engine error: fail-closed DENY (not ALLOW)
-"""
-)
 
-# TODO: Attempt to modify the frozen context and catch the resulting error.
-# Hint: try: governance_context.max_cost_usd = 999.0
-#       except (AttributeError, TypeError) as e:
-#           print(f"Modification blocked: {type(e).__name__}")
-try:
-    governance_context.max_cost_usd = ____
-    print("ERROR: Should have raised FrozenInstanceError!")
-except (AttributeError, TypeError) as e:
-    print(f"✓ Attempted modification blocked: {type(e).__name__}")
+asyncio.run(demonstrate_lifecycle())
 
-print("\n✓ Exercise 4 complete — governed agents with PACT enforcement")
+# TODO: Print the 4 key takeaways:
+# 1. AdapterMerger merge equation and benefits.
+# 2. Adapter lifecycle states in AdapterRegistry.
+# 3. Multi-adapter merging (TIES/DARE) is research, not yet in SDK.
+# 4. AdapterRegistry as auditable source of truth.
+____
+
+print("\n✓ Exercise 4 complete — LoRA adapter merging with AdapterMerger")
