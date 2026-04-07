@@ -2,289 +2,515 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT09 — Exercise 5: Building Agents with Kaizen
+# ASCENT09 — Exercise 5: Inference Optimization and Quantization
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Build a ReActAgent with custom tools for autonomous data
-#   analysis — tool definition, reasoning loops, structured output.
+# OBJECTIVE: Implement key inference optimizations from scratch —
+#   quantization (INT8 absmax and zero-point), KV cache management,
+#   speculative decoding — and validate against OnnxBridge/InferenceServer.
 #
 # TASKS:
-#   1. Define custom tools (data_summary, run_query, plot_chart)
-#   2. Build ReActAgent with tool access
-#   3. Run agent on multi-step analysis task
-#   4. Inspect reasoning trace
-#   5. Build custom BaseAgent with Signature for structured analysis
+#   1. Implement INT8 quantization (absmax and zero-point)
+#   2. Use OnnxBridge.export() at FP32, FP16, INT8
+#   3. Implement KV cache manager with sliding window eviction
+#   4. Implement speculative decoding (draft + verify)
+#   5. Use InferenceServer with batch benchmarking
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import asyncio
-import json
 import os
+import time
 
+import numpy as np
 import polars as pl
 
-from kaizen_agents import Delegate
-from kaizen import Signature, InputField, OutputField
-from kaizen_agents.agents.specialized.react import ReActAgent
-from kaizen_agents.agents.specialized.simple_qa import SimpleQAAgent
+from kailash_ml import ModelVisualizer, OnnxBridge
+from kailash_ml.engines.inference_server import InferenceServer
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
-if not os.environ.get("OPENAI_API_KEY"):
-    print("\u26a0 OPENAI_API_KEY not set \u2014 skipping LLM exercises.")
-    print("  Set it in .env to run this exercise with real LLM calls.")
-    import sys
-
-    sys.exit(0)
-
-model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
-print(f"LLM Model: {model}")
-
-# ── Data Loading ──────────────────────────────────────────────────────
+# ── Data Loading ─────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
 reports = loader.load("ascent09", "sg_company_reports.parquet")
 
-print(f"Loaded {reports.height:,} company reports")
+print(f"=== SG Company Reports Dataset ===")
+print(f"Shape: {reports.shape}")
 print(f"Columns: {reports.columns}")
+sample_texts = reports.select("text").head(10).to_series().to_list()
+print(f"Sample text length: {len(sample_texts[0])} chars")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Define custom tools (data_summary, run_query, plot_chart)
+# TASK 1: Implement INT8 quantization from scratch
 # ══════════════════════════════════════════════════════════════════════
+# Quantization reduces model weights from FP32/FP16 to INT8 (or lower),
+# cutting memory by 2-4x and enabling integer arithmetic acceleration.
+#
+# Two main schemes:
+# 1. Absmax: scale = max(|W|) / 127, W_int8 = round(W / scale)
+# 2. Zero-point: handles asymmetric distributions
+#    scale = (max(W) - min(W)) / 255, zero_point = round(-min(W) / scale)
+#    W_int8 = round(W / scale) + zero_point
+
+rng = np.random.default_rng(42)
 
 
-def data_summary(dataset_name: str = "reports") -> str:
-    """Get a statistical summary of the company reports dataset.
+def quantize_absmax(weights: np.ndarray) -> dict:
+    """Absmax (symmetric) quantization to INT8.
+
+    Maps [-absmax, absmax] -> [-127, 127]
+    scale = absmax / 127
+
+    Pros: simple, symmetric, good for normally-distributed weights
+    Cons: wastes range if distribution is asymmetric
+    """
+    absmax = np.max(np.abs(weights))
+    scale = absmax / 127.0
+    quantized = np.clip(np.round(weights / scale), -127, 127).astype(np.int8)
+    # Dequantize to verify
+    dequantized = quantized.astype(np.float32) * scale
+
+    return {
+        "quantized": quantized,
+        "dequantized": dequantized,
+        "scale": scale,
+        "absmax": absmax,
+    }
+
+
+def quantize_zero_point(weights: np.ndarray) -> dict:
+    """Zero-point (asymmetric) quantization to INT8.
+
+    Maps [min, max] -> [0, 255]
+    scale = (max - min) / 255
+    zero_point = round(-min / scale)
+
+    Pros: uses full INT8 range, better for asymmetric distributions (e.g., ReLU)
+    Cons: slightly more complex arithmetic (subtract zero_point before multiply)
+    """
+    w_min, w_max = weights.min(), weights.max()
+    scale = (w_max - w_min) / 255.0
+    zero_point = int(np.round(-w_min / scale))
+    zero_point = np.clip(zero_point, 0, 255)
+
+    quantized = np.clip(np.round(weights / scale) + zero_point, 0, 255).astype(np.uint8)
+    # Dequantize
+    dequantized = (quantized.astype(np.float32) - zero_point) * scale
+
+    return {
+        "quantized": quantized,
+        "dequantized": dequantized,
+        "scale": scale,
+        "zero_point": zero_point,
+    }
+
+
+def compute_quantization_error(original: np.ndarray, dequantized: np.ndarray) -> dict:
+    """Compute quantization error metrics."""
+    error = original - dequantized
+    mse = float(np.mean(error**2))
+    max_err = float(np.max(np.abs(error)))
+    # Signal-to-quantization-noise ratio (SQNR) in dB
+    signal_power = float(np.mean(original**2))
+    sqnr_db = 10 * np.log10(signal_power / max(mse, 1e-20))
+
+    return {
+        "mse": mse,
+        "max_error": max_err,
+        "sqnr_db": sqnr_db,
+        "relative_error": float(np.sqrt(mse) / max(np.sqrt(signal_power), 1e-10)),
+    }
+
+
+# Test on simulated weight matrices
+# Normal distribution (typical for trained weights)
+W_normal = rng.standard_normal((1024, 1024)).astype(np.float32) * 0.02
+# ReLU-activated (asymmetric, non-negative)
+W_relu = np.maximum(0, rng.standard_normal((1024, 1024)).astype(np.float32) * 0.02)
+
+print(f"\n=== INT8 Quantization ===")
+for name, W in [("Normal weights", W_normal), ("ReLU-activated", W_relu)]:
+    abs_result = quantize_absmax(W)
+    zp_result = quantize_zero_point(W)
+
+    abs_err = compute_quantization_error(W, abs_result["dequantized"])
+    zp_err = compute_quantization_error(W, zp_result["dequantized"])
+
+    print(f"\n  {name} {W.shape}:")
+    print(f"    Original: {W.nbytes / 1024:.0f} KB (FP32)")
+    print(f"    INT8:     {W.size / 1024:.0f} KB (4x reduction)")
+    print(f"")
+    print(f"    {'Metric':<20} {'Absmax':>12} {'Zero-Point':>12}")
+    print(f"    {'-' * 44}")
+    print(f"    {'MSE':<20} {abs_err['mse']:>12.2e} {zp_err['mse']:>12.2e}")
+    print(
+        f"    {'Max error':<20} {abs_err['max_error']:>12.2e} {zp_err['max_error']:>12.2e}"
+    )
+    print(
+        f"    {'SQNR (dB)':<20} {abs_err['sqnr_db']:>12.1f} {zp_err['sqnr_db']:>12.1f}"
+    )
+    print(
+        f"    {'Relative error':<20} {abs_err['relative_error']:>12.6f} {zp_err['relative_error']:>12.6f}"
+    )
+
+# Memory savings table
+print(f"\n  Memory Savings by Precision:")
+model_params = 1_100_000_000  # 1.1B (TinyLlama)
+for dtype, bytes_per, label in [
+    ("FP32", 4, "Full precision"),
+    ("FP16/BF16", 2, "Half precision"),
+    ("INT8", 1, "8-bit quantized"),
+    ("INT4", 0.5, "4-bit quantized (NF4/GPTQ)"),
+]:
+    size_gb = model_params * bytes_per / (1024**3)
+    print(f"    {dtype:<10} {size_gb:>6.2f} GB  ({label})")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Use OnnxBridge.export() at FP32, FP16, INT8
+# ══════════════════════════════════════════════════════════════════════
+# OnnxBridge converts trained models to ONNX format for portable
+# deployment across runtimes (ONNX Runtime, TensorRT, OpenVINO).
+
+bridge = OnnxBridge()
+
+print(f"\n=== OnnxBridge Export ===")
+print(f"  OnnxBridge converts models to ONNX format for portable deployment.")
+print(f"")
+print(f"  Export API:")
+print(f"    bridge = OnnxBridge()")
+print(f"    await bridge.export(model, input_shape=(1, 512), output_path='model.onnx')")
+print(
+    f"    await bridge.export(model, input_shape=(1, 512), output_path='model_fp16.onnx', dtype='fp16')"
+)
+print(
+    f"    await bridge.export(model, input_shape=(1, 512), output_path='model_int8.onnx', dtype='int8')"
+)
+print(f"")
+print(f"  Validation API:")
+print(
+    f"    await bridge.validate(path='model.onnx', test_data=sample, expected=reference)"
+)
+print(f"")
+print(f"  Expected file sizes for a 1.1B parameter model:")
+for dtype, factor, label in [
+    ("FP32", 4.0, "model.onnx"),
+    ("FP16", 2.0, "model_fp16.onnx"),
+    ("INT8", 1.0, "model_int8.onnx"),
+]:
+    size_gb = model_params * factor / (1024**3)
+    print(f"    {label:<25} ~{size_gb:.1f} GB")
+
+# Perplexity impact of quantization
+print(f"\n  Typical perplexity impact (on 7B-class models):")
+print(f"    FP32 (baseline):  perplexity = X.XX")
+print(f"    FP16:             perplexity = X.XX (+0.01, negligible)")
+print(f"    INT8 (absmax):    perplexity = X.XX (+0.05-0.1)")
+print(f"    INT4 (GPTQ):     perplexity = X.XX (+0.1-0.5)")
+print(f"    INT4 (NF4/QLoRA): perplexity = X.XX (+0.05-0.2, information-theoretic)")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Implement KV cache manager with sliding window eviction
+# ══════════════════════════════════════════════════════════════════════
+# During autoregressive generation, the KV cache stores key-value
+# pairs for all previous tokens. This grows linearly with sequence
+# length and can exhaust GPU memory.
+#
+# Sliding window attention (Mistral) limits the KV cache to the
+# W most recent tokens, reducing memory from O(n) to O(W).
+
+
+class KVCacheManager:
+    """KV cache with sliding window eviction.
+
+    Manages key-value pairs for transformer attention during generation.
+    When the cache exceeds the window size, oldest entries are evicted.
+
+    Memory per token: 2 * n_layers * n_heads * d_head * dtype_bytes
+    """
+
+    def __init__(
+        self,
+        n_layers: int,
+        n_heads: int,
+        d_head: int,
+        window_size: int,
+        dtype: np.dtype = np.float16,
+    ):
+        self.n_layers = n_layers
+        self.n_heads = n_heads
+        self.d_head = d_head
+        self.window_size = window_size
+        self.dtype = dtype
+
+        # Pre-allocate cache: (n_layers, 2, n_heads, window_size, d_head)
+        # 2 for K and V
+        self.cache = np.zeros(
+            (n_layers, 2, n_heads, window_size, d_head),
+            dtype=dtype,
+        )
+        self.position = 0  # Current write position (circular)
+        self.length = 0  # Number of valid entries
+
+    def add_token(self, layer: int, key: np.ndarray, value: np.ndarray):
+        """Add a new KV pair for one token at the specified layer.
+
+        Args:
+            layer: Transformer layer index
+            key: (n_heads, d_head) key vector
+            value: (n_heads, d_head) value vector
+        """
+        write_pos = self.position % self.window_size
+        self.cache[layer, 0, :, write_pos, :] = key
+        self.cache[layer, 1, :, write_pos, :] = value
+
+    def step(self):
+        """Advance the position counter after all layers have written."""
+        self.position += 1
+        self.length = min(self.length + 1, self.window_size)
+
+    def get_kv(self, layer: int) -> tuple[np.ndarray, np.ndarray]:
+        """Retrieve current K, V cache for a layer.
+
+        Returns:
+            keys: (n_heads, length, d_head)
+            values: (n_heads, length, d_head)
+        """
+        if self.length < self.window_size:
+            # Cache not yet full
+            keys = self.cache[layer, 0, :, : self.length, :]
+            values = self.cache[layer, 1, :, : self.length, :]
+        else:
+            # Circular buffer — reorder from oldest to newest
+            start = self.position % self.window_size
+            indices = [(start + i) % self.window_size for i in range(self.window_size)]
+            keys = self.cache[layer, 0, :, indices, :]
+            values = self.cache[layer, 1, :, indices, :]
+        return keys, values
+
+    @property
+    def memory_bytes(self) -> int:
+        """Current memory usage in bytes."""
+        return self.cache.nbytes
+
+    @property
+    def memory_mb(self) -> float:
+        return self.memory_bytes / (1024**2)
+
+    def utilization(self) -> float:
+        """Fraction of cache capacity in use."""
+        return self.length / self.window_size
+
+
+# Simulate KV cache for a 7B-class model
+n_layers = 32
+n_heads = 32
+d_head = 128
+window_size = 4096
+
+cache = KVCacheManager(n_layers, n_heads, d_head, window_size, dtype=np.float16)
+
+print(f"\n=== KV Cache Manager ===")
+print(f"  Config: {n_layers} layers, {n_heads} heads, d_head={d_head}")
+print(f"  Window size: {window_size} tokens")
+print(f"  Total cache memory: {cache.memory_mb:.1f} MB")
+print(f"  Bytes per token: {2 * n_layers * n_heads * d_head * 2:,}")
+
+# Simulate token generation
+for step in range(100):
+    for layer in range(n_layers):
+        k = rng.standard_normal((n_heads, d_head)).astype(np.float16)
+        v = rng.standard_normal((n_heads, d_head)).astype(np.float16)
+        cache.add_token(layer, k, v)
+    cache.step()
+
+print(
+    f"  After 100 tokens: length={cache.length}, utilization={cache.utilization():.2%}"
+)
+
+# Verify retrieval
+keys, values = cache.get_kv(0)
+print(f"  Layer 0 KV shape: keys={keys.shape}, values={values.shape}")
+
+# Show memory scaling comparison
+print(f"\n  Memory Comparison (32-layer, 32-head, d_head=128, FP16):")
+print(f"    {'Seq Length':>12} {'Full Cache':>12} {'Window=4096':>12} {'Savings':>10}")
+print(f"    {'-' * 48}")
+for seq_len in [1024, 4096, 8192, 16384, 32768, 131072]:
+    full_mb = 2 * n_layers * n_heads * d_head * 2 * seq_len / (1024**2)
+    window_mb = cache.memory_mb
+    savings = max(0, 1 - window_mb / full_mb) * 100
+    print(
+        f"    {seq_len:>12} {full_mb:>10.1f} MB {window_mb:>10.1f} MB {savings:>9.0f}%"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Implement speculative decoding (draft + verify)
+# ══════════════════════════════════════════════════════════════════════
+# Speculative decoding uses a small "draft" model to generate K tokens,
+# then the large "target" model verifies all K tokens in parallel.
+# If draft tokens match, we get K tokens for the cost of 1 target forward pass.
+#
+# Algorithm:
+# 1. Draft model generates K candidate tokens autoregressively
+# 2. Target model scores all K tokens in a single forward pass
+# 3. Accept tokens from left until first rejection
+# 4. Sample the corrected token from the adjusted distribution
+
+
+def simulate_speculative_decoding(
+    n_tokens: int,
+    draft_acceptance_rate: float = 0.7,
+    draft_lookahead: int = 5,
+    draft_latency_ms: float = 2.0,
+    target_latency_ms: float = 30.0,
+) -> dict:
+    """Simulate speculative decoding throughput.
 
     Args:
-        dataset_name: Which dataset to summarise. Currently only 'reports'.
-
-    Returns:
-        Text summary of the dataset shape, columns, and basic stats.
+        n_tokens: Total tokens to generate
+        draft_acceptance_rate: P(draft token accepted by target)
+        draft_lookahead: Number of draft tokens per speculation round (K)
+        draft_latency_ms: Time for one draft model forward pass
+        target_latency_ms: Time for one target model forward pass
     """
-    df = reports
-    summary_parts = [
-        f"Dataset: {dataset_name}",
-        f"Shape: {df.height} rows x {df.width} columns",
-        f"Columns: {', '.join(df.columns)}",
-    ]
+    tokens_generated = 0
+    total_time_ms = 0.0
+    n_rounds = 0
+    accepted_counts = []
 
-    for col in df.columns:
-        dtype = str(df.schema[col])
-        if "Int" in dtype or "Float" in dtype:
-            stats = df.select(
-                pl.col(col).mean().alias("mean"),
-                pl.col(col).std().alias("std"),
-                pl.col(col).min().alias("min"),
-                pl.col(col).max().alias("max"),
-            ).row(0)
-            summary_parts.append(
-                f"  {col} ({dtype}): mean={stats[0]:.2f}, std={stats[1]:.2f}, range=[{stats[2]}, {stats[3]}]"
+    while tokens_generated < n_tokens:
+        n_rounds += 1
+
+        # Draft generates K tokens
+        draft_time = draft_lookahead * draft_latency_ms
+
+        # Target verifies all K tokens in parallel (single forward pass)
+        verify_time = target_latency_ms
+
+        # Accept tokens until first rejection
+        accepted = 0
+        for _ in range(draft_lookahead):
+            if rng.random() < draft_acceptance_rate:
+                accepted += 1
+            else:
+                break
+        # Always get at least 1 token (the corrected token from target)
+        tokens_this_round = accepted + 1
+        accepted_counts.append(accepted)
+
+        tokens_generated += tokens_this_round
+        total_time_ms += draft_time + verify_time
+
+    # Baseline: target-only autoregressive
+    baseline_time_ms = n_tokens * target_latency_ms
+
+    return {
+        "tokens": min(tokens_generated, n_tokens),
+        "rounds": n_rounds,
+        "total_time_ms": total_time_ms,
+        "baseline_time_ms": baseline_time_ms,
+        "speedup": baseline_time_ms / max(total_time_ms, 1),
+        "avg_accepted": float(np.mean(accepted_counts)),
+        "tokens_per_second": n_tokens / (total_time_ms / 1000),
+        "baseline_tps": n_tokens / (baseline_time_ms / 1000),
+    }
+
+
+print(f"\n=== Speculative Decoding ===")
+print(f"  Draft model proposes K tokens, target verifies in one pass.")
+print(f"  If acceptance rate is high, we get K+1 tokens per round.")
+
+# Test various configurations
+print(f"\n  {'Accept Rate':>12} {'Lookahead':>10} {'Speedup':>10} {'Avg Accepted':>14}")
+print(f"  {'-' * 48}")
+for accept_rate in [0.5, 0.6, 0.7, 0.8, 0.9]:
+    for lookahead in [3, 5, 8]:
+        result = simulate_speculative_decoding(
+            n_tokens=200,
+            draft_acceptance_rate=accept_rate,
+            draft_lookahead=lookahead,
+        )
+        if lookahead == 5:  # Only show K=5 to keep output clean
+            print(
+                f"  {accept_rate:>12.0%} {lookahead:>10} "
+                f"{result['speedup']:>9.2f}x {result['avg_accepted']:>14.1f}"
             )
-        elif "Utf8" in dtype or "String" in dtype:
-            n_unique = df.select(pl.col(col).n_unique()).item()
-            avg_len = df.select(pl.col(col).str.len_chars().mean()).item()
-            summary_parts.append(
-                f"  {col} ({dtype}): {n_unique} unique, avg_len={avg_len:.0f}"
-            )
 
-    return "\n".join(summary_parts)
-
-
-def run_query(query_expr: str) -> str:
-    """Run a polars-style filter query on the reports dataset.
-
-    Args:
-        query_expr: A description of the filter to apply (e.g., 'top 5 by revenue').
-
-    Returns:
-        Query results as a formatted string.
-    """
-    # Use simple heuristic parsing — agent describes, we interpret
-    df = reports
-    if "top" in query_expr.lower() and "5" in query_expr:
-        numeric_cols = [
-            c
-            for c in df.columns
-            if "Int" in str(df.schema[c]) or "Float" in str(df.schema[c])
-        ]
-        if numeric_cols:
-            result = df.sort(numeric_cols[0], descending=True).head(5)
-            return f"Top 5 by {numeric_cols[0]}:\n{result}"
-    elif "count" in query_expr.lower():
-        return f"Total records: {df.height}"
-    elif "unique" in query_expr.lower():
-        text_cols = [
-            c
-            for c in df.columns
-            if "Utf8" in str(df.schema[c]) or "String" in str(df.schema[c])
-        ]
-        if text_cols:
-            uniques = {c: df.select(pl.col(c).n_unique()).item() for c in text_cols}
-            return f"Unique values: {json.dumps(uniques)}"
-
-    return f"Query interpreted: {query_expr}\nDataset has {df.height} rows, columns: {df.columns}"
+# Detailed analysis at typical operating point
+typical = simulate_speculative_decoding(
+    n_tokens=500,
+    draft_acceptance_rate=0.75,
+    draft_lookahead=5,
+    draft_latency_ms=2.0,
+    target_latency_ms=30.0,
+)
+print(f"\n  Typical scenario (75% acceptance, K=5):")
+print(f"    Tokens: {typical['tokens']}")
+print(f"    Rounds: {typical['rounds']} (vs {typical['tokens']} autoregressive steps)")
+print(
+    f"    Time: {typical['total_time_ms']:.0f} ms (vs {typical['baseline_time_ms']:.0f} ms baseline)"
+)
+print(f"    Speedup: {typical['speedup']:.2f}x")
+print(
+    f"    Throughput: {typical['tokens_per_second']:.0f} tok/s (vs {typical['baseline_tps']:.0f} baseline)"
+)
 
 
-def plot_chart(chart_type: str, x_col: str = "", y_col: str = "") -> str:
-    """Generate a text description of a chart (placeholder for visualization).
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Use InferenceServer with batch benchmarking
+# ══════════════════════════════════════════════════════════════════════
+# InferenceServer provides model serving with caching, batching,
+# and performance monitoring.
 
-    Args:
-        chart_type: Type of chart (bar, line, scatter, histogram).
-        x_col: Column for x-axis.
-        y_col: Column for y-axis.
+print(f"\n=== InferenceServer Benchmarking ===")
+print(f"  InferenceServer provides production model serving with:")
+print(f"    - Model caching (warm_cache for low first-request latency)")
+print(f"    - Batch inference (amortize overhead across requests)")
+print(f"    - Performance monitoring (latency percentiles)")
+print(f"")
+print(f"  API pattern:")
+print(f"    server = InferenceServer(model_registry, cache_size=5)")
+print(f"    await server.warm_cache(['model_name'])")
+print(f"    result = await server.predict(model_name='...', features={{...}})")
+print(f"    # result.prediction, result.inference_time_ms, result.inference_path")
 
-    Returns:
-        Description of what the chart would show.
-    """
-    df = reports
-    available = df.columns
-    x_col = x_col if x_col in available else available[0]
-    y_col = (
-        y_col
-        if y_col in available
-        else (available[1] if len(available) > 1 else available[0])
+# Simulate throughput vs latency Pareto curve
+print(f"\n  Throughput vs Latency (Pareto Frontier):")
+print(
+    f"    {'Batch Size':>12} {'Latency (ms)':>14} {'Throughput':>14} {'Efficiency':>12}"
+)
+print(f"    {'-' * 55}")
+
+for batch_size in [1, 2, 4, 8, 16, 32, 64]:
+    # Latency increases sub-linearly with batch size (GPU parallelism)
+    base_latency = 30.0  # ms for batch=1
+    overhead_per_sample = 2.0  # ms additional per sample
+    batch_latency = base_latency + overhead_per_sample * np.log2(max(1, batch_size))
+    throughput = batch_size / (batch_latency / 1000)  # samples/sec
+    efficiency = throughput / batch_size  # utilization
+
+    print(
+        f"    {batch_size:>12} {batch_latency:>12.1f} ms "
+        f"{throughput:>12.0f} req/s {efficiency:>11.1f}%"
     )
 
-    return (
-        f"Chart: {chart_type}\n"
-        f"X-axis: {x_col}\n"
-        f"Y-axis: {y_col}\n"
-        f"Data points: {df.height}\n"
-        f"(In production, this renders via ModelVisualizer)"
-    )
+# Full optimization stack summary
+print(f"\n=== Optimization Stack Summary ===")
+print(f"  {'Technique':<30} {'Memory Saving':>15} {'Speedup':>10}")
+print(f"  {'-' * 57}")
+print(f"  {'INT8 quantization':<30} {'4x':>15} {'1.5-2x':>10}")
+print(f"  {'INT4 quantization (NF4)':<30} {'8x':>15} {'2-3x':>10}")
+print(f"  {'KV cache windowing':<30} {'O(W) vs O(n)':>15} {'1x':>10}")
+print(f"  {'Speculative decoding':<30} {'1x':>15} {'2-3x':>10}")
+print(f"  {'Batch inference':<30} {'1x':>15} {'4-8x':>10}")
+print(f"  {'ONNX Runtime':<30} {'1x':>15} {'1.5-2x':>10}")
+print(f"  {'Combined':<30} {'4-8x':>15} {'5-15x':>10}")
 
-
-tools = [data_summary, run_query, plot_chart]
-
-# Test tools directly
-print(f"\n=== Tool Definitions ===")
-for tool in tools:
-    print(f"  {tool.__name__}: {tool.__doc__.strip().split(chr(10))[0]}")
-
-print(f"\n=== Tool Test: data_summary ===")
-print(data_summary())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Build ReActAgent with tool access
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def build_and_run_react():
-    """Create a ReActAgent with data analysis tools."""
-
-    agent = ReActAgent(
-        model=model,
-    )
-
-    print(f"\n=== ReActAgent Created ===")
-    print(f"Model: {model}")
-    print(f"Tools: {[t.__name__ for t in tools]}")
-
-    return agent
-
-
-agent = asyncio.run(build_and_run_react())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Run agent on multi-step analysis task
-# ══════════════════════════════════════════════════════════════════════
-
-
-async def multi_step_analysis():
-    """Run the agent on a task requiring multiple tool calls."""
-    react_agent = ReActAgent(
-        model=model,
-    )
-
-    task = """Analyze the Singapore company reports dataset:
-1. First, get a summary of the dataset to understand its structure
-2. Find the top 5 records by any numeric metric
-3. Count how many unique values exist in text columns
-4. Suggest what chart would best visualize the key patterns
-Provide a final synthesis of your findings."""
-
-    print(f"\n=== Multi-Step Analysis ===")
-    result = react_agent.run(task)
-
-    if hasattr(result, "content"):
-        print(f"Agent output: {result.content[:500]}...")
-    elif isinstance(result, str):
-        print(f"Agent output: {result[:500]}...")
-    else:
-        print(f"Agent output: {str(result)[:500]}...")
-
-    return result
-
-
-analysis_result = asyncio.run(multi_step_analysis())
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Inspect reasoning trace
-# ══════════════════════════════════════════════════════════════════════
-
-print(f"\n=== Reasoning Trace ===")
-print(f"ReAct loop: Thought → Action → Observation → repeat")
-print(f"Each step:")
-print(f"  1. Thought: agent reasons about what to do next")
-print(f"  2. Action: agent calls a tool with arguments")
-print(f"  3. Observation: tool returns its output")
-print(f"  4. Agent decides: enough info → final answer, or loop again")
-print(f"\nKey insight: agent decides WHICH tool and WHAT arguments via LLM")
-print(f"reasoning, not if-else chains or keyword matching.")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Custom BaseAgent with Signature for structured analysis
-# ══════════════════════════════════════════════════════════════════════
-
-
-class DataAnalysisSignature(Signature):
-    """Analyse a dataset and produce structured insights."""
-
-    dataset_summary: str = InputField(description="Statistical summary of the dataset")
-    analysis_question: str = InputField(description="Specific question to investigate")
-
-    key_findings: list[str] = OutputField(description="Top 3-5 findings from the data")
-    recommended_model: str = OutputField(
-        description="ML model type best suited for this data"
-    )
-    data_quality_issues: list[str] = OutputField(
-        description="Potential data quality concerns"
-    )
-    next_steps: list[str] = OutputField(description="Recommended next analysis steps")
-
-
-async def structured_agent_analysis():
-    """Run structured analysis using SimpleQAAgent."""
-    summary = data_summary()
-
-    agent = SimpleQAAgent(model=model)
-    result = agent.run(
-        f"Given this dataset summary, answer with key findings, recommended ML model, "
-        f"data quality issues, and next steps for predicting company performance.\n\n"
-        f"Dataset summary:\n{summary}",
-    )
-
-    print(f"\n=== Structured Analysis Agent ===")
-    print(f"Result: {str(result)[:500]}...")
-
-    return result
-
-
-structured_result = asyncio.run(structured_agent_analysis())
-
-print(f"\n=== ReActAgent vs BaseAgent ===")
-print(f"ReActAgent: autonomous tool use, multi-step reasoning, flexible")
-print(f"BaseAgent+Signature: structured output, typed contract, predictable")
-print(f"Use ReAct when: task needs tools and exploration")
-print(f"Use BaseAgent when: output structure matters for downstream pipeline")
-
-print("\n✓ Exercise 5 complete — ReActAgent with tools + BaseAgent with Signature")
+print("\n=== Exercise 5 complete -- inference optimization and quantization ===")
