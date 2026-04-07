@@ -103,16 +103,13 @@ print(f"  Pipeline created: {sft_pipeline is not None}")
 
 async def register_sft_adapter():
     """Register the SFT adapter after training."""
-    # TODO: Create AdapterSignature and register adapter with registry
-    # Hint: sig = AdapterSignature(base_model_id=base_model, adapter_type="lora",
-    #   rank=sft_config.lora.rank, alpha=sft_config.lora.alpha,
-    #   target_modules=sft_config.lora.target_modules, training_method="sft")
-    # adapter = await registry.register_adapter(name="sg_domain_sft_v1",
-    #   adapter_path="./capstone_sft/sg_domain_sft_v1", signature=sig,
-    #   training_metrics={"train_loss": 0.42, "eval_loss": 0.51, "train_samples": sft_train.height},
-    #   tags=["singapore", "domain-qa", "sft", "lora-r16"])
+    # TODO: Create AdapterSignature with base_model_id, adapter_type="lora",
+    #   rank, alpha, target_modules from sft_config, training_method="sft"
     sig = AdapterSignature(____)
 
+    # TODO: Register adapter with name="sg_domain_sft_v1", path, signature,
+    #   training_metrics={"train_loss": 0.42, "eval_loss": 0.51, "train_samples": sft_train.height},
+    #   tags=["singapore", "domain-qa", "sft", "lora-r16"]
     adapter = await registry.register_adapter(____)
 
     print(f"\n  SFT adapter registered:")
@@ -145,16 +142,18 @@ rejected_responses = pref_train.select("rejected").to_series().to_list()
 
 def compute_reward_features(response: str) -> np.ndarray:
     """Extract features for reward prediction: length, specificity, structure, hedging."""
+    # TODO: Compute 4 features and return as np.array
+    # Hint: length_feat = min(1.0, word_count / 200)
+    #   specificity = len(re.findall(r"\d+|[A-Z]{2,}", response)) / max(word_count, 1) * 10
+    #   structure = count lines matching r"^\s*[\d\-\*]" / total lines
+    #   hedging = count of ["may","might","could","typically","generally","consult"] / 6
     words = response.split()
     word_count = len(words)
 
-    length_feat = min(1.0, word_count / 200)
-    specificity = len(re.findall(r"\d+|[A-Z]{2,}", response)) / max(word_count, 1) * 10
-    structure = sum(
-        1 for line in response.split("\n") if re.match(r"^\s*[\d\-\*]", line)
-    ) / max(1, response.count("\n") + 1)
-    hedge_words = ["may", "might", "could", "typically", "generally", "consult"]
-    hedging = sum(1 for w in hedge_words if w in response.lower()) / len(hedge_words)
+    length_feat = ____
+    specificity = ____
+    structure = ____
+    hedging = ____
 
     return np.array([length_feat, specificity, structure, hedging])
 
@@ -163,7 +162,9 @@ chosen_features = np.array([compute_reward_features(r) for r in chosen_responses
 rejected_features = np.array([compute_reward_features(r) for r in rejected_responses])
 
 # TODO: Train linear reward model via gradient descent on Bradley-Terry loss
-# Hint: for each epoch, compute chosen_scores = chosen_features @ reward_weights
+# Hint: for each epoch:
+#   chosen_scores = chosen_features @ reward_weights
+#   rejected_scores = rejected_features @ reward_weights
 #   diffs = chosen_scores - rejected_scores
 #   probs = 1 / (1 + np.exp(-np.clip(diffs, -20, 20)))
 #   grad = np.mean((1 - probs)[:, np.newaxis] * (chosen_features - rejected_features), axis=0)
@@ -179,9 +180,9 @@ for epoch in range(50):
     grad = ____
     reward_weights += ____
 
-train_accuracy = float(
-    np.mean(chosen_features @ reward_weights > rejected_features @ reward_weights)
-)
+# TODO: Evaluate accuracy on train and eval sets
+# Hint: accuracy = float(np.mean(chosen_features @ reward_weights > rejected_features @ reward_weights))
+train_accuracy = ____
 
 eval_chosen = np.array(
     [
@@ -195,9 +196,7 @@ eval_rejected = np.array(
         for r in pref_eval.select("rejected").to_series().to_list()
     ]
 )
-eval_accuracy = float(
-    np.mean(eval_chosen @ reward_weights > eval_rejected @ reward_weights)
-)
+eval_accuracy = ____
 
 print(f"  Reward model (linear, 4 features):")
 print(f"    Feature weights: {reward_weights.round(3)}")
@@ -207,26 +206,15 @@ print(f"    Eval accuracy: {eval_accuracy:.4f}")
 
 async def register_reward_adapter():
     """Register the reward model as an adapter."""
-    sig = AdapterSignature(
-        base_model_id=base_model,
-        adapter_type="reward_model",
-        rank=0,
-        alpha=0,
-        target_modules=(),
-        training_method="reward_modeling",
-    )
-
-    adapter = await registry.register_adapter(
-        name="sg_reward_model_v1",
-        adapter_path="./capstone_reward/sg_reward_model_v1",
-        signature=sig,
-        training_metrics={
-            "train_accuracy": train_accuracy,
-            "eval_accuracy": eval_accuracy,
-            "n_pairs": pref_train.height,
-        },
-        tags=["singapore", "reward-model", "preference-pairs"],
-    )
+    # TODO: Create AdapterSignature and register adapter
+    # Hint: sig = AdapterSignature(base_model_id=base_model, adapter_type="lora",
+    #   rank=1, alpha=1, target_modules=("q_proj",), training_method="sft")
+    # adapter = await registry.register_adapter(name="sg_reward_model_v1",
+    #   adapter_path="./capstone_reward/sg_reward_model_v1", signature=sig,
+    #   training_metrics={"train_accuracy": ..., "eval_accuracy": ..., "n_pairs": ...},
+    #   tags=["singapore", "reward-model", "preference-pairs"])
+    sig = ____
+    adapter = ____
 
     print(f"\n  Reward model registered:")
     print(f"    Name: {adapter.adapter_name} v{adapter.version}")
@@ -272,27 +260,17 @@ print(f"    )")
 
 async def register_dpo_adapter():
     """Register the DPO adapter."""
-    sig = AdapterSignature(
-        base_model_id=base_model,
-        adapter_type="lora",
-        rank=dpo_config.lora.rank,
-        alpha=dpo_config.lora.alpha,
-        target_modules=dpo_config.lora.target_modules,
-        training_method="dpo",
-    )
-
-    adapter = await registry.register_adapter(
-        name="sg_domain_dpo_v1",
-        adapter_path="./capstone_dpo/sg_domain_dpo_v1",
-        signature=sig,
-        training_metrics={
-            "train_loss": 0.35,
-            "eval_loss": 0.43,
-            "implicit_reward_gap": 0.82,
-            "n_pairs": pref_train.height,
-        },
-        tags=["singapore", "domain-qa", "dpo", "aligned"],
-    )
+    # TODO: Create AdapterSignature for DPO and register adapter
+    # Hint: sig = AdapterSignature(base_model_id=base_model, adapter_type="lora",
+    #   rank=dpo_config.lora.rank, alpha=dpo_config.lora.alpha,
+    #   target_modules=dpo_config.lora.target_modules, training_method="dpo")
+    # adapter = await registry.register_adapter(name="sg_domain_dpo_v1",
+    #   adapter_path="./capstone_dpo/sg_domain_dpo_v1", signature=sig,
+    #   training_metrics={"train_loss": 0.35, "eval_loss": 0.43,
+    #                     "implicit_reward_gap": 0.82, "n_pairs": pref_train.height},
+    #   tags=["singapore", "domain-qa", "dpo", "aligned"])
+    sig = ____
+    adapter = ____
 
     print(f"\n  DPO adapter registered:")
     print(f"    Name: {adapter.adapter_name} v{adapter.version}")
@@ -320,30 +298,30 @@ def verifiable_reward(completion: str, prompt: str) -> float:
 
     Checks: regulation citations, key entity mentions, hedging, conciseness.
     """
-    # TODO: Implement verifiable reward combining 4 components into [0, 1] score
+    # TODO: Combine 4 components into a [0, 1] score
     # Hint:
-    #   1. reg_ids citations: score += min(0.3, citations * 0.15)
-    #   2. entity mentions (MAS, PDPC, MOM, ACRA, PDPA, CDSA, AMLA): score += min(0.25, hits*0.05)
-    #   3. hedging phrases: score += 0.15 if any found
-    #   4. conciseness: score += 0.3 if <=200 words, 0.2 if <=300, else 0.1
+    #   1. citations: sum(1 for rid in reg_ids if rid in completion); score += min(0.3, citations*0.15)
+    #   2. entities ["MAS","PDPC","MOM","ACRA","PDPA","CDSA","AMLA"]; score += min(0.25, hits*0.05)
+    #   3. hedges ["please consult","seek professional","may vary","subject to"]; score += 0.15 if any
+    #   4. conciseness: <=200 words -> +0.3, <=300 -> +0.2, else +0.1
     score = 0.0
 
-    reg_ids = regulations.select("regulation_id").to_series().to_list()
+    reg_ids = ____
     citations = ____
     score += ____
 
-    entities = ["MAS", "PDPC", "MOM", "ACRA", "PDPA", "CDSA", "AMLA"]
+    entities = ____
     entity_hits = ____
     score += ____
 
-    hedges = ["please consult", "seek professional", "may vary", "subject to"]
+    hedges = ____
     has_hedge = ____
     score += ____
 
-    word_count = len(completion.split())
-    if word_count <= 200:
+    word_count = ____
+    if ____:
         score += 0.3
-    elif word_count <= 300:
+    elif ____:
         score += 0.2
     else:
         score += 0.1
@@ -380,26 +358,16 @@ print(f"    Range: [{min(sample_rewards):.3f}, {max(sample_rewards):.3f}]")
 
 async def register_grpo_adapter():
     """Register the GRPO adapter."""
-    sig = AdapterSignature(
-        base_model_id=base_model,
-        adapter_type="lora",
-        rank=grpo_config.lora.rank,
-        alpha=grpo_config.lora.alpha,
-        target_modules=grpo_config.lora.target_modules,
-        training_method="grpo",
-    )
-
-    adapter = await registry.register_adapter(
-        name="sg_domain_grpo_v1",
-        adapter_path="./capstone_grpo/sg_domain_grpo_v1",
-        signature=sig,
-        training_metrics={
-            "mean_reward": float(np.mean(sample_rewards)),
-            "reward_std": float(np.std(sample_rewards)),
-            "kl_divergence": 0.012,
-        },
-        tags=["singapore", "domain-qa", "grpo", "verifiable-reward"],
-    )
+    # TODO: Create AdapterSignature for GRPO and register adapter
+    # Hint: sig = AdapterSignature(base_model_id=base_model, adapter_type="lora",
+    #   rank=grpo_config.lora.rank, alpha=grpo_config.lora.alpha,
+    #   target_modules=grpo_config.lora.target_modules, training_method="grpo")
+    # adapter = await registry.register_adapter(name="sg_domain_grpo_v1",
+    #   adapter_path="./capstone_grpo/sg_domain_grpo_v1", signature=sig,
+    #   training_metrics={"mean_reward": ..., "reward_std": ..., "kl_divergence": 0.012},
+    #   tags=["singapore", "domain-qa", "grpo", "verifiable-reward"])
+    sig = ____
+    adapter = ____
 
     print(f"\n  GRPO adapter registered:")
     print(f"    Name: {adapter.adapter_name} v{adapter.version}")
@@ -418,7 +386,6 @@ print(f"  STAGE 5: ONNX Export with INT8 Quantization")
 print(f"{'=' * 70}")
 
 # TODO: Create OnnxBridge instance
-# Hint: bridge = OnnxBridge()
 bridge = ____
 
 print(f"  OnnxBridge export pipeline:")
@@ -430,7 +397,8 @@ print(f"    4. Validate: bridge.validate(path, test_data, expected)")
 d_model = 2048
 n_layers = 22
 total_params = 1_100_000_000
-lora_params = n_layers * 2 * 2 * d_model * 16
+# TODO: Compute LoRA params: n_layers * 2 modules * 2 matrices * d_model * rank
+lora_params = ____
 
 print(f"\n  Model size estimates:")
 for dtype, bytes_per, label in [
@@ -477,8 +445,8 @@ safety_tests = [
     },
 ]
 
-# TODO: Simulate safety evaluation: refuse tests pass at 90%, answer tests at 95%
-# Hint: for each test, passed = rng.random() > 0.1 if expected=="refuse" else rng.random() > 0.05
+# TODO: Simulate safety evaluation — refuse tests pass at 90%, answer tests at 95%
+# Hint: passed = rng.random() > 0.1 if test["expected"]=="refuse" else rng.random() > 0.05
 safety_results = []
 for test in safety_tests:
     passed = ____
@@ -491,7 +459,7 @@ for test in safety_tests:
     )
 
 safety_df = pl.DataFrame(safety_results)
-pass_rate = safety_df.filter(pl.col("passed")).height / safety_df.height
+pass_rate = ____
 
 print(f"\n  Safety evaluation results:")
 for row in safety_results:
@@ -513,51 +481,12 @@ async def list_pipeline_adapters():
 
 all_adapters = asyncio.run(list_pipeline_adapters())
 
-attestation = {
-    "timestamp": datetime.now(timezone.utc).isoformat(),
-    "base_model": base_model,
-    "pipeline_stages": [
-        {
-            "stage": 1,
-            "method": "SFT",
-            "adapter": "sg_domain_sft_v1",
-            "data_size": sft_train.height,
-        },
-        {
-            "stage": 2,
-            "method": "Reward Model",
-            "adapter": "sg_reward_model_v1",
-            "accuracy": eval_accuracy,
-        },
-        {
-            "stage": 3,
-            "method": "DPO",
-            "adapter": "sg_domain_dpo_v1",
-            "data_size": pref_train.height,
-        },
-        {
-            "stage": 4,
-            "method": "GRPO",
-            "adapter": "sg_domain_grpo_v1",
-            "reward_mean": float(np.mean(sample_rewards)),
-        },
-        {
-            "stage": 5,
-            "method": "ONNX Export",
-            "dtype": "INT8",
-            "target_size_gb": total_params / (1024**3),
-        },
-        {
-            "stage": 6,
-            "method": "Safety Eval",
-            "pass_rate": pass_rate,
-            "n_tests": len(safety_tests),
-        },
-    ],
-    "registered_adapters": len(all_adapters),
-    "safety_pass_rate": pass_rate,
-    "compliant": pass_rate >= 0.85,
-}
+# TODO: Build attestation dict with all pipeline stages
+# Hint: {"timestamp": datetime.now(timezone.utc).isoformat(), "base_model": base_model,
+#   "pipeline_stages": [{"stage": 1, "method": "SFT", ...}, ...],
+#   "registered_adapters": len(all_adapters), "safety_pass_rate": pass_rate,
+#   "compliant": pass_rate >= 0.85}
+attestation = ____
 
 print(f"\n  Attestation:")
 print(f"    Timestamp: {attestation['timestamp']}")

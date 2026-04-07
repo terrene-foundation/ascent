@@ -60,9 +60,8 @@ def quantize_absmax(weights: np.ndarray) -> dict:
     Maps [-absmax, absmax] -> [-127, 127]
     scale = absmax / 127
     """
-    # TODO: Compute scale, quantize to int8, dequantize back to float32
-    # Hint: absmax = np.max(np.abs(weights))
-    #   scale = absmax / 127.0
+    # TODO: Compute absmax, derive scale, quantize to int8, dequantize back
+    # Hint: absmax = np.max(np.abs(weights)), scale = absmax / 127.0
     #   quantized = np.clip(np.round(weights / scale), -127, 127).astype(np.int8)
     #   dequantized = quantized.astype(np.float32) * scale
     absmax = ____
@@ -84,9 +83,8 @@ def quantize_zero_point(weights: np.ndarray) -> dict:
     Maps [min, max] -> [0, 255]
     scale = (max - min) / 255,  zero_point = round(-min / scale)
     """
-    # TODO: Compute scale and zero_point, quantize to uint8, dequantize
-    # Hint: w_min, w_max = weights.min(), weights.max()
-    #   scale = (w_max - w_min) / 255.0
+    # TODO: Compute w_min/w_max, scale, zero_point, quantize to uint8, dequantize
+    # Hint: scale = (w_max - w_min) / 255.0
     #   zero_point = np.clip(int(np.round(-w_min / scale)), 0, 255)
     #   quantized = np.clip(np.round(weights / scale) + zero_point, 0, 255).astype(np.uint8)
     #   dequantized = (quantized.astype(np.float32) - zero_point) * scale
@@ -106,20 +104,28 @@ def quantize_zero_point(weights: np.ndarray) -> dict:
 
 def compute_quantization_error(original: np.ndarray, dequantized: np.ndarray) -> dict:
     """Compute quantization error metrics."""
-    error = original - dequantized
-    mse = float(np.mean(error**2))
-    max_err = float(np.max(np.abs(error)))
-    signal_power = float(np.mean(original**2))
-    sqnr_db = 10 * np.log10(signal_power / max(mse, 1e-20))
+    # TODO: Compute MSE, max error, SQNR (dB), and relative error
+    # Hint: error = original - dequantized
+    #   mse = float(np.mean(error**2))
+    #   max_err = float(np.max(np.abs(error)))
+    #   signal_power = float(np.mean(original**2))
+    #   sqnr_db = 10 * np.log10(signal_power / max(mse, 1e-20))
+    #   relative_error = float(np.sqrt(mse) / max(np.sqrt(signal_power), 1e-10))
+    error = ____
+    mse = ____
+    max_err = ____
+    signal_power = ____
+    sqnr_db = ____
 
     return {
         "mse": mse,
         "max_error": max_err,
         "sqnr_db": sqnr_db,
-        "relative_error": float(np.sqrt(mse) / max(np.sqrt(signal_power), 1e-10)),
+        "relative_error": ____,
     }
 
 
+# Test on simulated weight matrices
 W_normal = rng.standard_normal((1024, 1024)).astype(np.float32) * 0.02
 W_relu = np.maximum(0, rng.standard_normal((1024, 1024)).astype(np.float32) * 0.02)
 
@@ -162,7 +168,6 @@ for dtype, bytes_per, label in [
 # ══════════════════════════════════════════════════════════════════════
 
 # TODO: Create an OnnxBridge instance
-# Hint: bridge = OnnxBridge()
 bridge = ____
 
 print(f"\n=== OnnxBridge Export ===")
@@ -212,51 +217,58 @@ class KVCacheManager:
         self.window_size = window_size
         self.dtype = dtype
 
-        # TODO: Pre-allocate circular cache: shape (n_layers, 2, n_heads, window_size, d_head)
-        # Hint: np.zeros((n_layers, 2, n_heads, window_size, d_head), dtype=dtype)
+        # TODO: Pre-allocate circular cache buffer
+        # Hint: shape = (n_layers, 2, n_heads, window_size, d_head), 2 for K and V
         self.cache = ____
         self.position = 0
         self.length = 0
 
     def add_token(self, layer: int, key: np.ndarray, value: np.ndarray):
         """Add a new KV pair for one token at the specified layer."""
-        # TODO: Write key/value at circular position self.position % self.window_size
+        # TODO: Write key/value at circular position
         # Hint: write_pos = self.position % self.window_size
         #   self.cache[layer, 0, :, write_pos, :] = key
+        #   self.cache[layer, 1, :, write_pos, :] = value
         write_pos = ____
         ____
         ____
 
     def step(self):
         """Advance the position counter after all layers have written."""
-        self.position += 1
-        self.length = min(self.length + 1, self.window_size)
+        # TODO: Increment position and update length (capped at window_size)
+        ____
+        ____
 
     def get_kv(self, layer: int) -> tuple[np.ndarray, np.ndarray]:
         """Retrieve current K, V cache for a layer."""
         if self.length < self.window_size:
-            keys = self.cache[layer, 0, :, : self.length, :]
-            values = self.cache[layer, 1, :, : self.length, :]
+            # TODO: Cache not yet full -- slice up to self.length
+            keys = ____
+            values = ____
         else:
-            # TODO: Reorder circular buffer from oldest to newest
+            # TODO: Circular buffer full -- reorder from oldest to newest
             # Hint: start = self.position % self.window_size
             #   indices = [(start + i) % self.window_size for i in range(self.window_size)]
             start = ____
             indices = ____
-            keys = self.cache[layer, 0, :, indices, :]
-            values = self.cache[layer, 1, :, indices, :]
+            keys = ____
+            values = ____
         return keys, values
 
     @property
     def memory_bytes(self) -> int:
-        return self.cache.nbytes
+        """Current memory usage in bytes."""
+        # TODO: Return total bytes used by self.cache
+        return ____
 
     @property
     def memory_mb(self) -> float:
         return self.memory_bytes / (1024**2)
 
     def utilization(self) -> float:
-        return self.length / self.window_size
+        """Fraction of cache capacity in use."""
+        # TODO: Return length / window_size
+        return ____
 
 
 n_layers = 32
@@ -327,30 +339,33 @@ def simulate_speculative_decoding(
         draft_time = ____
         verify_time = ____
 
-        # Accept tokens until first rejection (always get at least 1 corrected token)
+        # TODO: Accept tokens until first rejection, always get at least 1 corrected
+        # Hint: loop draft_lookahead times, break on first rejection (rng.random() >= rate)
+        #   tokens_this_round = accepted + 1
         accepted = 0
         for _ in range(draft_lookahead):
-            if rng.random() < draft_acceptance_rate:
+            if ____:
                 accepted += 1
             else:
                 break
-        tokens_this_round = accepted + 1
+        tokens_this_round = ____
         accepted_counts.append(accepted)
 
         tokens_generated += tokens_this_round
-        total_time_ms += draft_time + verify_time
+        total_time_ms += ____
 
-    baseline_time_ms = n_tokens * target_latency_ms
+    # TODO: Compute baseline time (target-only autoregressive) and return metrics
+    baseline_time_ms = ____
 
     return {
         "tokens": min(tokens_generated, n_tokens),
         "rounds": n_rounds,
         "total_time_ms": total_time_ms,
         "baseline_time_ms": baseline_time_ms,
-        "speedup": baseline_time_ms / max(total_time_ms, 1),
+        "speedup": ____,
         "avg_accepted": float(np.mean(accepted_counts)),
-        "tokens_per_second": n_tokens / (total_time_ms / 1000),
-        "baseline_tps": n_tokens / (baseline_time_ms / 1000),
+        "tokens_per_second": ____,
+        "baseline_tps": ____,
     }
 
 
@@ -403,6 +418,10 @@ print(f"    server = InferenceServer(model_registry, cache_size=5)")
 print(f"    await server.warm_cache(['model_name'])")
 print(f"    result = await server.predict(model_name='...', features={{...}})")
 
+# TODO: Compute throughput vs latency Pareto curve for batch sizes [1,2,4,8,16,32,64]
+# Hint: batch_latency = base_latency + overhead_per_sample * np.log2(max(1, batch_size))
+#   throughput = batch_size / (batch_latency / 1000)
+#   efficiency = throughput / batch_size
 print(f"\n  Throughput vs Latency (Pareto Frontier):")
 print(
     f"    {'Batch Size':>12} {'Latency (ms)':>14} {'Throughput':>14} {'Efficiency':>12}"
@@ -412,9 +431,9 @@ print(f"    {'-' * 55}")
 for batch_size in [1, 2, 4, 8, 16, 32, 64]:
     base_latency = 30.0
     overhead_per_sample = 2.0
-    batch_latency = base_latency + overhead_per_sample * np.log2(max(1, batch_size))
-    throughput = batch_size / (batch_latency / 1000)
-    efficiency = throughput / batch_size
+    batch_latency = ____
+    throughput = ____
+    efficiency = ____
 
     print(
         f"    {batch_size:>12} {batch_latency:>12.1f} ms "

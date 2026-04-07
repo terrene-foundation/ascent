@@ -57,44 +57,38 @@ rng = np.random.default_rng(42)
 
 def proxy_reward_length(response: str) -> float:
     """Proxy reward: longer responses are better (gets gamed by padding)."""
-    # TODO: Return min(1.0, word_count / 200)
+    # TODO: Count words and return min(1.0, word_count / 200)
     word_count = ____
     return ____
 
 
 def proxy_reward_keywords(response: str, keywords: list[str]) -> float:
     """Proxy reward: more domain keywords = more knowledgeable (gets gamed by stuffing)."""
-    # TODO: Count keyword hits (case-insensitive), return min(1.0, hits / max(len(keywords), 1))
-    response_lower = response.lower()
+    # TODO: Count case-insensitive keyword hits
+    # Hint: hits = sum(1 for kw in keywords if kw.lower() in response_lower)
+    #   return min(1.0, hits / max(len(keywords), 1))
+    response_lower = ____
     hits = ____
     return ____
 
 
 def proxy_reward_format(response: str) -> float:
     """Proxy reward: structured formatting (gets gamed by empty structures)."""
+    # TODO: Score format: +0.2 for newlines, +0.3 for numbered lists,
+    #   +0.2 for colons, +0.3 for bullet markers. Return min(1.0, score)
     score = 0.0
-    if "\n" in response:
-        score += 0.2
-    if any(f"\n{i}." in response for i in range(1, 10)):
-        score += 0.3
-    if ":" in response:
-        score += 0.2
-    if any(marker in response for marker in ["- ", "* ", "  - "]):
-        score += 0.3
-    return min(1.0, score)
+    ____
+    return ____
 
 
 def true_quality_reward(response: str, reference: str) -> float:
     """The 'true' reward we actually care about (but can't easily compute)."""
-    length_factor = min(1.0, len(response.split()) / 150) * 0.3
-    if len(response.split()) > 300:
-        length_factor *= 0.5
-
-    ref_words = set(reference.lower().split())
-    resp_words = set(response.lower().split())
-    overlap = len(ref_words & resp_words) / max(len(ref_words), 1)
-
-    return min(1.0, length_factor + overlap * 0.7)
+    # TODO: Combine length factor (penalize >300 words) with reference word overlap
+    # Hint: length_factor = min(1.0, len(response.split()) / 150) * 0.3
+    #   if len(response.split()) > 300: length_factor *= 0.5
+    #   overlap = len(ref_words & resp_words) / max(len(ref_words), 1)
+    #   return min(1.0, length_factor + overlap * 0.7)
+    ____
 
 
 regulatory_keywords = [
@@ -183,13 +177,13 @@ def simulate_reward_hacking(
     for step in range(n_steps):
         progress = step / n_steps
 
-        # TODO: Compute proxy score (monotonically rising) and true quality (Goodhart curve)
+        # TODO: Compute proxy (monotonically rising) and true quality (Goodhart curve)
         # Hint: proxy = 0.3 + 0.7 * (1 - np.exp(-3 * progress * proxy_weight))
-        # True quality: rises until ~step 30, plateaus, then degrades from step 60
         #   if progress < 0.3: true = 0.3 + 1.5 * progress
         #   elif progress < 0.6: true = 0.75 + 0.05 * np.sin(progress * 10)
         #   else: true = 0.75 - 0.3 * (progress - 0.6)
         proxy = ____
+
         if progress < 0.3:
             true = ____
         elif progress < 0.6:
@@ -254,19 +248,20 @@ def simulate_kl_regularized(
     for step in range(n_steps):
         progress = step / n_steps
 
-        # TODO: Compute effective deviation after KL penalty and resulting scores
+        # TODO: Compute deviation, KL penalty, effective deviation, then proxy and true scores
         # Hint: deviation = progress**1.5
         #   kl_penalty = kl_coef * deviation * 10
         #   effective_deviation = deviation / (1 + kl_coef * 5)
         #   proxy = 0.3 + 0.7 * (1 - np.exp(-3 * effective_deviation))
-        # True quality with KL (milder degradation):
         #   if effective_deviation < 0.3: true = 0.3 + 1.5 * effective_deviation
-        #   elif effective_deviation < 0.6: true = 0.75 + 0.02 * np.sin(...)
+        #   elif effective_deviation < 0.6: true = 0.75 + 0.02 * np.sin(effective_deviation * 10)
         #   else: true = 0.75 - 0.05 * (effective_deviation - 0.6)
         deviation = ____
         kl_penalty = ____
         effective_deviation = ____
+
         proxy = ____
+
         if effective_deviation < 0.3:
             true = ____
         elif effective_deviation < 0.6:
@@ -329,13 +324,17 @@ def reward_ensemble(
     if weights is None:
         weights = {"length": 0.15, "keywords": 0.20, "format": 0.15, "quality": 0.50}
 
-    # TODO: Compute all four individual rewards and aggregate them
-    # Hint: rewards = {"length": proxy_reward_length(response), ...}
-    #   weighted = sum(rewards[k] * weights.get(k, 0) for k in rewards)
-    #   minimum = min(rewards.values())
-    #   geo_mean = float(np.exp(np.mean(np.log(np.array(list(rewards.values())) + 1e-10))))
+    # TODO: Compute all four individual rewards
+    # Hint: rewards = {"length": proxy_reward_length(response),
+    #   "keywords": proxy_reward_keywords(response, keywords),
+    #   "format": proxy_reward_format(response),
+    #   "quality": true_quality_reward(response, reference)}
     rewards = ____
 
+    # TODO: Compute weighted average, minimum, and geometric mean
+    # Hint: weighted = sum(rewards[k] * weights.get(k, 0) for k in rewards)
+    #   minimum = min(rewards.values())
+    #   geo_mean = float(np.exp(np.mean(np.log(np.array(list(rewards.values())) + 1e-10))))
     weighted = ____
     minimum = ____
     geo_mean = ____
@@ -388,7 +387,7 @@ def robust_regulatory_reward(
 
     scores = {}
 
-    # TODO: Compute grounding score (genuine regulation ID citations, cap 1.0)
+    # TODO: Grounding — count genuine regulation ID citations
     # Hint: reg_ids = regulations_df.select("regulation_id").to_series().to_list()
     #   genuine_citations = sum(1 for rid in reg_ids if rid in response)
     #   scores["grounding"] = min(1.0, genuine_citations / 2)
@@ -396,48 +395,29 @@ def robust_regulatory_reward(
     genuine_citations = ____
     scores["grounding"] = ____
 
-    # TODO: Compute specificity score (section numbers, dollar amounts, years, percentages)
-    # Hint: use re.search(r"[Ss]ection\s+\d+"), re.search(r"\$[\d,]+"), etc.
-    #   scores["specificity"] = min(1.0, specificity_signals / 3)
+    # TODO: Specificity — count concrete signals (section numbers, dollar amounts, years, %)
+    # Hint: check re.search(r"[Ss]ection\s+\d+", response) etc., cap at min(1.0, signals / 3)
     specificity_signals = 0
-    if re.search(r"[Ss]ection\s+\d+", response):
-        specificity_signals += 1
-    if re.search(r"\$[\d,]+", response):
-        specificity_signals += 1
-    if re.search(r"\d{4}", response):
-        specificity_signals += 1
-    if re.search(r"\d+%", response):
-        specificity_signals += 1
+    ____
     scores["specificity"] = ____
 
-    # Conciseness: penalize verbose responses (anti-gaming defense)
-    word_count = len(response.split())
-    if word_count < 30:
-        scores["conciseness"] = word_count / 30
-    elif word_count <= 200:
-        scores["conciseness"] = 1.0
-    else:
-        scores["conciseness"] = max(0.1, 1.0 - (word_count - 200) / 200)
+    # TODO: Conciseness — sweet spot at 30-200 words, penalize >200
+    # Hint: word_count < 30: word_count/30; <=200: 1.0; else: max(0.1, 1.0-(wc-200)/200)
+    word_count = ____
+    scores["conciseness"] = ____
 
-    # TODO: Compute hedging score (appropriate uncertainty language, cap 1.0)
-    # Hint: hedging_phrases = ["please consult", "seek professional", ...]
-    #   scores["hedging"] = min(1.0, hedge_count / 2)
-    hedging_phrases = [
-        "please consult",
-        "seek professional",
-        "this is general",
-        "may vary",
-        "subject to change",
-        "as of",
-        "according to",
-    ]
+    # TODO: Hedging — count appropriate uncertainty phrases, cap at min(1.0, count / 2)
+    # Hint: hedging_phrases = ["please consult", "seek professional", "this is general",
+    #   "may vary", "subject to change", "as of", "according to"]
+    hedging_phrases = ____
     hedge_count = ____
     scores["hedging"] = ____
 
-    # TODO: Compute reference overlap score
-    # Hint: ref_words & resp_words overlap, min(1.0, overlap * 1.5)
-    ref_words = set(reference.lower().split())
-    resp_words = set(response.lower().split())
+    # TODO: Reference overlap — word overlap between response and reference
+    # Hint: overlap = len(ref_words & resp_words) / max(len(ref_words), 1)
+    #   scores["reference_overlap"] = min(1.0, overlap * 1.5)
+    ref_words = ____
+    resp_words = ____
     overlap = ____
     scores["reference_overlap"] = ____
 
