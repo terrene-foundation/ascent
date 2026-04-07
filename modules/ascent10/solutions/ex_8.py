@@ -58,7 +58,7 @@ from kailash.trust.pact.config import (
     DataAccessConstraintConfig,
     CommunicationConstraintConfig,
 )
-from kailash_nexus import Nexus
+from nexus import Nexus
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -390,7 +390,7 @@ print(f"{'=' * 70}\n")
 
 async def register_in_governance():
     """Register capstone model in ModelRegistry and apply compliance policies."""
-    conn = ConnectionManager("sqlite:///ascent10_capstone.db")
+    conn = ConnectionManager("sqlite:///:memory:")
     await conn.initialize()
 
     registry = ModelRegistry(conn)

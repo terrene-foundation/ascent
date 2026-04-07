@@ -58,7 +58,7 @@ from kailash.trust.pact.config import (
     DataAccessConstraintConfig,
     CommunicationConstraintConfig,
 )
-from kailash_nexus import Nexus
+from nexus import Nexus
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -318,7 +318,7 @@ print(f"{'=' * 70}\n")
 
 
 # TODO: Implement register_in_governance()
-# Hint: 1) ConnectionManager("sqlite:///ascent10_capstone.db"), await conn.initialize()
+# Hint: 1) ConnectionManager("sqlite:///:memory:"), await conn.initialize()
 #        2) ModelRegistry(conn); pickle.dumps(robust_model) for artifact
 #        3) registry.register_model(name="capstone_fraud_regulated", artifact, metrics, signature)
 #        4) registry.promote_model(name, version, target_stage="production", reason=...)
@@ -458,7 +458,7 @@ print(f"  Actions: {sorted(governed_audit.context.allowed_actions)}")
 # Hint: 1) InferenceServer(registry, cache_size=5), await server.warm_cache(["capstone_fraud_regulated"])
 #        2) cap_engine.verify_action(cap_roles["fraud_agent"], "predict_fraud")
 #        3) await server.predict(model_name=..., features={...})
-#        4) DriftMonitor(reference_data=X_train_all[:2000], feature_names=..., psi_threshold=0.2)
+#        4) DriftMonitor(conn, psi_threshold=0.2); await monitor.set_reference(model_name=, reference_data=, feature_columns=)
 #        5) monitor.check_drift(X_test_all[:500]); print drift status + max PSI feature
 async def deploy_and_monitor():
     ____

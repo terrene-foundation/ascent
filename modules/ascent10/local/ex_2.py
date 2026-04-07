@@ -57,32 +57,25 @@ setup_environment()
 # ══════════════════════════════════════════════════════════════════════
 
 loader = ASCENTDataLoader()
-patients = loader.load("ascent02", "icu_patients.parquet")
+fraud_raw = loader.load("ascent04", "credit_card_fraud.parquet")
 
-print("=== ICU Patient Dataset ===")
+# Sample 2000 rows for speed; keep class balance
+fraud_fraud = fraud_raw.filter(pl.col("is_fraud") == 1).head(200)
+fraud_legit = fraud_raw.filter(pl.col("is_fraud") == 0).head(1800)
+patients = pl.concat([fraud_fraud, fraud_legit]).sample(fraction=1.0, seed=42, shuffle=True)
+
+print("=== Credit Card Fraud Dataset (sampled for federated learning) ===")
 print(f"Shape: {patients.shape}")
-print(f"Columns: {patients.columns}")
-print(patients.head(5))
+print(f"Fraud rate: {patients['is_fraud'].mean():.4%}")
 
-median_age = patients["age"].median()
-patients = patients.with_columns(
-    (pl.col("age") > median_age).cast(pl.Int32).alias("target"),
-    (pl.col("gender") == "M").cast(pl.Float64).alias("gender_numeric"),
-)
+feature_names = [c for c in patients.columns if c.startswith("v")] + ["amount"]
+X = patients.select(feature_names).to_numpy()
+y = patients["is_fraud"].to_numpy()
+n = len(y)
 
+# Partition into 3 virtual clients (~1000 each, non-IID by amount)
 rng = np.random.default_rng(42)
-n = patients.height
-synthetic_features = rng.normal(0, 1, (n, 5))
-feature_names = ["vitals_1", "vitals_2", "labs_1", "labs_2", "labs_3"]
-
-for i, name in enumerate(feature_names):
-    patients = patients.with_columns(pl.Series(name, synthetic_features[:, i]))
-
-X = patients.select(["gender_numeric"] + feature_names).to_numpy()
-y = patients["target"].to_numpy()
-
-# Partition into 3 virtual hospital clients (non-IID split)
-indices = np.argsort(patients["age"].to_numpy())
+indices = np.argsort(patients["amount"].to_numpy())
 n_per_client = n // 3
 
 client_indices = {
@@ -94,7 +87,7 @@ client_indices = {
 client_data = {}
 for name, idx in client_indices.items():
     client_data[name] = (X[idx], y[idx])
-    print(f"  {name}: {len(idx)} samples, target_rate={y[idx].mean():.3f}")
+    print(f"  {name}: {len(idx)} samples, target_rate={y[idx].mean():.4f}")
 
 
 def train_local_model(X_local: np.ndarray, y_local: np.ndarray) -> np.ndarray:
@@ -431,11 +424,13 @@ fed_file.unlink()
 # Hint: 1) ConnectionManager("sqlite:///..."), await conn.initialize()
 #        2) ModelRegistry(conn), pick best DP result (epsilon closest to 1.0)
 #        3) Serialize LogisticRegression with pickle.dumps
-#        4) registry.register_model(name, artifact, metrics=[MetricSpec(...)], signature=...)
-#        5) InferenceServer(registry, cache_size=5), await server.warm_cache([name])
-#        6) await server.predict(model_name=..., features={...})
-#        7) DriftMonitor(reference_data=..., feature_names=..., psi_threshold=0.2)
-#        8) monitor.check_drift(shifted_data)
+#        4) registry.register_model("federated_fraud_dp", artifact, metrics=[MetricSpec(...)], signature=...)
+#        5) InferenceServer(registry, cache_size=5), await server.warm_cache(["federated_fraud_dp"])
+#        6) test_features = {f: float(X[0, i]) for i, f in enumerate(feature_names)}
+#           test_features["transaction_id"] = "TXN-TEST-001"
+#           await server.predict(model_name="federated_fraud_dp", features=test_features)
+#        7) DriftMonitor(reference_data=X[:200], feature_names=feature_names, psi_threshold=0.2)
+#        8) monitor.check_drift(shifted_data) where shifted_data shifts amount column
 async def deploy_federated():
     """Register and deploy the DP-federated model."""
     ____

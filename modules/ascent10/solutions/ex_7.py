@@ -33,7 +33,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
-from kailash_dataflow import DataFlow, db
+from dataflow import DataFlow
 from kailash_ml.engines.drift_monitor import DriftMonitor
 from kailash.trust import ConfidentialityLevel, TrustPosture
 from pact import GovernanceEngine, PactGovernedAgent, compile_org, load_org_yaml
@@ -45,7 +45,7 @@ from kailash.trust.pact.config import (
     DataAccessConstraintConfig,
     CommunicationConstraintConfig,
 )
-from kailash_nexus import Nexus
+from nexus import Nexus
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -59,44 +59,43 @@ setup_environment()
 
 print("=== Model Governance Registry ===\n")
 
+db = DataFlow("sqlite:///:memory:")
+
 
 @db.model
 class GovernedModel:
     """Registry entry for a governed ML model."""
 
-    id: int = db.field(primary_key=True)
-    model_id: str = db.field()
-    model_name: str = db.field()
-    version: str = db.field()
-    training_data_hash: str = db.field()
-    adapter_history: str = db.field()  # JSON list of adapter versions
-    clearance_requirement: str = db.field()  # ConfidentialityLevel name
-    drift_psi_latest: float = db.field(default=0.0)
-    drift_check_count: int = db.field(default=0)
-    compliance_status: str = db.field(default="PENDING")
-    retirement_status: str = db.field(default="ACTIVE")
-    registered_at: str = db.field()
-    last_audit_at: str = db.field(default="")
+    id: int
+    model_id: str
+    model_name: str
+    version: str
+    training_data_hash: str
+    adapter_history: str  # JSON list of adapter versions
+    clearance_requirement: str  # ConfidentialityLevel name
+    drift_psi_latest: float = 0.0
+    drift_check_count: int = 0
+    compliance_status: str = "PENDING"
+    retirement_status: str = "ACTIVE"
+    registered_at: str = ""
+    last_audit_at: str = ""
 
 
 @db.model
 class GovernanceEvent:
     """Audit log entry for governance actions."""
 
-    id: int = db.field(primary_key=True)
-    event_type: str = (
-        db.field()
-    )  # REGISTRATION, DRIFT_CHECK, POLICY_VIOLATION, RETIREMENT
-    model_id: str = db.field()
-    actor: str = db.field()  # D/T/R address of the actor
-    details: str = db.field()  # JSON details
-    timestamp: str = db.field()
+    id: int
+    event_type: str  # REGISTRATION, DRIFT_CHECK, POLICY_VIOLATION, RETIREMENT
+    model_id: str
+    actor: str  # D/T/R address of the actor
+    details: str  # JSON details
+    timestamp: str
 
 
 async def setup_registry():
     """Initialise DataFlow and create governance tables."""
-    dataflow = DataFlow("sqlite:///ascent10_governance.db")
-    await dataflow.initialize()
+    await db.initialize()
 
     # Register models in the governance registry
     models_to_register = [
@@ -152,7 +151,7 @@ async def setup_registry():
             f"{m['clearance_requirement']:<15} {m['compliance_status']:<12}"
         )
 
-    return dataflow, models
+    return db, models
 
 
 dataflow, registered_models = asyncio.run(setup_registry())

@@ -25,7 +25,7 @@ import numpy as np
 import polars as pl
 
 from kaizen_agents import Delegate
-from kaizen.core import Signature, InputField, OutputField
+from kaizen import Signature, InputField, OutputField
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment

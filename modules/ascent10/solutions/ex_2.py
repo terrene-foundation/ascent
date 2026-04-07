@@ -57,40 +57,27 @@ setup_environment()
 # ══════════════════════════════════════════════════════════════════════
 
 loader = ASCENTDataLoader()
-patients = loader.load("ascent02", "icu_patients.parquet")
+fraud_raw = loader.load("ascent04", "credit_card_fraud.parquet")
 
-print("=== ICU Patient Dataset ===")
-print(f"Shape: {patients.shape}")
-print(f"Columns: {patients.columns}")
-print(patients.head(5))
-
-# Create a binary target: age > median as a proxy classification task
-# (In production this would be a real clinical outcome)
-median_age = patients["age"].median()
-patients = patients.with_columns(
-    (pl.col("age") > median_age).cast(pl.Int32).alias("target"),
-    # Encode gender as numeric
-    (pl.col("gender") == "M").cast(pl.Float64).alias("gender_numeric"),
+# Sample 2000 rows for speed; keep class balance
+fraud_fraud = fraud_raw.filter(pl.col("is_fraud") == 1).head(200)
+fraud_legit = fraud_raw.filter(pl.col("is_fraud") == 0).head(1800)
+patients = pl.concat([fraud_fraud, fraud_legit]).sample(
+    fraction=1.0, seed=42, shuffle=True
 )
 
-# Feature matrix: use patient_id hash as a numeric feature + gender
-# For educational purposes, create synthetic features from patient_id
+print("=== Credit Card Fraud Dataset (sampled for federated learning) ===")
+print(f"Shape: {patients.shape}")
+print(f"Fraud rate: {patients['is_fraud'].mean():.4%}")
+
+feature_names = [c for c in patients.columns if c.startswith("v")] + ["amount"]
+X = patients.select(feature_names).to_numpy()
+y = patients["is_fraud"].to_numpy()
+n = len(y)
+
+# Partition into 3 virtual clients (~1000 each, non-IID by amount)
 rng = np.random.default_rng(42)
-n = patients.height
-synthetic_features = rng.normal(0, 1, (n, 5))
-feature_names = ["vitals_1", "vitals_2", "labs_1", "labs_2", "labs_3"]
-
-for i, name in enumerate(feature_names):
-    patients = patients.with_columns(pl.Series(name, synthetic_features[:, i]))
-
-X = patients.select(["gender_numeric"] + feature_names).to_numpy()
-y = patients["target"].to_numpy()
-
-# Partition into 3 virtual hospital clients (non-IID split)
-# Hospital A: predominantly younger patients
-# Hospital B: balanced
-# Hospital C: predominantly older patients
-indices = np.argsort(patients["age"].to_numpy())
+indices = np.argsort(patients["amount"].to_numpy())
 n_per_client = n // 3
 
 client_indices = {
@@ -102,7 +89,7 @@ client_indices = {
 client_data = {}
 for name, idx in client_indices.items():
     client_data[name] = (X[idx], y[idx])
-    print(f"  {name}: {len(idx)} samples, target_rate={y[idx].mean():.3f}")
+    print(f"  {name}: {len(idx)} samples, target_rate={y[idx].mean():.4f}")
 
 
 def train_local_model(X_local: np.ndarray, y_local: np.ndarray) -> np.ndarray:
@@ -495,12 +482,9 @@ async def deploy_federated():
 
     signature = ModelSignature(
         input_schema=FeatureSchema(
-            name="federated_patient_input",
-            features=[
-                FeatureField(name="gender_numeric", dtype="float64"),
-                *[FeatureField(name=f, dtype="float64") for f in feature_names],
-            ],
-            entity_id_column="patient_id",
+            name="federated_fraud_input",
+            features=[FeatureField(name=f, dtype="float64") for f in feature_names],
+            entity_id_column="transaction_id",
         ),
         output_columns=["prediction", "probability"],
         output_dtypes=["int64", "float64"],
@@ -508,7 +492,7 @@ async def deploy_federated():
     )
 
     model_version = await registry.register_model(
-        name="federated_icu_dp",
+        name="federated_fraud_dp",
         artifact=model_bytes,
         metrics=[
             MetricSpec(name="accuracy", value=best_result["accuracy"]),
@@ -526,19 +510,13 @@ async def deploy_federated():
 
     # Deploy via InferenceServer
     server = InferenceServer(registry, cache_size=5)
-    await server.warm_cache(["federated_icu_dp"])
+    await server.warm_cache(["federated_fraud_dp"])
 
+    test_features = {f: float(X[0, i]) for i, f in enumerate(feature_names)}
+    test_features["transaction_id"] = "TXN-TEST-001"
     test_result = await server.predict(
-        model_name="federated_icu_dp",
-        features={
-            "gender_numeric": 1.0,
-            "vitals_1": 0.5,
-            "vitals_2": -0.3,
-            "labs_1": 0.8,
-            "labs_2": -0.1,
-            "labs_3": 0.2,
-            "patient_id": "test_001",
-        },
+        model_name="federated_fraud_dp",
+        features=test_features,
     )
     print(f"Test prediction: {test_result.prediction}")
     print(f"Inference time: {test_result.inference_time_ms:.1f}ms")
@@ -546,17 +524,17 @@ async def deploy_federated():
     # DriftMonitor for distribution shift
     monitor = DriftMonitor(
         reference_data=X[:200],
-        feature_names=["gender_numeric"] + feature_names,
+        feature_names=feature_names,
         psi_threshold=0.2,
     )
 
     # Simulate production traffic with slight distribution shift
     shifted_data = X[:50].copy()
-    shifted_data[:, 0] += rng.normal(0.5, 0.3, 50)  # Shift gender distribution
+    shifted_data[:, -1] *= 1.5  # Shift amount distribution
     drift_report = monitor.check_drift(shifted_data)
 
     print(f"\n=== DriftMonitor ===")
-    print(f"Features monitored: {len(['gender_numeric'] + feature_names)}")
+    print(f"Features monitored: {len(feature_names)}")
     print(f"PSI threshold: 0.2")
     print(f"Drift detected: {drift_report.has_drift}")
     if drift_report.feature_scores:

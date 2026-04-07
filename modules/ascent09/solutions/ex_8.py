@@ -254,11 +254,11 @@ async def register_reward_adapter():
     """Register the reward model as an adapter."""
     sig = AdapterSignature(
         base_model_id=base_model,
-        adapter_type="reward_model",
-        rank=0,
-        alpha=0,
-        target_modules=(),
-        training_method="reward_modeling",
+        adapter_type="lora",
+        rank=1,
+        alpha=1,
+        target_modules=("q_proj",),
+        training_method="sft",
     )
 
     adapter = await registry.register_adapter(

@@ -36,7 +36,9 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from kaizen.core import BaseAgent, Signature, InputField, OutputField
+from kaizen import Signature, InputField, OutputField
+from kaizen.core import Agent as BaseAgent
+from kailash.db.connection import ConnectionManager
 from kailash_ml.engines.drift_monitor import DriftMonitor
 
 from shared import ASCENTDataLoader
@@ -430,11 +432,22 @@ print(f"{'=' * 70}")
 
 # Set up DriftMonitor with training data as reference
 feature_names = feature_cols + ["amount"]
-monitor = DriftMonitor(
-    reference_data=X_train[:2000],
-    feature_names=feature_names,
-    psi_threshold=0.2,
-)
+
+
+async def _setup_monitor():
+    conn = ConnectionManager("sqlite:///:memory:")
+    await conn.initialize()
+    mon = DriftMonitor(conn, psi_threshold=0.2)
+    ref_df = pl.DataFrame(X_train[:2000], schema=feature_names)
+    await mon.set_reference(
+        model_name="fraud_detector_v1",
+        reference_data=ref_df,
+        feature_columns=feature_names,
+    )
+    return conn, mon
+
+
+conn, monitor = asyncio.run(_setup_monitor())
 
 # Simulate production traffic with gradual drift
 rng = np.random.default_rng(42)

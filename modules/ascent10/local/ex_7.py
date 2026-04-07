@@ -33,7 +33,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
-from kailash_dataflow import DataFlow, db
+from dataflow import DataFlow
 from kailash_ml.engines.drift_monitor import DriftMonitor
 from kailash.trust import ConfidentialityLevel, TrustPosture
 from pact import GovernanceEngine, PactGovernedAgent, compile_org, load_org_yaml
@@ -45,7 +45,7 @@ from kailash.trust.pact.config import (
     DataAccessConstraintConfig,
     CommunicationConstraintConfig,
 )
-from kailash_nexus import Nexus
+from nexus import Nexus
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -58,6 +58,8 @@ setup_environment()
 # ══════════════════════════════════════════════════════════════════════
 
 print("=== Model Governance Registry ===\n")
+
+db = DataFlow("sqlite:///:memory:")
 
 
 # TODO: Define GovernedModel @db.model with fields:
@@ -98,7 +100,7 @@ ____
 
 
 # TODO: Implement setup_registry() async function
-# Hint: 1) DataFlow("sqlite:///ascent10_governance.db"), await dataflow.initialize()
+# Hint: 1) await db.initialize()  (db is defined above as DataFlow instance)
 #        2) for each model in models_to_register: await db.express.create("GovernedModel", data)
 #        3) models = await db.express.list("GovernedModel", {}), print table, return (dataflow, models)
 async def setup_registry():

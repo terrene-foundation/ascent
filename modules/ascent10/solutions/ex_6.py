@@ -30,7 +30,9 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from kaizen.core import BaseAgent, Signature, InputField, OutputField
+from kaizen import Signature, InputField, OutputField
+from kaizen.core import Agent as BaseAgent
+from kailash.db.connection import ConnectionManager
 from kailash_ml.engines.drift_monitor import DriftMonitor
 from kailash.trust import ConfidentialityLevel, TrustPosture
 from pact import GovernanceEngine, PactGovernedAgent, compile_org, load_org_yaml
@@ -42,7 +44,7 @@ from kailash.trust.pact.config import (
     DataAccessConstraintConfig,
     CommunicationConstraintConfig,
 )
-from kailash_nexus import Nexus
+from nexus import Nexus
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -321,11 +323,21 @@ rng = np.random.default_rng(42)
 reference_data = rng.normal(0, 1, (1000, 10))
 feature_names = [f"feature_{i}" for i in range(10)]
 
-monitor = DriftMonitor(
-    reference_data=reference_data,
-    feature_names=feature_names,
-    psi_threshold=0.2,
-)
+
+async def _setup_drift_monitor():
+    conn = ConnectionManager("sqlite:///:memory:")
+    await conn.initialize()
+    mon = DriftMonitor(conn, psi_threshold=0.2)
+    ref_df = pl.DataFrame(reference_data, schema=feature_names)
+    await mon.set_reference(
+        model_name="compliance_monitor",
+        reference_data=ref_df,
+        feature_columns=feature_names,
+    )
+    return conn, mon
+
+
+drift_conn, monitor = asyncio.run(_setup_drift_monitor())
 
 
 def on_drift_detected(drift_report, pipeline_artefacts: dict) -> dict:

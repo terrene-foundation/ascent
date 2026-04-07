@@ -36,7 +36,9 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from kaizen.core import BaseAgent, Signature, InputField, OutputField
+from kaizen import Signature, InputField, OutputField
+from kaizen.core import Agent as BaseAgent
+from kailash.db.connection import ConnectionManager
 from kailash_ml.engines.drift_monitor import DriftMonitor
 
 from shared import ASCENTDataLoader
@@ -312,9 +314,23 @@ print(f"{'=' * 70}")
 
 feature_names = feature_cols + ["amount"]
 
-# TODO: Create DriftMonitor with X_train[:2000] as reference, psi_threshold=0.2
-# Hint: DriftMonitor(reference_data=X_train[:2000], feature_names=feature_names, psi_threshold=0.2)
-monitor = ____
+
+# TODO: Set up DriftMonitor — needs ConnectionManager, then await monitor.set_reference()
+# Hint: DriftMonitor(conn, psi_threshold=0.2); then set_reference(model_name=, reference_data=, feature_columns=)
+async def _setup_monitor():
+    conn = ConnectionManager("sqlite:///:memory:")
+    await conn.initialize()
+    mon = ____
+    ref_df = pl.DataFrame(X_train[:2000], schema=feature_names)
+    await mon.set_reference(
+        model_name="fraud_detector_v1",
+        reference_data=____,
+        feature_columns=____,
+    )
+    return conn, mon
+
+
+conn, monitor = asyncio.run(_setup_monitor())
 
 rng = np.random.default_rng(42)
 

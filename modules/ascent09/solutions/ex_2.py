@@ -25,7 +25,7 @@ import numpy as np
 import polars as pl
 
 from kaizen_agents import Delegate
-from kaizen.core import Signature, InputField, OutputField
+from kaizen import Signature, InputField, OutputField
 
 from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
 from kailash_align.config import DPOConfig, LoRAConfig
@@ -37,7 +37,8 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 base_model = os.environ.get("SFT_BASE_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-llm_model = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+_raw_llm = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("OPENAI_PROD_MODEL"))
+llm_model = _raw_llm if os.environ.get("OPENAI_API_KEY") else None
 
 # ── Data Loading ─────────────────────────────────────────────────────
 

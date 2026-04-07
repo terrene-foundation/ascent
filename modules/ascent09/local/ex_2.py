@@ -25,7 +25,7 @@ import numpy as np
 import polars as pl
 
 from kaizen_agents import Delegate
-from kaizen.core import Signature, InputField, OutputField
+from kaizen import Signature, InputField, OutputField
 
 from kailash_align import AlignmentConfig, AlignmentPipeline, AdapterRegistry
 from kailash_align.config import DPOConfig, LoRAConfig
