@@ -1,0 +1,56 @@
+# Spec Coverage Report — Red Team Round 1
+# Generated: 2026-04-08
+
+## Deliverable Coverage
+
+### Exercise Files (320/320 = 100%)
+| Format     | Expected | Found | Status |
+|------------|----------|-------|--------|
+| Solutions  | 80       | 80    | PASS   |
+| Local      | 80       | 80    | PASS   |
+| Jupyter    | 80       | 80    | PASS   |
+| Colab      | 80       | 80    | PASS   |
+
+### Supplementary Materials
+| Item            | Expected | Found | Status |
+|-----------------|----------|-------|--------|
+| Lecture decks   | 10       | 10    | PASS   |
+| Speaker notes   | 10       | 10    | PASS   |
+| Module READMEs  | 10       | 10    | PASS   |
+| Quiz files      | 10       | 10    | PASS   |
+| Deck PDFs       | 10       | 10    | PASS   |
+
+### Three-Format Consistency (10/10 sample = PASS)
+- Blank markers (____) match across all three formats
+- Function/class definitions consistent
+- Data loading patterns correct
+
+### Deck Title Consistency (10/10 = PASS after fixes)
+- All deck H2 titles now match CLAUDE.md Course Structure
+- All speaker notes titles aligned
+
+### Security (PASS)
+- 0 hardcoded secrets
+- 0 PCML references in student code
+- 0 pandas imports
+- 0 TODO/FIXME/STUB in solutions
+- .env in .gitignore
+
+### Quality Issues Fixed
+- ascent04/ex_2.py: bare except:pass → numeric fallback
+- ascent04/ex_6.py: _placeholder_b → _fallback_income/_fallback_debt
+- M10 ex_2/4/6/7/8: iteration counts reduced for performance
+
+### Known Accepted Deviations
+- sklearn in M3 (8 files): Accepted until kailash-py #341-348 ship
+- sklearn in M4 (7 files): Accepted until kailash-py #344-346 ship
+- sklearn in M10 (6 files): Pedagogical — teaching governance over models
+- sklearn in M6/ex_8 (1 file): GBM in capstone
+- 5 M6 files without polars: RL/PACT/governance exercises, no data ops
+- ascent05/ex_8: model_weights_placeholder — intentional exercise shortcut
+
+### Outstanding (Not Fixed This Round)
+- Scaffolding levels: 71/80 exercises over-scaffolded vs CLAUDE.md targets
+  - Worst: M9 (82.7% code provided vs 25% target)
+  - Best: M5 (40.1% vs 30% target) and M6 (37.9% vs 20% target)
+- 12 SDK issues still open (kailash-py #341-348, kailash-rs #240-243)
