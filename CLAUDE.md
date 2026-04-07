@@ -51,18 +51,18 @@ Foundation Certificate (M1-M6) reduces hand-holding progressively. Advanced Cert
 
 ## Course Structure
 
-| Module   | Title                                        | Kailash Frameworks                                                                                          |
-| -------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| ASCENT01 | Foundations — Statistics, Probability & Data | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer                                            |
-| ASCENT02 | Feature Engineering & Experiment Design      | kailash-ml: FeatureEngineer, FeatureStore, ExperimentTracker, ModelVisualizer                               |
-| ASCENT03 | Supervised ML — Theory to Production         | Core SDK WorkflowBuilder, DataFlow, kailash-ml: TrainingPipeline, HyperparameterSearch, ModelRegistry       |
-| ASCENT04 | Unsupervised ML, NLP & Deep Learning         | kailash-ml: AutoMLEngine, EnsembleEngine, DriftMonitor, InferenceServer; Nexus                              |
-| ASCENT05 | LLMs, AI Agents & RAG Systems                | Kaizen: Delegate, BaseAgent, Signature; kailash-ml agents; MCP                                              |
-| ASCENT06 | Alignment, Governance, RL & Production       | Align: AlignmentPipeline, AdapterRegistry; kailash-ml: RLTrainer; PACT; Nexus                               |
-| ASCENT07 | Deep Learning                                | kailash-ml: OnnxBridge, InferenceServer, TrainingPipeline, ModelVisualizer, ModelRegistry                   |
-| ASCENT08 | NLP & Transformers                           | kailash-ml: ModelVisualizer, AutoMLEngine, TrainingPipeline, OnnxBridge                                     |
-| ASCENT09 | LLMs, AI Agents & RAG                        | Kaizen: Delegate, BaseAgent, Signature, ReActAgent, Pipeline; Nexus, MCP                                    |
-| ASCENT10 | Alignment, RL & Governance                   | Align: AlignmentPipeline, AdapterRegistry; kailash-ml: RLTrainer; PACT: GovernanceEngine, PactGovernedAgent |
+| Module   | Title                                        | Kailash Frameworks                                                                                                |
+| -------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| ASCENT01 | Foundations — Statistics, Probability & Data | kailash-ml: DataExplorer, PreprocessingPipeline, ModelVisualizer                                                  |
+| ASCENT02 | Feature Engineering & Experiment Design      | kailash-ml: FeatureEngineer, FeatureStore, ExperimentTracker, ModelVisualizer                                     |
+| ASCENT03 | Supervised ML — Theory to Production         | Core SDK WorkflowBuilder, DataFlow, kailash-ml: TrainingPipeline, HyperparameterSearch, ModelRegistry             |
+| ASCENT04 | Unsupervised ML, Anomaly Detection & NLP     | kailash-ml: AutoMLEngine, EnsembleEngine, DriftMonitor, InferenceServer; Nexus                                    |
+| ASCENT05 | LLMs, AI Agents & RAG Systems                | Kaizen: Delegate, BaseAgent, Signature; kailash-ml agents; MCP                                                    |
+| ASCENT06 | Alignment, Governance, RL & Production       | Align: AlignmentPipeline, AdapterRegistry; kailash-ml: RLTrainer; PACT; Nexus                                     |
+| ASCENT07 | Deep Learning                                | kailash-ml: OnnxBridge, InferenceServer, TrainingPipeline, ModelVisualizer, ModelRegistry                         |
+| ASCENT08 | NLP & Transformers                           | kailash-ml: ModelVisualizer, AutoMLEngine, TrainingPipeline, OnnxBridge                                           |
+| ASCENT09 | Fine-Tuning, Alignment & RL                  | Align: AlignmentPipeline, AdapterRegistry, LoRAManager; kailash-ml: TrainingPipeline, OnnxBridge, InferenceServer |
+| ASCENT10 | AI Governance, Safety & Enterprise           | PACT: GovernanceEngine, PactGovernedAgent, ClearanceManager; Nexus; kailash-ml: DriftMonitor                      |
 
 ## Kailash Platform
 
