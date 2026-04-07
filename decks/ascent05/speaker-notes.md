@@ -1,4 +1,4 @@
-# Module 5: LLMs, AI Agents & Production Deployment -- Speaker Notes
+# Module 5: LLMs, AI Agents & RAG Systems -- Speaker Notes
 
 Total time: ~180 minutes (3 hours)
 

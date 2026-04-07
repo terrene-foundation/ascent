@@ -4,7 +4,7 @@ Total time: ~180 minutes (3 hours)
 
 ---
 
-## Slide 1: Deep Learning: Architecture-Driven Feature Engineering
+## Slide 1: Deep Learning
 
 **Time**: ~2 min
 **Talking points**:
@@ -1422,7 +1422,7 @@ Total time: ~180 minutes (3 hours)
 
 ---
 
-## Slide 89: Deep Learning: Architecture-Driven Feature Engineering (Back Cover)
+## Slide 89: Deep Learning (Back Cover)
 
 **Time**: ~1 min
 **Talking points**:

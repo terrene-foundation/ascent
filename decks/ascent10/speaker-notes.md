@@ -1,10 +1,10 @@
-# Module 10: Alignment, RL & Governance — Speaker Notes
+# Module 10: AI Governance, Safety & Enterprise — Speaker Notes
 
 Total time: ~180 minutes (3 hours)
 
 ---
 
-## Slide 1: Alignment, RL & Governance (Title)
+## Slide 1: AI Governance, Safety & Enterprise (Title)
 
 **Time**: ~1 min
 **Talking points**:
@@ -2402,7 +2402,7 @@ Total time: ~180 minutes (3 hours)
 
 ---
 
-## Slide 154: Alignment, RL & Governance (Closing Title)
+## Slide 154: AI Governance, Safety & Enterprise (Closing Title)
 
 **Time**: ~1 min
 **Talking points**:

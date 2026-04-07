@@ -1,10 +1,10 @@
-# Module 9: LLMs, AI Agents & RAG — Speaker Notes
+# Module 9: Fine-Tuning, Alignment & RL — Speaker Notes
 
 Total time: ~180 minutes (3 hours)
 
 ---
 
-## Slide 1: LLMs, AI Agents & RAG Systems
+## Slide 1: Fine-Tuning, Alignment & RL
 
 **Time**: ~1 min
 **Talking points**:

@@ -1,4 +1,4 @@
-# Module 1: Data Pipelines & Visualisation Mastery with Python — Speaker Notes
+# Module 1: Foundations — Statistics, Probability & Data — Speaker Notes
 
 Total time: ~180 minutes (3 hours)
 
@@ -91,7 +91,7 @@ Total time: ~180 minutes (3 hours)
 
 - Walk through the three failure modes: aggregation hides outliers, pre-built charts cannot ask new questions, no distribution view.
 - The right column shows what EDA would have caught: bimodal distribution, temporal clustering, correlation with flat type.
-- "This is why the module is called Data Pipelines and Visualisation MASTERY. Mastery means you can find things nobody asked you to look for."
+- "This is why the module is called Foundations — Statistics, Probability and Data. Foundations means you can find things nobody asked you to look for."
   **Transition**: "And this was not an abstract problem."
 
 ---
