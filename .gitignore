@@ -42,5 +42,19 @@ catboost_info/
 # Classroom exercises (face-to-face only, not open-source)
 classroom/
 
+# Node
+node_modules/
+
+# Runtime artifacts (generated when running solutions from repo root)
+/*.db
+/*.db-shm
+/*.db-wal
+/ex*.html
+/ex*.md
+/nlp_capstone_*.html
+/optimizer_comparison.html
+/sentiment_*.html
+.kailash_ml/
+
 # Claude Code
 .claude/worktrees/
