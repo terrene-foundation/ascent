@@ -2,378 +2,519 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT10 — Exercise 6: AI Governance with PACT
+# ASCENT10 — Exercise 6: Regulatory Compliance Automation with PACT
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Define an organization in YAML with D/T/R roles, compile
-#   with GovernanceEngine, enforce operating envelopes, and verify access.
+# OBJECTIVE: Build automated compliance checking -- define regulation
+#   schemas as Signatures, implement a ComplianceAuditAgent, trigger
+#   audits from DriftMonitor alerts, and deploy via Nexus.
 #
 # TASKS:
-#   1. Write YAML organization definition (departments, roles, clearances)
-#   2. Compile with GovernanceEngine
-#   3. Define operating envelopes (clearance levels, knowledge access)
-#   4. Test access control decisions
-#   5. Generate governance report with decision explanations
+#   1. Define compliance schema using Signature for EU AI Act, MAS TRM,
+#      SG AI Verify, PDPA
+#   2. Implement ComplianceAuditAgent that inspects governance artefacts
+#   3. Run audit on governed pipeline, generate remediation recommendations
+#   4. Continuous compliance: DriftMonitor alert triggers audit agent
+#   5. Deploy compliance checker as Nexus endpoint
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import tempfile
+import uuid
+from datetime import datetime
+from pathlib import Path
 
-from pact import (
-    ConfidentialityLevel,
-    GovernanceEngine,
-    KnowledgeItem,
-    RoleClearance,
-    TrustPostureLevel,
-    VettingStatus,
-    compile_org,
-    load_org_yaml,
+import numpy as np
+import polars as pl
+
+from kaizen.core import BaseAgent, Signature, InputField, OutputField
+from kailash_ml.engines.drift_monitor import DriftMonitor
+from kailash.trust import ConfidentialityLevel, TrustPosture
+from pact import GovernanceEngine, PactGovernedAgent, compile_org, load_org_yaml
+from pact.governance import RoleClearance, RoleEnvelope
+from kailash.trust.pact.config import (
+    ConstraintEnvelopeConfig,
+    OperationalConstraintConfig,
+    TemporalConstraintConfig,
+    DataAccessConstraintConfig,
+    CommunicationConstraintConfig,
 )
+from kailash_nexus import Nexus
 
+from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Write YAML organization definition
+# TASK 1: Define compliance schemas using Signature
 # ══════════════════════════════════════════════════════════════════════
 
-# PACT YAML requires: org_id, name, departments, roles, clearances
-# Roles use reports_to for hierarchy, heads for department leadership
-org_yaml = """
-# Singapore FinTech AI Organisation — PACT Governance Definition
-# D/T/R: Delegator / Task / Responsible
-# Every agent action must trace back to a human Delegator.
-
-org_id: sg_fintech_ai
-name: SG FinTech AI Division
-
-departments:
-  - id: ml_eng
-    name: ML Engineering
-  - id: risk_compliance
-    name: Risk and Compliance
-  - id: customer_intel
-    name: Customer Intelligence
-
-roles:
-  # Department heads (Delegators)
-  - id: chief_ml_officer
-    name: Chief ML Officer
-    heads: ml_eng
-  - id: chief_risk_officer
-    name: Chief Risk Officer
-    heads: risk_compliance
-  - id: vp_customer
-    name: VP Customer
-    heads: customer_intel
-
-  # ML Engineering roles (Responsible agents)
-  - id: data_analyst
-    name: Data Analyst
-    reports_to: chief_ml_officer
-  - id: model_trainer
-    name: Model Trainer
-    reports_to: chief_ml_officer
-  - id: model_deployer
-    name: Model Deployer
-    reports_to: chief_ml_officer
-
-  # Risk & Compliance roles
-  - id: risk_assessor
-    name: Risk Assessor
-    reports_to: chief_risk_officer
-  - id: bias_checker
-    name: Bias Checker
-    reports_to: chief_risk_officer
-
-  # Customer Intelligence roles
-  - id: customer_agent
-    name: Customer Agent
-    reports_to: vp_customer
-
-clearances:
-  # Heads get higher clearance
-  - role: chief_ml_officer
-    level: restricted
-  - role: chief_risk_officer
-    level: restricted
-  - role: vp_customer
-    level: confidential
-
-  # Workers get clearance appropriate to their role
-  - role: model_trainer
-    level: confidential
-  - role: model_deployer
-    level: confidential
-  - role: data_analyst
-    level: confidential
-  - role: risk_assessor
-    level: restricted
-  - role: bias_checker
-    level: confidential
-  - role: customer_agent
-    level: public
-"""
-
-# Write YAML to temp file
-org_yaml_path = os.path.join(tempfile.gettempdir(), "sg_fintech_org.yaml")
-with open(org_yaml_path, "w") as f:
-    f.write(org_yaml)
-
-print("=== Organization Definition ===")
-print("Organization: SG FinTech AI Division")
-print("Departments: ML Engineering, Risk & Compliance, Customer Intelligence")
-print("Roles: 9 (3 heads + 6 workers)")
-print("D/T/R chains: heads delegate to their reports")
-print(f"YAML written to: {org_yaml_path}")
+print("=== Compliance Schemas (Regulation -> Assertion Predicates) ===\n")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Compile with GovernanceEngine
-# ══════════════════════════════════════════════════════════════════════
+class EUAIActComplianceSignature(Signature):
+    """EU AI Act compliance check for high-risk AI systems."""
 
-# Step 1: load_org_yaml parses and validates the YAML
-loaded = load_org_yaml(org_yaml_path)
+    # Inputs: artefacts to verify
+    model_card_exists: bool = InputField(desc="Whether a model card is published")
+    bias_audit_conducted: bool = InputField(desc="Whether bias audit has been run")
+    human_oversight_defined: bool = InputField(
+        desc="Whether human-in-the-loop is configured"
+    )
+    risk_category: str = InputField(
+        desc="Risk category: MINIMAL, LIMITED, HIGH, UNACCEPTABLE"
+    )
+    audit_trail_active: bool = InputField(
+        desc="Whether governance audit trail is recording"
+    )
+    drift_monitoring_active: bool = InputField(
+        desc="Whether DriftMonitor is configured"
+    )
 
-# Step 2: compile_org validates structural integrity (no cycles, no dangling refs)
-compiled = compile_org(loaded.org_definition)
+    # Outputs: compliance verdict
+    overall_status: str = OutputField(desc="COMPLIANT, PARTIAL, NON_COMPLIANT")
+    article_verdicts: str = OutputField(desc="Per-article pass/fail with reasons")
+    remediation_actions: str = OutputField(desc="Required actions for compliance")
 
-# Step 3: GovernanceEngine wraps the org definition with access control
-engine = GovernanceEngine(loaded.org_definition)
 
-# Build role_id -> address mapping from compiled org
-LEVEL_MAP = {
-    "public": ConfidentialityLevel.PUBLIC,
-    "restricted": ConfidentialityLevel.RESTRICTED,
-    "confidential": ConfidentialityLevel.CONFIDENTIAL,
-    "secret": ConfidentialityLevel.SECRET,
-    "top_secret": ConfidentialityLevel.TOP_SECRET,
+class MASTRMComplianceSignature(Signature):
+    """MAS Technology Risk Management compliance check."""
+
+    governance_framework_active: bool = InputField(
+        desc="PACT GovernanceEngine configured"
+    )
+    audit_trail_integrity: bool = InputField(desc="Audit trail passes integrity check")
+    model_risk_documented: bool = InputField(
+        desc="Model risks documented in model card"
+    )
+    change_management_logged: bool = InputField(
+        desc="Model changes tracked in registry"
+    )
+    incident_response_defined: bool = InputField(
+        desc="Incident response procedures exist"
+    )
+
+    overall_status: str = OutputField(desc="COMPLIANT, PARTIAL, NON_COMPLIANT")
+    section_verdicts: str = OutputField(desc="Per-section pass/fail")
+    remediation_actions: str = OutputField(desc="Required actions")
+
+
+class SGAIVerifySignature(Signature):
+    """Singapore AI Verify framework compliance check."""
+
+    accountability_chain: bool = InputField(
+        desc="D/T/R chain traces to human delegator"
+    )
+    fairness_audit: bool = InputField(
+        desc="Bias metrics computed and thresholds defined"
+    )
+    transparency_docs: bool = InputField(desc="Model card and system card published")
+    explainability_available: bool = InputField(
+        desc="Feature importance or SHAP available"
+    )
+    data_governance: bool = InputField(desc="Dataset datasheet and lineage documented")
+
+    overall_status: str = OutputField(desc="COMPLIANT, PARTIAL, NON_COMPLIANT")
+    pillar_verdicts: str = OutputField(desc="Per-pillar pass/fail")
+    remediation_actions: str = OutputField(desc="Required actions")
+
+
+class PDPAComplianceSignature(Signature):
+    """Singapore PDPA (Personal Data Protection Act) compliance check."""
+
+    consent_documented: bool = InputField(desc="Data collection consent documented")
+    data_minimisation: bool = InputField(desc="Only necessary data collected/used")
+    access_controls: bool = InputField(desc="PACT clearance-based access enforced")
+    retention_policy: bool = InputField(desc="Data retention limits defined")
+    breach_notification: bool = InputField(
+        desc="Breach detection and notification configured"
+    )
+
+    overall_status: str = OutputField(desc="COMPLIANT, PARTIAL, NON_COMPLIANT")
+    obligation_verdicts: str = OutputField(desc="Per-obligation pass/fail")
+    remediation_actions: str = OutputField(desc="Required actions")
+
+
+# Define regulation schemas as structured assertion lists
+REGULATION_SCHEMAS = {
+    "EU AI Act": {
+        "assertions": [
+            (
+                "Art 9 - Risk Management",
+                "model_card_exists AND drift_monitoring_active",
+            ),
+            ("Art 10 - Data Governance", "bias_audit_conducted"),
+            ("Art 12 - Record-keeping", "audit_trail_active"),
+            ("Art 13 - Transparency", "model_card_exists"),
+            ("Art 14 - Human Oversight", "human_oversight_defined"),
+        ],
+        "required_risk_categories": ["HIGH"],
+    },
+    "MAS TRM": {
+        "assertions": [
+            ("S7.2 - IT Risk Framework", "governance_framework_active"),
+            ("S7.5 - Audit Trail", "audit_trail_integrity"),
+            ("S8.1 - System Reliability", "drift_monitoring_active"),
+        ],
+    },
+    "SG AI Verify": {
+        "assertions": [
+            ("Accountability", "accountability_chain"),
+            ("Fairness", "fairness_audit"),
+            ("Transparency", "transparency_docs"),
+        ],
+    },
+    "PDPA": {
+        "assertions": [
+            ("Consent Obligation", "consent_documented"),
+            ("Purpose Limitation", "data_minimisation"),
+            ("Access Protection", "access_controls"),
+            ("Retention Limit", "retention_policy"),
+        ],
+    },
 }
 
-role_id_to_addr: dict[str, str] = {}
-for addr, node in compiled.nodes.items():
-    if node.node_id:
-        role_id_to_addr[node.node_id] = addr
+for reg_name, schema in REGULATION_SCHEMAS.items():
+    print(f"{reg_name}:")
+    for assertion_name, predicate in schema["assertions"]:
+        print(f"  {assertion_name}: {predicate}")
+    print()
 
-# Apply clearances from the YAML
-for cs in loaded.clearances:
-    addr = role_id_to_addr.get(cs.role_id)
-    if addr:
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 2: Implement ComplianceAuditAgent
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"{'=' * 70}")
+print(f"=== ComplianceAuditAgent ===")
+print(f"{'=' * 70}\n")
+
+
+def run_compliance_audit(artefacts: dict) -> dict:
+    """Run compliance audit against all regulation schemas.
+
+    Args:
+        artefacts: Dict of artefact states (name -> bool or value).
+
+    Returns:
+        Structured audit report.
+    """
+    report = {
+        "audit_id": f"audit-{uuid.uuid4().hex[:8]}",
+        "timestamp": datetime.now().isoformat(),
+        "regulations": {},
+        "overall_status": "COMPLIANT",
+    }
+
+    for reg_name, schema in REGULATION_SCHEMAS.items():
+        reg_result = {
+            "assertions": [],
+            "status": "COMPLIANT",
+            "remediation": [],
+        }
+
+        for assertion_name, predicate in schema["assertions"]:
+            # Parse predicate (simple AND/OR logic)
+            terms = [t.strip() for t in predicate.replace("AND", ",").split(",")]
+            all_pass = all(artefacts.get(term, False) for term in terms)
+
+            reg_result["assertions"].append(
+                {
+                    "name": assertion_name,
+                    "predicate": predicate,
+                    "status": "PASS" if all_pass else "FAIL",
+                }
+            )
+
+            if not all_pass:
+                reg_result["status"] = "NON_COMPLIANT"
+                missing = [t for t in terms if not artefacts.get(t, False)]
+                reg_result["remediation"].append(
+                    f"{assertion_name}: missing {', '.join(missing)}"
+                )
+
+        report["regulations"][reg_name] = reg_result
+        if reg_result["status"] != "COMPLIANT":
+            report["overall_status"] = "NON_COMPLIANT"
+
+    return report
+
+
+# Simulate artefact state for a governed pipeline
+pipeline_artefacts = {
+    # EU AI Act
+    "model_card_exists": True,
+    "bias_audit_conducted": True,
+    "human_oversight_defined": True,
+    "risk_category": "HIGH",
+    "audit_trail_active": True,
+    "drift_monitoring_active": True,
+    # MAS TRM
+    "governance_framework_active": True,
+    "audit_trail_integrity": True,
+    "change_management_logged": True,
+    "incident_response_defined": False,  # Gap
+    # SG AI Verify
+    "accountability_chain": True,
+    "fairness_audit": True,
+    "transparency_docs": True,
+    "explainability_available": False,  # Gap
+    # PDPA
+    "consent_documented": True,
+    "data_minimisation": True,
+    "access_controls": True,
+    "retention_policy": False,  # Gap
+    "breach_notification": True,
+}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Run audit on governed pipeline, generate remediation
+# ══════════════════════════════════════════════════════════════════════
+
+audit_report = run_compliance_audit(pipeline_artefacts)
+
+print(f"Audit ID: {audit_report['audit_id']}")
+print(f"Timestamp: {audit_report['timestamp']}")
+print(f"Overall Status: {audit_report['overall_status']}\n")
+
+for reg_name, reg_result in audit_report["regulations"].items():
+    print(f"{reg_name}: {reg_result['status']}")
+    for assertion in reg_result["assertions"]:
+        status_marker = "PASS" if assertion["status"] == "PASS" else "FAIL"
+        print(f"  [{status_marker}] {assertion['name']}")
+    if reg_result["remediation"]:
+        print(f"  Remediation required:")
+        for action in reg_result["remediation"]:
+            print(f"    - {action}")
+    print()
+
+# Generate structured remediation plan
+print(f"=== Remediation Plan ===")
+all_remediation = []
+for reg_name, reg_result in audit_report["regulations"].items():
+    for action in reg_result["remediation"]:
+        all_remediation.append({"regulation": reg_name, "action": action})
+
+if all_remediation:
+    for i, item in enumerate(all_remediation, 1):
+        print(f"  {i}. [{item['regulation']}] {item['action']}")
+else:
+    print(f"  No remediation actions required. All checks PASS.")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Continuous compliance — DriftMonitor triggers audit
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n{'=' * 70}")
+print(f"=== Continuous Compliance Monitoring ===")
+print(f"{'=' * 70}\n")
+
+# Set up DriftMonitor
+rng = np.random.default_rng(42)
+reference_data = rng.normal(0, 1, (1000, 10))
+feature_names = [f"feature_{i}" for i in range(10)]
+
+monitor = DriftMonitor(
+    reference_data=reference_data,
+    feature_names=feature_names,
+    psi_threshold=0.2,
+)
+
+
+def on_drift_detected(drift_report, pipeline_artefacts: dict) -> dict:
+    """Callback: when DriftMonitor detects drift, trigger compliance audit.
+
+    This models the continuous compliance loop:
+    1. DriftMonitor checks PSI on production data
+    2. If PSI > threshold, drift is flagged
+    3. Compliance audit agent is triggered automatically
+    4. Audit agent checks if model card is still valid
+    5. Generates remediation if drift invalidates compliance
+    """
+    # Update artefacts based on drift
+    updated_artefacts = pipeline_artefacts.copy()
+    if drift_report.has_drift:
+        # Drift invalidates the current bias audit (model may be biased on new data)
+        updated_artefacts["bias_audit_conducted"] = False
+        # Drift means model card performance metrics may be stale
+        updated_artefacts["model_card_exists"] = True  # Card exists but may be outdated
+
+    return run_compliance_audit(updated_artefacts)
+
+
+# Simulate stable traffic (no drift)
+stable_data = rng.normal(0, 1, (200, 10))
+stable_report = monitor.check_drift(stable_data)
+print(f"Week 1 (stable): drift={stable_report.has_drift}")
+if not stable_report.has_drift:
+    print(f"  No compliance audit triggered.\n")
+
+# Simulate drifted traffic (triggers audit)
+drifted_data = rng.normal(0.8, 1.5, (200, 10))
+drift_report = monitor.check_drift(drifted_data)
+print(f"Week 2 (drift): drift={drift_report.has_drift}")
+
+if drift_report.has_drift:
+    print(f"  Drift detected -> triggering compliance audit...\n")
+    drift_audit = on_drift_detected(drift_report, pipeline_artefacts)
+    print(f"  Audit Status: {drift_audit['overall_status']}")
+    for reg_name, reg_result in drift_audit["regulations"].items():
+        if reg_result["status"] != "COMPLIANT":
+            print(f"  {reg_name}: {reg_result['status']}")
+            for action in reg_result["remediation"]:
+                print(f"    - {action}")
+
+print(f"\nContinuous compliance loop:")
+print(f"  DriftMonitor (PSI > 0.2) -> ComplianceAuditAgent -> Remediation Plan")
+print(f"  This runs automatically; humans review remediation at approval gates.")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Deploy compliance checker as Nexus endpoint
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n{'=' * 70}")
+print(f"=== Nexus Compliance Endpoint ===")
+print(f"{'=' * 70}\n")
+
+# Define the compliance check as a Nexus-deployable handler
+app = Nexus()
+
+
+async def compliance_check_handler(model_id: str) -> dict:
+    """Nexus endpoint: submit model_id, receive compliance report.
+
+    In production, this handler:
+    1. Looks up model metadata in ModelRegistry
+    2. Checks governance state via GovernanceEngine
+    3. Queries DriftMonitor for current drift status
+    4. Runs compliance audit against all regulation schemas
+    5. Returns structured JSON report
+    """
+    # Simulate model lookup
+    artefact_state = pipeline_artefacts.copy()
+
+    # Run audit
+    report = run_compliance_audit(artefact_state)
+    report["model_id"] = model_id
+
+    return report
+
+
+# Demonstrate the endpoint
+print(f"Nexus endpoint: POST /compliance/check")
+print(f"  Input: {{'model_id': 'credit_fraud_detector_v1'}}")
+
+demo_report = asyncio.run(compliance_check_handler("credit_fraud_detector_v1"))
+
+print(f"  Output:")
+print(f"    audit_id: {demo_report['audit_id']}")
+print(f"    model_id: {demo_report['model_id']}")
+print(f"    overall_status: {demo_report['overall_status']}")
+print(f"    regulations checked: {list(demo_report['regulations'].keys())}")
+
+# PACT governance for the compliance endpoint itself
+compliance_org_yaml = """
+org_id: compliance_service
+name: "Compliance Audit Service"
+
+departments:
+  - id: audit
+    name: "Audit Operations"
+
+roles:
+  - id: audit_admin
+    name: "Audit Administrator"
+    is_primary_for_unit: audit
+
+  - id: audit_agent
+    name: "Compliance Audit Agent"
+    reports_to: audit_admin
+    agent: true
+
+clearances:
+  - role: audit_admin
+    level: secret
+    compartments: [audit_reports, model_metadata, governance_state]
+  - role: audit_agent
+    level: confidential
+    compartments: [audit_reports, model_metadata]
+"""
+
+comp_file = Path(tempfile.mktemp(suffix=".yaml"))
+comp_file.write_text(compliance_org_yaml)
+comp_loaded = load_org_yaml(str(comp_file))
+comp_engine = GovernanceEngine(comp_loaded.org_definition)
+
+comp_compiled = compile_org(comp_loaded.org_definition)
+comp_roles = {}
+for addr, node in comp_compiled.nodes.items():
+    if node.role_definition is not None and not node.is_vacant:
+        comp_roles[node.node_id] = addr
+
+level_map = {
+    "confidential": ConfidentialityLevel.CONFIDENTIAL,
+    "secret": ConfidentialityLevel.SECRET,
+}
+for cs in comp_loaded.clearances:
+    if cs.role_id in comp_roles:
         clearance = RoleClearance(
-            role_address=addr,
-            max_clearance=LEVEL_MAP[cs.level],
+            role_address=comp_roles[cs.role_id],
+            max_clearance=level_map[cs.level],
             compartments=frozenset(cs.compartments),
-            granted_by_role_address=addr,
-            vetting_status=VettingStatus.ACTIVE,
-            nda_signed=cs.nda_signed,
+            granted_by_role_address="system_init",
         )
-        engine.grant_clearance(addr, clearance)
+        comp_engine.grant_clearance(comp_roles[cs.role_id], clearance)
 
-print(f"\n=== Compiled Organization ===")
-print(f"Org ID: {compiled.org_id}")
-print(f"Total nodes: {len(compiled.nodes)}")
-print(f"Clearances granted: {len(loaded.clearances)}")
-print("Compilation validates:")
-print("  - Every role has a valid reports_to chain (no dangling references)")
-print("  - No circular delegation (A reports_to B reports_to A)")
-print("  - Department heads are properly linked")
-print("  - All role IDs are unique")
-
-# Show the org tree
-print("\nOrganization tree:")
-for addr, node in sorted(compiled.nodes.items()):
-    indent = "  " * addr.count("-")
-    print(f"  {indent}{addr}: {node.name} ({node.node_type.value})")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 3: Define operating envelopes (clearance-based access)
-# ══════════════════════════════════════════════════════════════════════
-
-print("\n=== Operating Envelopes (Clearance Levels) ===")
-print("PACT uses confidentiality levels to control knowledge access:")
-print(f"  PUBLIC < RESTRICTED < CONFIDENTIAL < SECRET < TOP_SECRET")
-print()
-print("  data_analyst:")
-print("    Clearance: confidential")
-print("    Can access: public + restricted + confidential data")
-print()
-print("  model_trainer:")
-print("    Clearance: confidential")
-print("    Can access: public + restricted + confidential data")
-print()
-print("  risk_assessor:")
-print("    Clearance: restricted")
-print("    Can access: public + restricted data (NOT confidential)")
-print()
-print("  customer_agent:")
-print("    Clearance: public")
-print("    Can access: public data only")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 4: Test access control decisions
-# ══════════════════════════════════════════════════════════════════════
-
-print("\n=== Access Control Tests ===")
-print("PACT access = clearance check + posture ceiling + structural path")
-print("Posture ceilings: SUPERVISED->restricted, SHARED_PLANNING->confidential,")
-print("  DELEGATED->top_secret (no ceiling)")
-
-# Knowledge items owned by departments so structural path exists within dept
-ml_public = KnowledgeItem(
-    item_id="ml_docs",
-    classification=ConfidentialityLevel.PUBLIC,
-    owning_unit_address="D1",  # ML Engineering
+# Set audit agent envelope
+audit_env = RoleEnvelope(
+    id=f"env-{uuid.uuid4().hex[:8]}",
+    defining_role_address=comp_roles["audit_admin"],
+    target_role_address=comp_roles["audit_agent"],
+    envelope=ConstraintEnvelopeConfig(
+        id="audit-agent-envelope",
+        operational=OperationalConstraintConfig(
+            allowed_actions=[
+                "run_audit",
+                "read_model_card",
+                "read_drift_status",
+                "generate_report",
+            ],
+        ),
+        temporal=TemporalConstraintConfig(),
+        data_access=DataAccessConstraintConfig(),
+        communication=CommunicationConstraintConfig(),
+    ),
 )
-ml_restricted = KnowledgeItem(
-    item_id="ml_metrics",
-    classification=ConfidentialityLevel.RESTRICTED,
-    owning_unit_address="D1",  # ML Engineering
-)
-ml_confidential = KnowledgeItem(
-    item_id="training_data",
-    classification=ConfidentialityLevel.CONFIDENTIAL,
-    owning_unit_address="D1",  # ML Engineering
-)
-ml_secret = KnowledgeItem(
-    item_id="secret_model",
-    classification=ConfidentialityLevel.SECRET,
-    owning_unit_address="D1",  # ML Engineering
-)
-risk_restricted = KnowledgeItem(
-    item_id="audit_log",
-    classification=ConfidentialityLevel.RESTRICTED,
-    owning_unit_address="D2",  # Risk & Compliance
-)
-cust_public = KnowledgeItem(
-    item_id="public_faq",
-    classification=ConfidentialityLevel.PUBLIC,
-    owning_unit_address="D3",  # Customer Intelligence
+comp_engine.set_role_envelope(audit_env)
+
+governed_audit = PactGovernedAgent(
+    engine=comp_engine,
+    role_address=comp_roles["audit_agent"],
 )
 
-# Test cases: (role_id, knowledge_item, posture, expected_allowed, description)
-test_cases = [
-    # Within-department access at DELEGATED posture (no ceiling)
-    (
-        "model_trainer",
-        ml_confidential,
-        TrustPostureLevel.DELEGATED,
-        True,
-        "Confidential role, own-dept confidential data, delegated posture",
-    ),
-    (
-        "model_trainer",
-        ml_secret,
-        TrustPostureLevel.DELEGATED,
-        False,
-        "Confidential role, secret data exceeds clearance",
-    ),
-    (
-        "chief_ml_officer",
-        ml_restricted,
-        TrustPostureLevel.DELEGATED,
-        True,
-        "Restricted role, own-dept restricted data, delegated posture",
-    ),
-    # Posture ceiling effect
-    (
-        "model_trainer",
-        ml_confidential,
-        TrustPostureLevel.SUPERVISED,
-        False,
-        "Confidential role but SUPERVISED caps at restricted",
-    ),
-    (
-        "model_trainer",
-        ml_restricted,
-        TrustPostureLevel.SUPERVISED,
-        True,
-        "Confidential role, restricted data, within SUPERVISED ceiling",
-    ),
-    # Customer agent (public clearance)
-    (
-        "customer_agent",
-        cust_public,
-        TrustPostureLevel.DELEGATED,
-        True,
-        "Public role, public data in own dept",
-    ),
-    # Cross-department access (no KSP bridge = denied)
-    (
-        "risk_assessor",
-        ml_restricted,
-        TrustPostureLevel.DELEGATED,
-        False,
-        "Risk role accessing ML dept data without KSP bridge",
-    ),
-    # Same-department access
-    (
-        "risk_assessor",
-        risk_restricted,
-        TrustPostureLevel.DELEGATED,
-        True,
-        "Restricted role, own-dept restricted data",
-    ),
-]
+print(f"\nCompliance agent governance:")
+print(f"  Clearance: {governed_audit.context.effective_clearance_level}")
+print(f"  Actions: {sorted(governed_audit.context.allowed_actions)}")
 
-for role_id, ki, posture, expected, desc in test_cases:
-    role_addr = role_id_to_addr[role_id]
-    decision = engine.check_access(role_addr, ki, posture)
-    status = "ALLOWED" if decision.allowed else "DENIED"
-    match_str = "OK" if decision.allowed == expected else "UNEXPECTED"
-    print(
-        f"  [{match_str}] {role_id} -> {ki.item_id} ({ki.classification.value}): {status}"
-    )
-    print(f"      {desc}")
-    if not decision.allowed:
-        print(f"      Reason: {decision.reason}")
+# Verify the audit agent itself is governed
+for action in ["run_audit", "generate_report", "modify_model", "delete_audit_log"]:
+    verdict = comp_engine.verify_action(comp_roles["audit_agent"], action)
+    status = "ALLOW" if verdict.level == "auto_approved" else "BLOCK"
+    print(f"  audit_agent -> {action}: {status}")
 
+integrity = comp_engine.verify_audit_integrity()
+print(f"\nAudit integrity: {'VALID' if integrity else 'BROKEN'}")
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 5: Generate governance report with decision explanations
-# ══════════════════════════════════════════════════════════════════════
-
-print("\n=== Governance Report ===")
-
-# Demonstrate verify_action for action-level governance
-trainer_addr = role_id_to_addr["model_trainer"]
-verdict = engine.verify_action(trainer_addr, "train_model")
-
-print(f"Action verification for model_trainer -> train_model:")
-print(f"  Level: {verdict.level}")
-print(f"  Reason: {verdict.reason}")
-print(f"  Role address: {verdict.role_address}")
-
-# Explain a full decision chain
-print(f"\nDecision trace for model_trainer -> access training_data:")
-print(f"  1. Role: model_trainer (address: {trainer_addr})")
-print(f"  2. Clearance: confidential (granted via YAML clearances)")
-print(f"  3. Knowledge item: training_data (classification: confidential)")
-print(f"  4. Access check: confidential >= confidential -> ALLOWED")
-print(f"  5. Audit: logged to immutable audit chain")
-
-# Verify audit integrity
-integrity_ok, integrity_msg = engine.verify_audit_integrity()
-print(f"\nAudit integrity: {'VALID' if integrity_ok else 'INVALID'}")
-if integrity_msg:
-    print(f"  Detail: {integrity_msg}")
-
-print(f"\nD/T/R Accountability Grammar:")
-print(f"  D (Delegator): chief_ml_officer — authorizes the task")
-print(f"  T (Task): model_training — the bounded scope of work")
-print(f"  R (Responsible): model_trainer — executes within envelope")
-print(f"  If model_trainer exceeds clearance -> GovernanceEngine blocks")
-print(f"  If task fails -> accountability traces to chief_ml_officer")
-
-print(f"\nRegulatory mapping:")
-print(f"  EU AI Act: clearance levels satisfy Art. 9 (risk management)")
-print(f"  AI Verify: D/T/R chains satisfy accountability principle")
-print(f"  MAS TRM: audit trails satisfy record-keeping requirements")
+comp_file.unlink()
 
 print(
-    "\n=== Exercise 6 complete — PACT governance with D/T/R and clearance-based access ==="
+    "\n--- Exercise 6 complete: regulatory compliance automation with PACT + Nexus ---"
 )

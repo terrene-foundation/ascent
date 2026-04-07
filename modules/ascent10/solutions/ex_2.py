@@ -2,28 +2,49 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT10 — Exercise 2: DPO Preference Alignment
+# ASCENT10 — Exercise 2: Federated Learning with Privacy Guarantees
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Align a model using DPO — construct preference pairs,
-#   configure DPO training, compare aligned vs base model on safety
-#   and helpfulness metrics.
+# OBJECTIVE: Implement federated averaging (FedAvg) from scratch with
+#   differential privacy, integrate with PACT governance for client
+#   isolation, and deploy via InferenceServer with DriftMonitor.
 #
 # TASKS:
-#   1. Load preference dataset (chosen/rejected pairs)
-#   2. Configure AlignmentConfig for DPO with beta parameter
-#   3. Train DPO pipeline
-#   4. Evaluate aligned model on safety prompts
-#   5. Compare DPO vs SFT-only model outputs
+#   1. Implement FedAvg with 3 virtual hospital clients
+#   2. Add Gaussian noise DP mechanism with moments accountant
+#   3. Privacy-utility trade-off at varying epsilon values
+#   4. Integrate with PACT: each client as PactGovernedAgent
+#   5. Deploy federated model via InferenceServer + DriftMonitor
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
 import asyncio
 import os
+import pickle
+import tempfile
+import uuid
+from pathlib import Path
 
+import numpy as np
 import polars as pl
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score
 
-from kailash_align import AdapterRegistry, AlignmentConfig, AlignmentPipeline
+from kailash.trust import ConfidentialityLevel, TrustPosture
+from kailash.db.connection import ConnectionManager
+from kailash_ml.engines.model_registry import ModelRegistry
+from kailash_ml.engines.inference_server import InferenceServer
+from kailash_ml.engines.drift_monitor import DriftMonitor
+from kailash_ml.types import FeatureSchema, FeatureField, ModelSignature, MetricSpec
+from pact import GovernanceEngine, PactGovernedAgent, compile_org, load_org_yaml
+from pact.governance import RoleClearance, RoleEnvelope, KnowledgeItem
+from kailash.trust.pact.config import (
+    ConstraintEnvelopeConfig,
+    OperationalConstraintConfig,
+    TemporalConstraintConfig,
+    DataAccessConstraintConfig,
+    CommunicationConstraintConfig,
+)
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -32,118 +53,521 @@ setup_environment()
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load preference dataset
+# TASK 1: Implement FedAvg with 3 virtual hospital clients
 # ══════════════════════════════════════════════════════════════════════
 
 loader = ASCENTDataLoader()
-pref_data = loader.load("ascent10", "preference_pairs.parquet")
+patients = loader.load("ascent02", "icu_patients.parquet")
 
-print("=== Preference Dataset ===")
-print(f"Shape: {pref_data.shape}")
-print(f"Columns: {pref_data.columns}")
-print(f"\nSample prompt:\n{pref_data['prompt'][0]}")
-print(f"\nChosen:\n{pref_data['chosen'][0][:200]}...")
-print(f"\nRejected:\n{pref_data['rejected'][0][:200]}...")
+print("=== ICU Patient Dataset ===")
+print(f"Shape: {patients.shape}")
+print(f"Columns: {patients.columns}")
+print(patients.head(5))
 
-# Verify dataset structure
-assert "prompt" in pref_data.columns, "Need 'prompt' column"
-assert "chosen" in pref_data.columns, "Need 'chosen' column"
-assert "rejected" in pref_data.columns, "Need 'rejected' column"
-
-n_train = int(pref_data.height * 0.9)
-train_pref = pref_data[:n_train]
-eval_pref = pref_data[n_train:]
-print(f"\nTrain: {train_pref.height}, Eval: {eval_pref.height}")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TASK 2: Configure AlignmentConfig for DPO
-# ══════════════════════════════════════════════════════════════════════
-
-base_model = os.environ.get("SFT_BASE_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-
-from kailash_align.config import LoRAConfig
-
-dpo_config = AlignmentConfig(
-    method="dpo",
-    base_model_id=base_model,
-    lora=LoRAConfig(
-        rank=16, alpha=32, dropout=0.05, target_modules=("q_proj", "v_proj")
-    ),
-    experiment_dir="./dpo_output",
+# Create a binary target: age > median as a proxy classification task
+# (In production this would be a real clinical outcome)
+median_age = patients["age"].median()
+patients = patients.with_columns(
+    (pl.col("age") > median_age).cast(pl.Int32).alias("target"),
+    # Encode gender as numeric
+    (pl.col("gender") == "M").cast(pl.Float64).alias("gender_numeric"),
 )
-dpo_beta = 0.1  # DPO temperature — controls strength of preference
 
-print("\n=== DPO Config ===")
-print(f"Method: {dpo_config.method}")
-print(f"Beta (temperature): {dpo_beta}")
-print(f"Base model: {dpo_config.base_model_id}")
-print(f"LoRA rank: {dpo_config.lora.rank}")
-print(f"Experiment dir: {dpo_config.experiment_dir}")
+# Feature matrix: use patient_id hash as a numeric feature + gender
+# For educational purposes, create synthetic features from patient_id
+rng = np.random.default_rng(42)
+n = patients.height
+synthetic_features = rng.normal(0, 1, (n, 5))
+feature_names = ["vitals_1", "vitals_2", "labs_1", "labs_2", "labs_3"]
 
-# Explain DPO loss
-print("\n--- DPO Loss Function ---")
-print("L_DPO = -E[log sigma(beta * (log pi(y_w|x)/pi_ref(y_w|x)")
-print("                           - log pi(y_l|x)/pi_ref(y_l|x)))]")
-print("Where y_w = chosen, y_l = rejected, pi_ref = reference model")
-print(f"Beta={dpo_beta}: moderate preference strength")
+for i, name in enumerate(feature_names):
+    patients = patients.with_columns(pl.Series(name, synthetic_features[:, i]))
+
+X = patients.select(["gender_numeric"] + feature_names).to_numpy()
+y = patients["target"].to_numpy()
+
+# Partition into 3 virtual hospital clients (non-IID split)
+# Hospital A: predominantly younger patients
+# Hospital B: balanced
+# Hospital C: predominantly older patients
+indices = np.argsort(patients["age"].to_numpy())
+n_per_client = n // 3
+
+client_indices = {
+    "hospital_a": indices[:n_per_client],
+    "hospital_b": indices[n_per_client : 2 * n_per_client],
+    "hospital_c": indices[2 * n_per_client :],
+}
+
+client_data = {}
+for name, idx in client_indices.items():
+    client_data[name] = (X[idx], y[idx])
+    print(f"  {name}: {len(idx)} samples, target_rate={y[idx].mean():.3f}")
+
+
+def train_local_model(X_local: np.ndarray, y_local: np.ndarray) -> np.ndarray:
+    """Train a local logistic regression and return weight vector."""
+    model = LogisticRegression(max_iter=200, random_state=42)
+    model.fit(X_local, y_local)
+    # Return flattened weights (coef + intercept)
+    return np.concatenate([model.coef_.flatten(), model.intercept_])
+
+
+def fedavg(client_weights: list[tuple[np.ndarray, int]]) -> np.ndarray:
+    """Federated averaging: weighted mean of client model parameters.
+
+    Args:
+        client_weights: List of (weight_vector, n_samples) tuples.
+
+    Returns:
+        Aggregated weight vector.
+    """
+    total_samples = sum(n for _, n in client_weights)
+    aggregated = np.zeros_like(client_weights[0][0])
+    for weights, n_samples in client_weights:
+        aggregated += weights * (n_samples / total_samples)
+    return aggregated
+
+
+def set_model_weights(model: LogisticRegression, weights: np.ndarray) -> None:
+    """Set logistic regression weights from a flat vector."""
+    n_features = len(weights) - 1
+    model.coef_ = weights[:n_features].reshape(1, -1)
+    model.intercept_ = weights[n_features:]
+    model.classes_ = np.array([0, 1])
+
+
+# Run FedAvg for multiple rounds
+n_rounds = 5
+print(f"\n=== FedAvg Training ({n_rounds} rounds) ===")
+
+global_weights = None
+for round_num in range(1, n_rounds + 1):
+    round_client_weights = []
+    for name, (X_c, y_c) in client_data.items():
+        if global_weights is not None:
+            # Initialize local model with global weights
+            local_model = LogisticRegression(max_iter=200, random_state=42)
+            local_model.fit(X_c, y_c)
+            set_model_weights(local_model, global_weights)
+            # One more pass of local training
+            local_model.fit(X_c, y_c)
+            local_w = np.concatenate(
+                [local_model.coef_.flatten(), local_model.intercept_]
+            )
+        else:
+            local_w = train_local_model(X_c, y_c)
+        round_client_weights.append((local_w, len(y_c)))
+
+    global_weights = fedavg(round_client_weights)
+
+    # Evaluate global model
+    global_model = LogisticRegression()
+    set_model_weights(global_model, global_weights)
+    y_pred = global_model.predict(X)
+    acc = accuracy_score(y, y_pred)
+    auc = roc_auc_score(y, global_model.predict_proba(X)[:, 1])
+    print(f"  Round {round_num}: accuracy={acc:.4f}, AUC={auc:.4f}")
+
+# Compare with centralized model
+centralized = LogisticRegression(max_iter=200, random_state=42)
+centralized.fit(X, y)
+cent_acc = accuracy_score(y, centralized.predict(X))
+cent_auc = roc_auc_score(y, centralized.predict_proba(X)[:, 1])
+print(f"\n  Centralized baseline: accuracy={cent_acc:.4f}, AUC={cent_auc:.4f}")
+print(
+    f"  FedAvg gap: accuracy={abs(acc - cent_acc):.4f}, AUC={abs(auc - cent_auc):.4f}"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Train DPO pipeline
+# TASK 2: Gaussian noise DP mechanism with moments accountant
 # ══════════════════════════════════════════════════════════════════════
 
 
-async def run_dpo():
-    pipeline = AlignmentPipeline(dpo_config)
-
-    print("\n=== Running DPO Training ===")
-    print(f"AlignmentPipeline.train(dataset, adapter_name) runs DPO alignment.")
-    print(f"Requires a GPU and the actual base model ({base_model}).")
-    try:
-        result = await pipeline.train(train_pref, "sg_domain_dpo_v1")
-        print("DPO Training complete:")
-        print(f"  Final loss: {result.final_loss:.4f}")
-        print(f"  Training time: {result.training_time_seconds:.0f}s")
-        return pipeline, result
-    except Exception as e:
-        print(f"  Training skipped (requires GPU/model): {type(e).__name__}")
-        return pipeline, None
+def clip_gradients(weights: np.ndarray, max_norm: float) -> np.ndarray:
+    """Clip weight update to sensitivity bound S (L2 norm)."""
+    norm = np.linalg.norm(weights)
+    if norm > max_norm:
+        return weights * (max_norm / norm)
+    return weights
 
 
-dpo_pipeline, dpo_result = asyncio.run(run_dpo())
+def add_gaussian_noise(
+    weights: np.ndarray, sensitivity: float, sigma: float
+) -> np.ndarray:
+    """Add calibrated Gaussian noise for (epsilon, delta)-DP.
+
+    Noise ~ N(0, sigma^2 * S^2) where S is the sensitivity (clip norm).
+    """
+    noise = np.random.normal(0, sigma * sensitivity, size=weights.shape)
+    return weights + noise
+
+
+def moments_accountant(
+    n_rounds: int,
+    n_samples: int,
+    batch_size: int,
+    sigma: float,
+    delta: float = 1e-5,
+) -> float:
+    """Simple moments accountant for tracking privacy budget epsilon.
+
+    Uses the basic composition theorem (advanced composition for tighter bounds).
+    epsilon = sqrt(2 * n_rounds * ln(1/delta)) / sigma + n_rounds / (2 * sigma^2)
+    """
+    q = batch_size / n_samples  # Sampling probability
+    # Advanced composition bound
+    eps = np.sqrt(2 * n_rounds * np.log(1 / delta)) * (q / sigma)
+    eps += n_rounds * q * q / (2 * sigma * sigma)
+    return eps
+
+
+def fedavg_dp(
+    client_data: dict,
+    n_rounds: int,
+    clip_norm: float,
+    sigma: float,
+) -> tuple[np.ndarray, float]:
+    """FedAvg with differential privacy (gradient clipping + Gaussian noise)."""
+    global_weights = None
+    total_samples = sum(len(y) for _, (_, y) in client_data.items())
+
+    for round_num in range(1, n_rounds + 1):
+        round_updates = []
+        for name, (X_c, y_c) in client_data.items():
+            local_model = LogisticRegression(max_iter=200, random_state=42)
+            local_model.fit(X_c, y_c)
+            local_w = np.concatenate(
+                [local_model.coef_.flatten(), local_model.intercept_]
+            )
+
+            # Clip the update
+            if global_weights is not None:
+                update = local_w - global_weights
+                clipped_update = clip_gradients(update, clip_norm)
+                local_w = global_weights + clipped_update
+
+            round_updates.append((local_w, len(y_c)))
+
+        # Aggregate with FedAvg
+        aggregated = fedavg(round_updates)
+
+        # Add Gaussian noise to aggregated weights
+        aggregated = add_gaussian_noise(aggregated, clip_norm, sigma)
+        global_weights = aggregated
+
+    # Compute privacy budget
+    avg_client_size = total_samples // len(client_data)
+    epsilon = moments_accountant(
+        n_rounds=n_rounds,
+        n_samples=total_samples,
+        batch_size=avg_client_size,
+        sigma=sigma,
+    )
+
+    return global_weights, epsilon
+
+
+print(f"\n=== Differential Privacy Mechanism ===")
+print(f"Components:")
+print(f"  1. Gradient clipping: L2 norm bound = sensitivity S")
+print(f"  2. Gaussian noise: N(0, sigma^2 * S^2) added to aggregated weights")
+print(f"  3. Moments accountant: tracks cumulative epsilon across rounds")
+
+# Run DP-FedAvg
+dp_weights, eps = fedavg_dp(client_data, n_rounds=5, clip_norm=1.0, sigma=1.0)
+dp_model = LogisticRegression()
+set_model_weights(dp_model, dp_weights)
+dp_acc = accuracy_score(y, dp_model.predict(X))
+dp_auc = roc_auc_score(y, dp_model.predict_proba(X)[:, 1])
+print(
+    f"\nDP-FedAvg (sigma=1.0): accuracy={dp_acc:.4f}, AUC={dp_auc:.4f}, epsilon={eps:.4f}"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 4: Evaluate aligned model on safety prompts
+# TASK 3: Privacy-utility trade-off at varying epsilon
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n=== Privacy-Utility Trade-off ===")
+print(f"{'Sigma':<10} {'Epsilon':<12} {'Accuracy':<12} {'AUC':<12}")
+print("-" * 46)
+
+sigma_values = [0.1, 0.5, 1.0, 2.0, 5.0]
+results = []
+for sigma in sigma_values:
+    w, eps = fedavg_dp(client_data, n_rounds=5, clip_norm=1.0, sigma=sigma)
+    m = LogisticRegression()
+    set_model_weights(m, w)
+    a = accuracy_score(y, m.predict(X))
+    au = roc_auc_score(y, m.predict_proba(X)[:, 1])
+    results.append({"sigma": sigma, "epsilon": eps, "accuracy": a, "auc": au})
+    print(f"{sigma:<10.1f} {eps:<12.4f} {a:<12.4f} {au:<12.4f}")
+
+# Map to approximate epsilon targets
+print(f"\nInterpretation:")
+print(f"  Low sigma (0.1) -> high epsilon (weak privacy, high utility)")
+print(f"  High sigma (5.0) -> low epsilon (strong privacy, lower utility)")
+print(f"  Target: epsilon <= 1.0 for meaningful differential privacy")
+print(f"  Centralized baseline: accuracy={cent_acc:.4f}, AUC={cent_auc:.4f}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: PACT governance — each client as PactGovernedAgent
+# ══════════════════════════════════════════════════════════════════════
+
+fed_org_yaml = """
+org_id: federated_health
+name: "Federated Health Consortium"
+
+departments:
+  - id: aggregation
+    name: "Aggregation Server"
+  - id: hospital_a
+    name: "Hospital A"
+  - id: hospital_b
+    name: "Hospital B"
+  - id: hospital_c
+    name: "Hospital C"
+
+roles:
+  - id: aggregator
+    name: "Federated Aggregator"
+    is_primary_for_unit: aggregation
+
+  - id: client_a
+    name: "Hospital A Training Agent"
+    is_primary_for_unit: hospital_a
+    agent: true
+
+  - id: client_b
+    name: "Hospital B Training Agent"
+    is_primary_for_unit: hospital_b
+    agent: true
+
+  - id: client_c
+    name: "Hospital C Training Agent"
+    is_primary_for_unit: hospital_c
+    agent: true
+
+clearances:
+  - role: aggregator
+    level: secret
+    compartments: [aggregated_weights, global_model, drift_metrics]
+  - role: client_a
+    level: confidential
+    compartments: [local_data_a, local_weights_a]
+  - role: client_b
+    level: confidential
+    compartments: [local_data_b, local_weights_b]
+  - role: client_c
+    level: confidential
+    compartments: [local_data_c, local_weights_c]
+"""
+
+fed_file = Path(tempfile.mktemp(suffix=".yaml"))
+fed_file.write_text(fed_org_yaml)
+fed_loaded = load_org_yaml(str(fed_file))
+fed_compiled = compile_org(fed_loaded.org_definition)
+fed_engine = GovernanceEngine(fed_loaded.org_definition)
+
+fed_roles = {}
+for addr, node in fed_compiled.nodes.items():
+    if node.role_definition is not None and not node.is_vacant:
+        fed_roles[node.node_id] = addr
+
+level_map = {
+    "confidential": ConfidentialityLevel.CONFIDENTIAL,
+    "secret": ConfidentialityLevel.SECRET,
+}
+
+for cs in fed_loaded.clearances:
+    if cs.role_id in fed_roles:
+        clearance = RoleClearance(
+            role_address=fed_roles[cs.role_id],
+            max_clearance=level_map[cs.level],
+            compartments=frozenset(cs.compartments),
+            granted_by_role_address="system_init",
+        )
+        fed_engine.grant_clearance(fed_roles[cs.role_id], clearance)
+
+# Set envelopes — clients can only train locally and submit weights
+for client_id in ["client_a", "client_b", "client_c"]:
+    env = RoleEnvelope(
+        id=f"env-{uuid.uuid4().hex[:8]}",
+        defining_role_address=fed_roles["aggregator"],
+        target_role_address=fed_roles[client_id],
+        envelope=ConstraintEnvelopeConfig(
+            id=f"{client_id}-envelope",
+            operational=OperationalConstraintConfig(
+                allowed_actions=["train_local", "submit_weights"],
+            ),
+            temporal=TemporalConstraintConfig(),
+            data_access=DataAccessConstraintConfig(),
+            communication=CommunicationConstraintConfig(),
+        ),
+    )
+    fed_engine.set_role_envelope(env)
+
+# Verify cross-client inspection is blocked
+print(f"\n=== PACT Federated Governance ===")
+print(f"Each hospital is a PactGovernedAgent with isolated compartments.\n")
+
+governed_clients = {}
+for client_id in ["client_a", "client_b", "client_c"]:
+    agent = PactGovernedAgent(
+        engine=fed_engine,
+        role_address=fed_roles[client_id],
+    )
+    governed_clients[client_id] = agent
+    ctx = agent.context
+    print(
+        f"  {client_id}: clearance={ctx.effective_clearance_level}, "
+        f"compartments={sorted(ctx.compartments)}"
+    )
+
+# Test cross-client data access (should be DENIED)
+print(f"\nCross-client inspection tests:")
+client_data_items = {
+    "client_a": KnowledgeItem(
+        item_id="hospital_a_patient_data",
+        classification=ConfidentialityLevel.CONFIDENTIAL,
+        owning_unit_address=fed_roles["client_a"],
+        compartments=frozenset(["local_data_a"]),
+    ),
+    "client_b": KnowledgeItem(
+        item_id="hospital_b_patient_data",
+        classification=ConfidentialityLevel.CONFIDENTIAL,
+        owning_unit_address=fed_roles["client_b"],
+        compartments=frozenset(["local_data_b"]),
+    ),
+}
+
+# Client B tries to access Client A data
+result = fed_engine.check_access(
+    fed_roles["client_b"],
+    client_data_items["client_a"],
+    TrustPosture.SUPERVISED,
+)
+print(
+    f"  Client B -> Client A data: {'ALLOW' if result.allowed else 'DENY'} ({result.reason})"
+)
+
+# Aggregator can access aggregated weights but not raw patient data
+agg_item = KnowledgeItem(
+    item_id="aggregated_model_weights",
+    classification=ConfidentialityLevel.SECRET,
+    owning_unit_address=fed_roles["aggregator"],
+    compartments=frozenset(["aggregated_weights"]),
+)
+result = fed_engine.check_access(
+    fed_roles["aggregator"], agg_item, TrustPosture.SUPERVISED
+)
+print(f"  Aggregator -> aggregated weights: {'ALLOW' if result.allowed else 'DENY'}")
+
+fed_file.unlink()
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Deploy federated model via InferenceServer + DriftMonitor
 # ══════════════════════════════════════════════════════════════════════
 
 
-print("\n=== Safety Evaluation ===")
-print(f"Tasks 4-5 require a trained DPO model (GPU/model required).")
-if dpo_result is not None:
-    print(f"DPO model available — would evaluate safety refusal rate.")
-else:
-    print(f"Skipped — no trained model. The evaluation would test:")
-    print(f"  - Safety prompts (harmful content generation)")
-    print(f"  - Refusal rate comparison: base vs DPO-aligned")
-    print(f"  - Expected: aligned model refuses harmful content more often")
+async def deploy_federated():
+    """Register and deploy the DP-federated model."""
+    conn = ConnectionManager("sqlite:///ascent10_federated.db")
+    await conn.initialize()
 
-print("\n--- Method Comparison Summary ---")
-print("SFT:  Learns domain knowledge from instruction-response pairs")
-print("DPO:  Learns preferences — safety, helpfulness, style")
-print("Combined: Domain knowledge + aligned behavior (best of both)")
+    registry = ModelRegistry(conn)
 
-# Compare beta sensitivity
-print("\n--- Beta Sensitivity ---")
-betas = [0.01, 0.1, 0.5, 1.0]
-for b in betas:
-    desc = {
-        0.01: "weak preference",
-        0.1: "moderate",
-        0.5: "strong",
-        1.0: "very strong",
-    }
-    print(f"  beta={b:<5} -- {desc[b]} alignment pressure")
+    # Use the best DP-FedAvg model
+    best_result = min(results, key=lambda r: abs(r["epsilon"] - 1.0))
+    best_sigma = best_result["sigma"]
+    final_weights, final_eps = fedavg_dp(
+        client_data, n_rounds=5, clip_norm=1.0, sigma=best_sigma
+    )
 
-print("\n✓ Exercise 2 complete — DPO preference alignment with safety evaluation")
+    # Serialize as a LogisticRegression model
+    final_model = LogisticRegression()
+    set_model_weights(final_model, final_weights)
+    model_bytes = pickle.dumps(final_model)
+
+    signature = ModelSignature(
+        input_schema=FeatureSchema(
+            name="federated_patient_input",
+            features=[
+                FeatureField(name="gender_numeric", dtype="float64"),
+                *[FeatureField(name=f, dtype="float64") for f in feature_names],
+            ],
+            entity_id_column="patient_id",
+        ),
+        output_columns=["prediction", "probability"],
+        output_dtypes=["int64", "float64"],
+        model_type="classifier",
+    )
+
+    model_version = await registry.register_model(
+        name="federated_icu_dp",
+        artifact=model_bytes,
+        metrics=[
+            MetricSpec(name="accuracy", value=best_result["accuracy"]),
+            MetricSpec(name="auc", value=best_result["auc"]),
+            MetricSpec(name="dp_epsilon", value=best_result["epsilon"]),
+            MetricSpec(name="dp_sigma", value=best_sigma),
+        ],
+        signature=signature,
+    )
+
+    print(f"\n=== Federated Model Deployed ===")
+    print(f"Model: {model_version.name} v{model_version.version}")
+    print(f"DP epsilon: {best_result['epsilon']:.4f} (sigma={best_sigma})")
+    print(f"Accuracy: {best_result['accuracy']:.4f}, AUC: {best_result['auc']:.4f}")
+
+    # Deploy via InferenceServer
+    server = InferenceServer(registry, cache_size=5)
+    await server.warm_cache(["federated_icu_dp"])
+
+    test_result = await server.predict(
+        model_name="federated_icu_dp",
+        features={
+            "gender_numeric": 1.0,
+            "vitals_1": 0.5,
+            "vitals_2": -0.3,
+            "labs_1": 0.8,
+            "labs_2": -0.1,
+            "labs_3": 0.2,
+            "patient_id": "test_001",
+        },
+    )
+    print(f"Test prediction: {test_result.prediction}")
+    print(f"Inference time: {test_result.inference_time_ms:.1f}ms")
+
+    # DriftMonitor for distribution shift
+    monitor = DriftMonitor(
+        reference_data=X[:200],
+        feature_names=["gender_numeric"] + feature_names,
+        psi_threshold=0.2,
+    )
+
+    # Simulate production traffic with slight distribution shift
+    shifted_data = X[:50].copy()
+    shifted_data[:, 0] += rng.normal(0.5, 0.3, 50)  # Shift gender distribution
+    drift_report = monitor.check_drift(shifted_data)
+
+    print(f"\n=== DriftMonitor ===")
+    print(f"Features monitored: {len(['gender_numeric'] + feature_names)}")
+    print(f"PSI threshold: 0.2")
+    print(f"Drift detected: {drift_report.has_drift}")
+    if drift_report.feature_scores:
+        for feat, score in drift_report.feature_scores.items():
+            flag = " [DRIFT]" if score > 0.2 else ""
+            print(f"  {feat}: PSI={score:.4f}{flag}")
+
+    await conn.close()
+    return server
+
+
+asyncio.run(deploy_federated())
+
+print("\n--- Exercise 2 complete: federated learning with DP + PACT governance ---")

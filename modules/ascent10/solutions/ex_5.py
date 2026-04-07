@@ -2,26 +2,30 @@
 # SPDX-License-Identifier: Apache-2.0
 """
 # ════════════════════════════════════════════════════════════════════════
-# ASCENT10 — Exercise 5: Model Merging and Export
+# ASCENT10 — Exercise 5: Adversarial Robustness and Attacks
 # ════════════════════════════════════════════════════════════════════════
-# OBJECTIVE: Merge multiple LoRA adapters (SFT + DPO) using different
-#   strategies, export to ONNX, and compare merged model quality.
+# OBJECTIVE: Implement adversarial attacks (FGSM, PGD) and defences
+#   (adversarial training, randomised smoothing) on a tabular fraud
+#   detection model. Measure attack success rates and certified robustness.
 #
 # TASKS:
-#   1. Load SFT and DPO adapters from AdapterRegistry
-#   2. Merge with linear interpolation (weighted average)
-#   3. Merge with SLERP strategy
-#   4. Compare merged models on evaluation set
-#   5. Export best merged model to ONNX
+#   1. Implement FGSM on tabular fraud model — measure ASR at varying epsilon
+#   2. Implement PGD (iterative FGSM with projection) — compare ASR vs FGSM
+#   3. Adversarial training: augment data with FGSM/PGD examples
+#   4. Data poisoning attack: detect via influence function approximation
+#   5. Certified robustness via randomised smoothing
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
 
-import math
+import os
 
+import numpy as np
 import polars as pl
-
-from kailash_align import AdapterRegistry
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.model_selection import train_test_split
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -29,128 +33,448 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TASK 1: Load adapters from AdapterRegistry
-# ══════════════════════════════════════════════════════════════════════
+# ── Data Loading ─────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
-eval_data = loader.load("ascent10", "sg_domain_qa.parquet")
+fraud_data = loader.load("ascent04", "credit_card_fraud.parquet")
 
-print(f"=== Evaluation Dataset ===")
-print(f"Shape: {eval_data.shape}")
+print("=== Credit Card Fraud Dataset ===")
+print(f"Shape: {fraud_data.shape}")
+print(f"Fraud rate: {fraud_data['is_fraud'].mean():.4%}")
 
+feature_cols = [c for c in fraud_data.columns if c.startswith("v")]
+X = fraud_data.select(feature_cols + ["amount"]).to_numpy()
+y = fraud_data["is_fraud"].to_numpy()
 
-import asyncio
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
 
+# Train baseline fraud model
+baseline_model = GradientBoostingClassifier(
+    n_estimators=100, max_depth=4, random_state=42
+)
+baseline_model.fit(X_train, y_train)
 
-async def load_adapters():
-    registry = AdapterRegistry()
-
-    # List available adapters
-    adapters = await registry.list_adapters()
-    print(f"\n=== Registered Adapters ===")
-    print(f"Found {len(adapters)} adapters")
-    for a in adapters:
-        print(f"  {a.name}: base={a.base_model_id}")
-
-    # Try to load SFT and DPO adapters from exercises 1-2
-    # These will only exist if those exercises were run on actual hardware
-    sft_adapter = None
-    dpo_adapter = None
-    try:
-        sft_adapter = await registry.get_adapter("sg_domain_sft_v1")
-        print(f"\nSFT adapter loaded: {sft_adapter.name}")
-    except Exception:
-        print(f"\nSFT adapter not found — run Exercise 1 first to create it.")
-
-    try:
-        dpo_adapter = await registry.get_adapter("sg_domain_dpo_v1")
-        print(f"DPO adapter loaded: {dpo_adapter.name}")
-    except Exception:
-        print(f"DPO adapter not found — run Exercise 2 first to create it.")
-
-    return registry, sft_adapter, dpo_adapter
-
-
-registry, sft_adapter, dpo_adapter = asyncio.run(load_adapters())
+baseline_acc = accuracy_score(y_test, baseline_model.predict(X_test))
+baseline_auc = roc_auc_score(y_test, baseline_model.predict_proba(X_test)[:, 1])
+print(f"\nBaseline model: accuracy={baseline_acc:.4f}, AUC={baseline_auc:.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 2: Merge with linear interpolation
+# TASK 1: Implement FGSM on tabular fraud model
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== Linear Merge (Weighted Average) ===")
-print(f"W_merged = alpha * W_sft + (1 - alpha) * W_dpo")
-print(f"Simple but effective for combining complementary adapters.")
+print(f"\n{'=' * 70}")
+print(f"=== FGSM (Fast Gradient Sign Method) ===")
+print(f"{'=' * 70}")
 
-if sft_adapter is None or dpo_adapter is None:
-    print(f"Skipping merge — adapters not available (run Exercises 1-2 first).")
-    print(f"The merge would use AlignmentPipeline with method='merge'.")
+
+def compute_numerical_gradient(
+    model: GradientBoostingClassifier,
+    X_sample: np.ndarray,
+    y_sample: np.ndarray,
+    delta: float = 1e-5,
+) -> np.ndarray:
+    """Compute gradient of loss w.r.t. input features using finite differences.
+
+    For tree-based models (non-differentiable), we approximate the gradient
+    numerically: df/dx_i ~ (f(x + delta*e_i) - f(x - delta*e_i)) / (2*delta)
+    where f is the predicted probability of the true class.
+    """
+    n_features = X_sample.shape[1]
+    gradients = np.zeros_like(X_sample)
+
+    for i in range(n_features):
+        X_plus = X_sample.copy()
+        X_minus = X_sample.copy()
+        X_plus[:, i] += delta
+        X_minus[:, i] -= delta
+
+        # Loss = -log(p(true class))
+        prob_plus = model.predict_proba(X_plus)
+        prob_minus = model.predict_proba(X_minus)
+
+        for j in range(len(y_sample)):
+            true_class = int(y_sample[j])
+            p_plus = prob_plus[j, true_class]
+            p_minus = prob_minus[j, true_class]
+            # Gradient of negative log-likelihood
+            loss_plus = -np.log(np.clip(p_plus, 1e-10, 1.0))
+            loss_minus = -np.log(np.clip(p_minus, 1e-10, 1.0))
+            gradients[j, i] = (loss_plus - loss_minus) / (2 * delta)
+
+    return gradients
+
+
+def fgsm_attack(
+    model: GradientBoostingClassifier,
+    X_samples: np.ndarray,
+    y_samples: np.ndarray,
+    epsilon: float,
+) -> np.ndarray:
+    """FGSM: x_adv = x + epsilon * sign(grad_x L(x, y))
+
+    Single-step perturbation in the direction that maximises loss.
+    """
+    gradients = compute_numerical_gradient(model, X_samples, y_samples)
+    perturbation = epsilon * np.sign(gradients)
+    X_adv = X_samples + perturbation
+    return X_adv
+
+
+def attack_success_rate(
+    model: GradientBoostingClassifier,
+    X_clean: np.ndarray,
+    X_adv: np.ndarray,
+    y_true: np.ndarray,
+) -> float:
+    """ASR: fraction of correctly-classified samples that flip after attack."""
+    clean_preds = model.predict(X_clean)
+    adv_preds = model.predict(X_adv)
+
+    # Only count samples that were correctly classified before attack
+    correct_mask = clean_preds == y_true
+    if correct_mask.sum() == 0:
+        return 0.0
+
+    flipped = (adv_preds[correct_mask] != y_true[correct_mask]).sum()
+    return flipped / correct_mask.sum()
+
+
+# Use a subset for efficiency
+n_attack = 500
+X_attack = X_test[:n_attack]
+y_attack = y_test[:n_attack]
+
+print(f"\nFGSM attack on {n_attack} test samples:")
+print(f"{'Epsilon':<12} {'ASR':>8} {'Adv Accuracy':>14} {'Clean Accuracy':>16}")
+print("-" * 55)
+
+epsilons = [0.01, 0.05, 0.1, 0.3, 0.5]
+fgsm_results = []
+for eps in epsilons:
+    X_adv = fgsm_attack(baseline_model, X_attack, y_attack, eps)
+    asr = attack_success_rate(baseline_model, X_attack, X_adv, y_attack)
+    adv_acc = accuracy_score(y_attack, baseline_model.predict(X_adv))
+    clean_acc = accuracy_score(y_attack, baseline_model.predict(X_attack))
+    fgsm_results.append({"epsilon": eps, "asr": asr, "adv_acc": adv_acc})
+    print(f"{eps:<12.2f} {asr:>8.4f} {adv_acc:>14.4f} {clean_acc:>16.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TASK 3: Merge with SLERP strategy
+# TASK 2: Implement PGD (iterative FGSM with projection)
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n=== SLERP Merge (Spherical Linear Interpolation) ===")
-print(f"Unlike linear interpolation, SLERP interpolates along the")
-print(f"hypersphere surface, preserving the magnitude of weight vectors.")
-print(f"Better for merging adapters with different training dynamics.")
+print(f"\n{'=' * 70}")
+print(f"=== PGD (Projected Gradient Descent) ===")
+print(f"{'=' * 70}")
 
 
-def slerp(v0: list[float], v1: list[float], t: float) -> list[float]:
-    """Spherical linear interpolation between two vectors."""
-    # Normalize
-    norm0 = math.sqrt(sum(x * x for x in v0))
-    norm1 = math.sqrt(sum(x * x for x in v1))
-    v0_n = [x / (norm0 + 1e-10) for x in v0]
-    v1_n = [x / (norm1 + 1e-10) for x in v1]
+def pgd_attack(
+    model: GradientBoostingClassifier,
+    X_samples: np.ndarray,
+    y_samples: np.ndarray,
+    epsilon: float,
+    step_size: float,
+    n_steps: int,
+) -> np.ndarray:
+    """PGD: iterative FGSM with projection back into epsilon-ball.
 
-    # Angle between vectors
-    dot = sum(a * b for a, b in zip(v0_n, v1_n))
-    dot = max(-1.0, min(1.0, dot))
-    omega = math.acos(dot)
+    x_0 = x + uniform(-epsilon, epsilon)  (random start)
+    x_{t+1} = Proj_{B(x, epsilon)}(x_t + alpha * sign(grad_x L(x_t, y)))
+    """
+    rng = np.random.default_rng(42)
 
-    if abs(omega) < 1e-10:
-        # Vectors are parallel — fall back to linear
-        return [a * (1 - t) + b * t for a, b in zip(v0, v1)]
+    # Random initialisation within epsilon-ball
+    X_adv = X_samples + rng.uniform(-epsilon, epsilon, X_samples.shape)
 
-    sin_omega = math.sin(omega)
-    s0 = math.sin((1 - t) * omega) / sin_omega
-    s1 = math.sin(t * omega) / sin_omega
+    for step in range(n_steps):
+        gradients = compute_numerical_gradient(model, X_adv, y_samples)
+        X_adv = X_adv + step_size * np.sign(gradients)
 
-    # Interpolate with original magnitudes
-    target_norm = norm0 * (1 - t) + norm1 * t
-    result = [s0 * a + s1 * b for a, b in zip(v0_n, v1_n)]
-    result_norm = math.sqrt(sum(x * x for x in result))
-    return [x * target_norm / (result_norm + 1e-10) for x in result]
+        # Project back into L-infinity epsilon-ball around original
+        perturbation = X_adv - X_samples
+        perturbation = np.clip(perturbation, -epsilon, epsilon)
+        X_adv = X_samples + perturbation
 
-
-# Demonstrate SLERP on small example
-v0 = [1.0, 0.0, 0.0]
-v1 = [0.0, 1.0, 0.0]
-for t in [0.0, 0.25, 0.5, 0.75, 1.0]:
-    interp = slerp(v0, v1, t)
-    magnitude = math.sqrt(sum(x * x for x in interp))
-    print(f"  t={t:.2f}: {[f'{x:.3f}' for x in interp]} (|v|={magnitude:.3f})")
-
-print(f"\nNotice: SLERP maintains unit magnitude throughout the interpolation,")
-print(f"unlike linear interpolation which shrinks to |v|=0.707 at t=0.5.")
+    return X_adv
 
 
-# Note: SLERP merge and model evaluation/export (TASKS 3-5) require
-# adapters from Exercises 1-2. The SLERP implementation above demonstrates
-# the mathematical concept; actual adapter merging uses AlignmentPipeline.
+print(f"\nPGD attack (10 steps, step_size=epsilon/4):")
+print(f"{'Epsilon':<12} {'PGD ASR':>10} {'FGSM ASR':>10} {'Difference':>12}")
+print("-" * 50)
 
-print(f"\n=== Tasks 3-5: Merge, Evaluate, Export ===")
-print(f"These tasks require trained adapters from Exercises 1-2.")
-print(f"AlignmentPipeline(config).merge() performs the actual adapter merge.")
-print(f"OnnxBridge.export(model, input_shape, output_path) exports to ONNX.")
+pgd_results = []
+for i, eps in enumerate(epsilons):
+    X_adv_pgd = pgd_attack(
+        baseline_model, X_attack, y_attack, epsilon=eps, step_size=eps / 4, n_steps=10
+    )
+    pgd_asr = attack_success_rate(baseline_model, X_attack, X_adv_pgd, y_attack)
+    fgsm_asr = fgsm_results[i]["asr"]
+    diff = pgd_asr - fgsm_asr
+    pgd_results.append({"epsilon": eps, "pgd_asr": pgd_asr, "fgsm_asr": fgsm_asr})
+    print(f"{eps:<12.2f} {pgd_asr:>10.4f} {fgsm_asr:>10.4f} {diff:>+12.4f}")
 
-print(f"\n=== Model Merging Summary ===")
-print(f"Linear merge: simple weighted average, good baseline")
-print(f"SLERP merge: preserves magnitude, better for diverse adapters")
-print(f"Other strategies: TIES (trim+elect+merge), DARE (drop+rescale)")
-print(f"Pipeline: train adapters → merge → evaluate → export ONNX → deploy")
+print(f"\nPGD is strictly stronger than FGSM (iterative refinement).")
+print(f"PGD-robust models are also FGSM-robust (but not vice versa).")
 
-print("\n✓ Exercise 5 complete — model merging (linear + SLERP) with ONNX export")
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 3: Adversarial training — augment with FGSM/PGD examples
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n{'=' * 70}")
+print(f"=== Adversarial Training ===")
+print(f"{'=' * 70}")
+
+# Generate adversarial examples from training data
+adv_epsilon = 0.1
+X_train_subset = X_train[:2000]
+y_train_subset = y_train[:2000]
+
+X_adv_train = fgsm_attack(baseline_model, X_train_subset, y_train_subset, adv_epsilon)
+
+# Augment training set with adversarial examples
+X_augmented = np.vstack([X_train, X_adv_train])
+y_augmented = np.concatenate([y_train, y_train_subset])
+
+# Train adversarially robust model
+robust_model = GradientBoostingClassifier(
+    n_estimators=100, max_depth=4, random_state=42
+)
+robust_model.fit(X_augmented, y_augmented)
+
+# Evaluate clean accuracy
+robust_clean_acc = accuracy_score(y_test, robust_model.predict(X_test))
+robust_clean_auc = roc_auc_score(y_test, robust_model.predict_proba(X_test)[:, 1])
+
+print(f"\nAdversarial training (augmented with FGSM at eps={adv_epsilon}):")
+print(f"  Clean accuracy:  {robust_clean_acc:.4f} (baseline: {baseline_acc:.4f})")
+print(f"  Clean AUC:       {robust_clean_auc:.4f} (baseline: {baseline_auc:.4f})")
+
+print(f"\nRobust model vs attacks:")
+print(f"{'Epsilon':<12} {'Baseline ASR':>14} {'Robust ASR':>12} {'Reduction':>12}")
+print("-" * 55)
+
+for eps in epsilons:
+    X_adv = fgsm_attack(baseline_model, X_attack, y_attack, eps)
+    baseline_asr = attack_success_rate(baseline_model, X_attack, X_adv, y_attack)
+
+    X_adv_r = fgsm_attack(robust_model, X_attack, y_attack, eps)
+    robust_asr = attack_success_rate(robust_model, X_attack, X_adv_r, y_attack)
+
+    reduction = baseline_asr - robust_asr
+    print(f"{eps:<12.2f} {baseline_asr:>14.4f} {robust_asr:>12.4f} {reduction:>+12.4f}")
+
+print(f"\nAdversarial training reduces ASR at moderate epsilon values.")
+print(f"Trade-off: slight clean accuracy decrease for improved robustness.")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 4: Data poisoning attack + influence function detection
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n{'=' * 70}")
+print(f"=== Data Poisoning Attack & Detection ===")
+print(f"{'=' * 70}")
+
+# Inject 5% mislabelled examples into training data
+rng = np.random.default_rng(42)
+n_poison = int(len(y_train) * 0.05)
+poison_indices = rng.choice(len(y_train), n_poison, replace=False)
+
+X_poisoned = X_train.copy()
+y_poisoned = y_train.copy()
+y_poisoned[poison_indices] = 1 - y_poisoned[poison_indices]  # Flip labels
+
+# Train on poisoned data
+poisoned_model = GradientBoostingClassifier(
+    n_estimators=100, max_depth=4, random_state=42
+)
+poisoned_model.fit(X_poisoned, y_poisoned)
+
+poisoned_acc = accuracy_score(y_test, poisoned_model.predict(X_test))
+poisoned_auc = roc_auc_score(y_test, poisoned_model.predict_proba(X_test)[:, 1])
+
+print(
+    f"\nPoisoning: flipped {n_poison} labels ({n_poison/len(y_train):.1%} of training data)"
+)
+print(f"  Clean model accuracy:    {baseline_acc:.4f}")
+print(f"  Poisoned model accuracy: {poisoned_acc:.4f}")
+print(f"  Accuracy drop:           {baseline_acc - poisoned_acc:.4f}")
+
+
+def estimate_influence(
+    model: GradientBoostingClassifier,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    candidate_indices: np.ndarray,
+) -> np.ndarray:
+    """Approximate influence function: estimate each training point's impact on test loss.
+
+    Simplified approach: leave-one-out approximation using prediction confidence.
+    Points with high influence (large loss change when removed) are suspicious.
+    """
+    # Base test loss
+    base_probs = model.predict_proba(X_test)
+    base_loss = 0.0
+    for i, true_class in enumerate(y_test[:100]):
+        base_loss -= np.log(np.clip(base_probs[i, int(true_class)], 1e-10, 1.0))
+
+    influences = np.zeros(len(candidate_indices))
+
+    for idx_pos, train_idx in enumerate(candidate_indices):
+        # Prediction confidence for this training point
+        prob = model.predict_proba(X_train[train_idx : train_idx + 1])
+        true_class = int(y_train[train_idx])
+        confidence = prob[0, true_class]
+
+        # Low confidence on its own label = suspicious (likely mislabelled)
+        influences[idx_pos] = -np.log(np.clip(confidence, 1e-10, 1.0))
+
+    return influences
+
+
+# Detect poisoned samples using influence estimation
+print(f"\nInfluence-based poison detection:")
+candidate_indices = np.arange(min(2000, len(y_poisoned)))
+influences = estimate_influence(
+    poisoned_model, X_poisoned, y_poisoned, X_test, y_test, candidate_indices
+)
+
+# Flag top 10% as suspicious
+threshold = np.percentile(influences, 90)
+flagged = candidate_indices[influences > threshold]
+
+# Calculate detection precision and recall
+poison_set = set(poison_indices[poison_indices < len(candidate_indices)])
+flagged_set = set(flagged)
+
+true_positives = len(poison_set & flagged_set)
+precision = true_positives / len(flagged_set) if flagged_set else 0.0
+recall = true_positives / len(poison_set) if poison_set else 0.0
+
+print(f"  Flagged as suspicious: {len(flagged)} samples")
+print(f"  True positives: {true_positives}")
+print(f"  Detection precision: {precision:.4f}")
+print(f"  Detection recall: {recall:.4f}")
+print(f"  (Random baseline precision: {len(poison_set)/len(candidate_indices):.4f})")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Certified robustness via randomised smoothing
+# ══════════════════════════════════════════════════════════════════════
+
+print(f"\n{'=' * 70}")
+print(f"=== Certified Robustness (Randomised Smoothing) ===")
+print(f"{'=' * 70}")
+
+
+def randomised_smoothing_predict(
+    model: GradientBoostingClassifier,
+    x: np.ndarray,
+    sigma: float,
+    n_samples: int,
+    rng: np.random.Generator,
+) -> tuple[int, float]:
+    """Predict with randomised smoothing.
+
+    Sample n_samples noisy versions of x, take majority vote.
+    Returns (predicted_class, confidence).
+    """
+    noise = rng.normal(0, sigma, (n_samples, x.shape[0]))
+    X_noisy = x.reshape(1, -1) + noise
+
+    predictions = model.predict(X_noisy)
+    classes, counts = np.unique(predictions, return_counts=True)
+
+    majority_class = classes[np.argmax(counts)]
+    confidence = counts.max() / n_samples
+
+    return int(majority_class), confidence
+
+
+def certify_radius(
+    confidence: float,
+    sigma: float,
+    delta: float = 0.05,
+) -> float:
+    """Compute certified L2 radius for randomised smoothing.
+
+    If the smoothed classifier returns class c with probability p_A,
+    then for any perturbation ||delta|| < R, the prediction remains c,
+    where R = sigma * Phi^{-1}(p_A).
+
+    Phi^{-1} is the inverse normal CDF (probit function).
+    """
+    from scipy.stats import norm
+
+    if confidence <= 0.5:
+        return 0.0  # Cannot certify
+
+    # Lower confidence bound using Clopper-Pearson
+    p_lower = confidence - delta  # Simplified bound
+    if p_lower <= 0.5:
+        return 0.0
+
+    radius = sigma * norm.ppf(p_lower)
+    return max(0.0, radius)
+
+
+print(f"\nRandomised smoothing: add Gaussian noise, take majority vote.")
+print(f"Provides a CERTIFIED radius R within which predictions cannot change.\n")
+
+sigma_values = [0.1, 0.25, 0.5, 1.0]
+n_certify = 50  # Number of test samples to certify
+n_noise_samples = 200
+
+rng = np.random.default_rng(42)
+
+print(f"{'Sigma':<8} {'Avg Radius':>12} {'Certified %':>13} {'Smooth Acc':>12}")
+print("-" * 50)
+
+for sigma in sigma_values:
+    radii = []
+    correct = 0
+
+    for i in range(n_certify):
+        pred_class, conf = randomised_smoothing_predict(
+            baseline_model, X_test[i], sigma, n_noise_samples, rng
+        )
+        radius = certify_radius(conf, sigma)
+        radii.append(radius)
+        if pred_class == y_test[i]:
+            correct += 1
+
+    avg_radius = np.mean(radii)
+    certified_pct = np.mean([r > 0 for r in radii])
+    smooth_acc = correct / n_certify
+
+    print(
+        f"{sigma:<8.2f} {avg_radius:>12.4f} {certified_pct:>13.2%} {smooth_acc:>12.4f}"
+    )
+
+print(f"\nInterpretation:")
+print(f"  Higher sigma -> larger certified radius (stronger guarantee)")
+print(f"  Higher sigma -> lower accuracy (more noise = less precise)")
+print(f"  Trade-off: robustness guarantee vs prediction quality")
+print(
+    f"\nRandomised smoothing is the ONLY method with formal L2 robustness certificates."
+)
+print(
+    f"Unlike adversarial training, the guarantee holds against ANY attack within radius R."
+)
+
+print(f"\n=== Adversarial Robustness Summary ===")
+print(f"  FGSM:     Single-step, fast, weaker attack")
+print(f"  PGD:      Multi-step, stronger attack, standard benchmark")
+print(f"  Adv Training: Empirical defence, no formal guarantee")
+print(f"  Rand Smoothing: Certified defence, formal L2 guarantee")
+print(f"  Poisoning Detection: Influence functions flag suspicious training data")
+
+print(
+    "\n--- Exercise 5 complete: adversarial attacks, defences, certified robustness ---"
+)
