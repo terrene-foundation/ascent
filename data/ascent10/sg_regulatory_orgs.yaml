@@ -1,0 +1,239 @@
+# sg_regulatory_orgs.yaml
+# Multi-organisation governance configuration for M10 ex_1.
+# Defines two Singapore regulatory organisations with PACT governance structures:
+#   - mas: Monetary Authority of Singapore (regulator)
+#   - bank: Singapore Digital Bank (regulated entity)
+# Includes cross-organisation trust bridges for regulatory inspection workflows.
+
+organisations:
+
+  mas:
+    name: "Monetary Authority of Singapore"
+    departments:
+
+      - name: "AI Supervision"
+        roles:
+          - id: "mas_director_ai"
+            title: "Director, AI Supervision"
+            clearance: "TOP_SECRET"
+            delegation_budget: 1000
+            reports_to: null
+          - id: "mas_senior_examiner_ai"
+            title: "Senior Examiner, AI Risk"
+            clearance: "SECRET"
+            delegation_budget: 500
+            reports_to: "mas_director_ai"
+          - id: "mas_examiner_ai_1"
+            title: "Examiner, AI Risk (Systems)"
+            clearance: "CONFIDENTIAL"
+            delegation_budget: 200
+            reports_to: "mas_senior_examiner_ai"
+          - id: "mas_examiner_ai_2"
+            title: "Examiner, AI Risk (Data)"
+            clearance: "CONFIDENTIAL"
+            delegation_budget: 200
+            reports_to: "mas_senior_examiner_ai"
+          - id: "mas_analyst_ai"
+            title: "Analyst, AI Supervision"
+            clearance: "INTERNAL"
+            delegation_budget: 50
+            reports_to: "mas_examiner_ai_1"
+
+      - name: "Technology Risk"
+        roles:
+          - id: "mas_director_tech_risk"
+            title: "Director, Technology Risk"
+            clearance: "TOP_SECRET"
+            delegation_budget: 1000
+            reports_to: null
+          - id: "mas_deputy_director_tech_risk"
+            title: "Deputy Director, Technology Risk"
+            clearance: "SECRET"
+            delegation_budget: 600
+            reports_to: "mas_director_tech_risk"
+          - id: "mas_manager_tech_risk"
+            title: "Manager, Cyber & Technology Risk"
+            clearance: "CONFIDENTIAL"
+            delegation_budget: 300
+            reports_to: "mas_deputy_director_tech_risk"
+          - id: "mas_specialist_tech_risk"
+            title: "Specialist, Technology Risk Examination"
+            clearance: "CONFIDENTIAL"
+            delegation_budget: 150
+            reports_to: "mas_manager_tech_risk"
+
+      - name: "Legal & Policy"
+        roles:
+          - id: "mas_legal_counsel"
+            title: "Legal Counsel, FinTech Regulation"
+            clearance: "SECRET"
+            delegation_budget: 400
+            reports_to: null
+          - id: "mas_policy_officer"
+            title: "Policy Officer, AI Governance"
+            clearance: "INTERNAL"
+            delegation_budget: 100
+            reports_to: "mas_legal_counsel"
+
+    trust_boundaries:
+      - type: "regulatory_inspection"
+        permitted_data:
+          - "model_cards"
+          - "audit_logs"
+          - "compliance_reports"
+          - "model_validation_reports"
+          - "algorithmic_impact_assessments"
+        restricted_data:
+          - "raw_training_data"
+          - "customer_records"
+          - "proprietary_model_weights"
+          - "internal_board_minutes"
+      - type: "enforcement_action"
+        permitted_data:
+          - "model_cards"
+          - "audit_logs"
+          - "compliance_reports"
+          - "incident_reports"
+          - "correspondence"
+        restricted_data:
+          - "raw_training_data"
+          - "customer_records"
+
+  bank:
+    name: "Singapore Digital Bank"
+    departments:
+
+      - name: "Data Science"
+        roles:
+          - id: "bank_chief_data_scientist"
+            title: "Chief Data Scientist"
+            clearance: "SECRET"
+            delegation_budget: 800
+            reports_to: null
+          - id: "bank_lead_ml_engineer"
+            title: "Lead ML Engineer"
+            clearance: "CONFIDENTIAL"
+            delegation_budget: 400
+            reports_to: "bank_chief_data_scientist"
+          - id: "bank_senior_ml_engineer"
+            title: "Senior ML Engineer, Credit Risk"
+            clearance: "CONFIDENTIAL"
+            delegation_budget: 200
+            reports_to: "bank_lead_ml_engineer"
+          - id: "bank_ml_engineer"
+            title: "ML Engineer"
+            clearance: "INTERNAL"
+            delegation_budget: 50
+            reports_to: "bank_senior_ml_engineer"
+          - id: "bank_data_analyst"
+            title: "Data Analyst"
+            clearance: "INTERNAL"
+            delegation_budget: 20
+            reports_to: "bank_ml_engineer"
+
+      - name: "Compliance"
+        roles:
+          - id: "bank_chief_compliance_officer"
+            title: "Chief Compliance Officer"
+            clearance: "SECRET"
+            delegation_budget: 900
+            reports_to: null
+          - id: "bank_head_regulatory_affairs"
+            title: "Head, Regulatory Affairs"
+            clearance: "SECRET"
+            delegation_budget: 600
+            reports_to: "bank_chief_compliance_officer"
+          - id: "bank_manager_ai_governance"
+            title: "Manager, AI Governance & Ethics"
+            clearance: "CONFIDENTIAL"
+            delegation_budget: 300
+            reports_to: "bank_head_regulatory_affairs"
+          - id: "bank_compliance_analyst"
+            title: "Compliance Analyst, Technology"
+            clearance: "INTERNAL"
+            delegation_budget: 80
+            reports_to: "bank_manager_ai_governance"
+
+      - name: "Technology & Infrastructure"
+        roles:
+          - id: "bank_cto"
+            title: "Chief Technology Officer"
+            clearance: "TOP_SECRET"
+            delegation_budget: 1000
+            reports_to: null
+          - id: "bank_vp_engineering"
+            title: "VP Engineering, AI Platform"
+            clearance: "SECRET"
+            delegation_budget: 500
+            reports_to: "bank_cto"
+
+    trust_boundaries:
+      - type: "internal_operations"
+        permitted_data:
+          - "customer_records"
+          - "raw_training_data"
+          - "model_weights"
+          - "internal_board_minutes"
+          - "audit_logs"
+          - "compliance_reports"
+        restricted_data: []
+      - type: "regulatory_disclosure"
+        permitted_data:
+          - "model_cards"
+          - "audit_logs"
+          - "compliance_reports"
+          - "model_validation_reports"
+          - "algorithmic_impact_assessments"
+          - "incident_reports"
+        restricted_data:
+          - "raw_training_data"
+          - "customer_records"
+          - "proprietary_model_weights"
+
+cross_org_bridges:
+  - from: "mas"
+    to: "bank"
+    protocol: "regulatory_inspection"
+    initiating_roles:
+      - "mas_director_ai"
+      - "mas_senior_examiner_ai"
+      - "mas_director_tech_risk"
+      - "mas_deputy_director_tech_risk"
+    receiving_roles:
+      - "bank_chief_compliance_officer"
+      - "bank_head_regulatory_affairs"
+      - "bank_manager_ai_governance"
+    permitted_queries:
+      - "request_model_card"
+      - "request_audit_logs"
+      - "request_compliance_report"
+      - "request_algorithmic_impact_assessment"
+      - "request_model_validation_report"
+      - "request_incident_report"
+    denied_queries:
+      - "access_customer_records"
+      - "access_raw_training_data"
+      - "access_proprietary_model_weights"
+    max_delegation_depth: 2
+    audit_required: true
+    notification_required: true
+
+  - from: "bank"
+    to: "mas"
+    protocol: "voluntary_disclosure"
+    initiating_roles:
+      - "bank_chief_compliance_officer"
+      - "bank_head_regulatory_affairs"
+    receiving_roles:
+      - "mas_director_ai"
+      - "mas_director_tech_risk"
+      - "mas_legal_counsel"
+    permitted_queries:
+      - "submit_model_card"
+      - "submit_incident_report"
+      - "submit_compliance_report"
+      - "request_regulatory_guidance"
+    denied_queries: []
+    max_delegation_depth: 1
+    audit_required: true
+    notification_required: false
