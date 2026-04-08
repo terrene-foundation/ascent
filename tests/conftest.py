@@ -44,11 +44,12 @@ SLOW_EXERCISES: set[tuple[str, int]] = {
     ("ascent04", 7),  # DL intro (torch training)
     ("ascent07", 8),  # DL Capstone (CNN + ONNX)
     ("ascent08", 7),  # NLP Capstone (transformer pipeline)
-    ("ascent10", 2),  # Federated learning with DP (3 clients × 50 rounds)
-    ("ascent10", 4),  # Compliance artefacts + bias audit + DriftMonitor
-    ("ascent10", 6),  # Compliance automation with Nexus + DriftMonitor
-    ("ascent10", 7),  # Enterprise governance registry (DataFlow + many CRUD)
-    ("ascent10", 8),  # Regulated AI capstone (federated + adversarial + compliance)
+    (
+        "ascent10",
+        8,
+    ),  # Regulated AI capstone (federated + adversarial + compliance) — 73s
+    # M10 ex_2/4/6/7 removed from slow list after DriftMonitor API fix
+    # (now 2-26s, under default 120s timeout)
 }
 
 
