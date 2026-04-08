@@ -124,21 +124,17 @@ def text_to_vec(text: str) -> list[float]:
     return vec
 
 
-# Compute class centroids
-class_vecs: dict[str, list[float]] = {}
-class_cts: dict[str, int] = {}
-for i in range(train_reviews.height):
-    label = train_reviews["sentiment"][i]
-    vec = text_to_vec(train_reviews["review_text"][i])
-    if label not in class_vecs:
-        class_vecs[label] = [0.0] * len(tfidf_vocab)
-        class_cts[label] = 0
-    for j in range(len(vec)):
-        class_vecs[label][j] += vec[j]
-    class_cts[label] += 1
+# Compute class centroids — vectorized via numpy
+import numpy as np
 
-for label in class_vecs:
-    class_vecs[label] = [v / class_cts[label] for v in class_vecs[label]]
+train_texts = train_reviews["review_text"].to_list()
+train_labels = train_reviews["sentiment"].to_list()
+train_vecs = np.array([text_to_vec(t) for t in train_texts])
+train_labels_arr = np.array(train_labels)
+
+class_vecs: dict[str, list[float]] = {}
+for label in np.unique(train_labels_arr):
+    class_vecs[str(label)] = train_vecs[train_labels_arr == label].mean(axis=0).tolist()
 
 print(f"Vocabulary: {len(tfidf_vocab)}, Classes: {list(class_vecs.keys())}")
 
@@ -148,14 +144,15 @@ print(f"Vocabulary: {len(tfidf_vocab)}, Classes: {list(class_vecs.keys())}")
 # ══════════════════════════════════════════════════════════════════════
 
 y_true = test_reviews["sentiment"].to_list()
-y_pred = []
-for text in test_reviews["review_text"].to_list():
-    vec = text_to_vec(text)
-    best_label = min(
-        class_vecs.keys(),
-        key=lambda c: sum((a - b) ** 2 for a, b in zip(vec, class_vecs[c])),
-    )
-    y_pred.append(best_label)
+test_texts = test_reviews["review_text"].to_list()
+test_vecs = np.array([text_to_vec(t) for t in test_texts])
+
+# Vectorized nearest-centroid: compute distances to each class centroid
+class_labels = list(class_vecs.keys())
+centroid_arr = np.array([class_vecs[lbl] for lbl in class_labels])
+dists = ((test_vecs[:, None, :] - centroid_arr[None, :, :]) ** 2).sum(axis=2)
+pred_indices = dists.argmin(axis=1)
+y_pred = [class_labels[i] for i in pred_indices]
 
 # Accuracy
 correct = sum(1 for t, p in zip(y_true, y_pred) if t == p)
@@ -193,39 +190,39 @@ print(f"Confusion matrix saved to sentiment_confusion_matrix.html")
 async def register_best():
     conn = ConnectionManager("sqlite:///nlp_models.db")
     await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
 
-    registry = ModelRegistry(conn)
+        version = await registry.register_model(
+            name="sg_sentiment_classifier",
+            artifact=pickle.dumps(class_vecs),
+            metrics=[
+                MetricSpec(name="f1", value=f1),
+                MetricSpec(name="accuracy", value=accuracy),
+                MetricSpec(name="precision", value=precision),
+                MetricSpec(name="recall", value=recall),
+            ],
+        )
 
-    version = await registry.register_model(
-        name="sg_sentiment_classifier",
-        artifact=pickle.dumps(class_vecs),
-        metrics=[
-            MetricSpec(name="f1", value=f1),
-            MetricSpec(name="accuracy", value=accuracy),
-            MetricSpec(name="precision", value=precision),
-            MetricSpec(name="recall", value=recall),
-        ],
-    )
+        await registry.promote_model(
+            name="sg_sentiment_classifier",
+            version=version.version,
+            target_stage="production",
+        )
 
-    await registry.promote_model(
-        name="sg_sentiment_classifier",
-        version=version.version,
-        target_stage="production",
-    )
+        print(f"\n=== ModelRegistry ===")
+        print(f"Registered: sg_sentiment_classifier v{version.version}")
+        print(f"Stage: production")
+        print(f"Metrics: F1={f1:.4f}, accuracy={accuracy:.4f}")
 
-    print(f"\n=== ModelRegistry ===")
-    print(f"Registered: sg_sentiment_classifier v{version.version}")
-    print(f"Stage: production")
-    print(f"Metrics: F1={f1:.4f}, accuracy={accuracy:.4f}")
-
-    # List all models
-    models = await registry.list_models()
-    print(f"Total registered models: {len(models)}")
-
-    return registry
+        # List all models
+        models = await registry.list_models()
+        print(f"Total registered models: {len(models)}")
+    finally:
+        await conn.close()
 
 
-registry = asyncio.run(register_best())
+asyncio.run(register_best())
 
 print(f"\n=== Transfer Learning Summary ===")
 print(f"Pre-trained transformers provide powerful text representations")

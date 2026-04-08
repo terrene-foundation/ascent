@@ -70,43 +70,29 @@ print(f"          Sandal, Shirt, Sneaker, Bag, Ankle boot)")
 # Note: In production you would use TrainingPipeline(feature_store, registry) for
 # full ML lifecycle. Here we demonstrate the pipeline concept with a simple
 # nearest-centroid classifier to show the end-to-end flow.
-from collections import Counter
-import math
+import numpy as np
 
 print(f"\n=== Training (Nearest-Centroid Classifier) ===")
 start_time = time.time()
 
-# Compute class centroids from training data
-class_sums: dict[int, list[float]] = {}
-class_counts: dict[int, int] = {}
-for i in range(train_data.height):
-    label = int(train_data["label"][i])
-    row = list(train_data.select(pixel_cols).row(i))
-    if label not in class_sums:
-        class_sums[label] = [0.0] * len(pixel_cols)
-        class_counts[label] = 0
-    for j in range(len(row)):
-        class_sums[label][j] += row[j]
-    class_counts[label] += 1
-
-centroids = {}
-for label in class_sums:
-    centroids[label] = [s / class_counts[label] for s in class_sums[label]]
+# Vectorized centroid computation using numpy
+X_train = train_data.select(pixel_cols).to_numpy()
+y_train = train_data["label"].to_numpy()
+unique_labels = np.unique(y_train)
+centroid_arr = np.array([X_train[y_train == lbl].mean(axis=0) for lbl in unique_labels])
+centroids = {int(lbl): centroid_arr[i].tolist() for i, lbl in enumerate(unique_labels)}
 
 train_time = time.time() - start_time
 print(f"Training time: {train_time:.1f}s")
 print(f"Classes: {len(centroids)}")
 
-# Evaluate on test set
+# Vectorized evaluation: compute squared distances to all centroids at once
+X_test = test_data.select(pixel_cols).to_numpy()
 test_labels = test_data["label"].to_list()
-pred_labels = []
-for i in range(test_data.height):
-    row = list(test_data.select(pixel_cols).row(i))
-    best_label = min(
-        centroids.keys(),
-        key=lambda c: sum((a - b) ** 2 for a, b in zip(row, centroids[c])),
-    )
-    pred_labels.append(best_label)
+# (n_test, n_centroids) = squared distances
+dists = ((X_test[:, None, :] - centroid_arr[None, :, :]) ** 2).sum(axis=2)
+pred_indices = dists.argmin(axis=1)
+pred_labels = [int(unique_labels[i]) for i in pred_indices]
 
 correct = sum(1 for p, t in zip(pred_labels, test_labels) if p == t)
 test_accuracy = correct / len(test_labels)
@@ -126,34 +112,36 @@ print(f"Model trained and evaluated.")
 async def register_model():
     conn = ConnectionManager("sqlite:///capstone_models.db")
     await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
 
-    registry = ModelRegistry(conn)
+        version = await registry.register_model(
+            name="fashion_mnist_cnn",
+            artifact=pickle.dumps(centroids),
+            metrics=[
+                MetricSpec(name="test_accuracy", value=test_accuracy),
+                MetricSpec(name="train_time_seconds", value=train_time),
+                MetricSpec(name="parameters", value=len(centroids) * len(pixel_cols)),
+            ],
+        )
 
-    version = await registry.register_model(
-        name="fashion_mnist_cnn",
-        artifact=pickle.dumps(centroids),
-        metrics=[
-            MetricSpec(name="test_accuracy", value=test_accuracy),
-            MetricSpec(name="train_time_seconds", value=train_time),
-            MetricSpec(name="parameters", value=len(centroids) * len(pixel_cols)),
-        ],
-    )
+        await registry.promote_model(
+            name="fashion_mnist_cnn",
+            version=version.version,
+            target_stage="production",
+        )
 
-    await registry.promote_model(
-        name="fashion_mnist_cnn",
-        version=version.version,
-        target_stage="production",
-    )
+        print(f"\n=== ModelRegistry ===")
+        print(f"Registered: fashion_mnist_cnn v{version.version}")
+        print(f"Stage: production")
+        print(f"Metrics: accuracy={test_accuracy:.4f}, train_time={train_time:.1f}s")
 
-    print(f"\n=== ModelRegistry ===")
-    print(f"Registered: fashion_mnist_cnn v{version.version}")
-    print(f"Stage: production")
-    print(f"Metrics: accuracy={test_accuracy:.4f}, train_time={train_time:.1f}s")
-
-    return registry, version
+        return version
+    finally:
+        await conn.close()
 
 
-registry, model_version = asyncio.run(register_model())
+model_version = asyncio.run(register_model())
 
 
 # ══════════════════════════════════════════════════════════════════════
