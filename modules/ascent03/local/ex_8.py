@@ -266,12 +266,10 @@ async def persist_final():
     conn = ConnectionManager(f"sqlite:///{_db_path}")
     await conn.initialize()
 
-    # TODO: Build a ModelRegistry over conn and call its initialize()
+    # TODO: Build a ModelRegistry over the ConnectionManager
     registry = ____
-    await ____
 
     tracker = ExperimentTracker(conn)
-    await tracker.initialize()
 
     # Register calibrated model (serialize to bytes)
     import pickle
