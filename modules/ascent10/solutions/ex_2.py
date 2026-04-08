@@ -465,85 +465,89 @@ async def deploy_federated():
     """Register and deploy the DP-federated model."""
     conn = ConnectionManager("sqlite:///ascent10_federated.db")
     await conn.initialize()
+    try:
+        registry = ModelRegistry(conn)
 
-    registry = ModelRegistry(conn)
+        # Use the best DP-FedAvg model
+        best_result = min(results, key=lambda r: abs(r["epsilon"] - 1.0))
+        best_sigma = best_result["sigma"]
+        final_weights, final_eps = fedavg_dp(
+            client_data, n_rounds=5, clip_norm=1.0, sigma=best_sigma
+        )
 
-    # Use the best DP-FedAvg model
-    best_result = min(results, key=lambda r: abs(r["epsilon"] - 1.0))
-    best_sigma = best_result["sigma"]
-    final_weights, final_eps = fedavg_dp(
-        client_data, n_rounds=5, clip_norm=1.0, sigma=best_sigma
-    )
+        # Serialize as a LogisticRegression model
+        final_model = LogisticRegression()
+        set_model_weights(final_model, final_weights)
+        model_bytes = pickle.dumps(final_model)
 
-    # Serialize as a LogisticRegression model
-    final_model = LogisticRegression()
-    set_model_weights(final_model, final_weights)
-    model_bytes = pickle.dumps(final_model)
+        signature = ModelSignature(
+            input_schema=FeatureSchema(
+                name="federated_fraud_input",
+                features=[FeatureField(name=f, dtype="float64") for f in feature_names],
+                entity_id_column="transaction_id",
+            ),
+            output_columns=["prediction", "probability"],
+            output_dtypes=["int64", "float64"],
+            model_type="classifier",
+        )
 
-    signature = ModelSignature(
-        input_schema=FeatureSchema(
-            name="federated_fraud_input",
-            features=[FeatureField(name=f, dtype="float64") for f in feature_names],
-            entity_id_column="transaction_id",
-        ),
-        output_columns=["prediction", "probability"],
-        output_dtypes=["int64", "float64"],
-        model_type="classifier",
-    )
+        model_version = await registry.register_model(
+            name="federated_fraud_dp",
+            artifact=model_bytes,
+            metrics=[
+                MetricSpec(name="accuracy", value=best_result["accuracy"]),
+                MetricSpec(name="auc", value=best_result["auc"]),
+                MetricSpec(name="dp_epsilon", value=best_result["epsilon"]),
+                MetricSpec(name="dp_sigma", value=best_sigma),
+            ],
+            signature=signature,
+        )
 
-    model_version = await registry.register_model(
-        name="federated_fraud_dp",
-        artifact=model_bytes,
-        metrics=[
-            MetricSpec(name="accuracy", value=best_result["accuracy"]),
-            MetricSpec(name="auc", value=best_result["auc"]),
-            MetricSpec(name="dp_epsilon", value=best_result["epsilon"]),
-            MetricSpec(name="dp_sigma", value=best_sigma),
-        ],
-        signature=signature,
-    )
+        print(f"\n=== Federated Model Deployed ===")
+        print(f"Model: {model_version.name} v{model_version.version}")
+        print(f"DP epsilon: {best_result['epsilon']:.4f} (sigma={best_sigma})")
+        print(f"Accuracy: {best_result['accuracy']:.4f}, AUC: {best_result['auc']:.4f}")
 
-    print(f"\n=== Federated Model Deployed ===")
-    print(f"Model: {model_version.name} v{model_version.version}")
-    print(f"DP epsilon: {best_result['epsilon']:.4f} (sigma={best_sigma})")
-    print(f"Accuracy: {best_result['accuracy']:.4f}, AUC: {best_result['auc']:.4f}")
+        # Deploy via InferenceServer
+        server = InferenceServer(registry, cache_size=5)
+        await server.warm_cache(["federated_fraud_dp"])
 
-    # Deploy via InferenceServer
-    server = InferenceServer(registry, cache_size=5)
-    await server.warm_cache(["federated_fraud_dp"])
+        test_features = {f: float(X[0, i]) for i, f in enumerate(feature_names)}
+        test_features["transaction_id"] = "TXN-TEST-001"
+        test_result = await server.predict(
+            model_name="federated_fraud_dp",
+            features=test_features,
+        )
+        print(f"Test prediction: {test_result.prediction}")
+        print(f"Inference time: {test_result.inference_time_ms:.1f}ms")
 
-    test_features = {f: float(X[0, i]) for i, f in enumerate(feature_names)}
-    test_features["transaction_id"] = "TXN-TEST-001"
-    test_result = await server.predict(
-        model_name="federated_fraud_dp",
-        features=test_features,
-    )
-    print(f"Test prediction: {test_result.prediction}")
-    print(f"Inference time: {test_result.inference_time_ms:.1f}ms")
+        # DriftMonitor for distribution shift
+        monitor = DriftMonitor(conn, psi_threshold=0.2)
+        ref_df = pl.DataFrame(X[:200], schema=feature_names)
+        await monitor.set_reference(
+            model_name="federated_fraud_dp",
+            reference_data=ref_df,
+            feature_columns=feature_names,
+        )
 
-    # DriftMonitor for distribution shift
-    monitor = DriftMonitor(
-        reference_data=X[:200],
-        feature_names=feature_names,
-        psi_threshold=0.2,
-    )
+        # Simulate production traffic with slight distribution shift
+        shifted_data = X[:50].copy()
+        shifted_data[:, -1] *= 1.5  # Shift amount distribution
+        shifted_df = pl.DataFrame(shifted_data, schema=feature_names)
+        drift_report = await monitor.check_drift("federated_fraud_dp", shifted_df)
 
-    # Simulate production traffic with slight distribution shift
-    shifted_data = X[:50].copy()
-    shifted_data[:, -1] *= 1.5  # Shift amount distribution
-    drift_report = monitor.check_drift(shifted_data)
+        print(f"\n=== DriftMonitor ===")
+        print(f"Features monitored: {len(feature_names)}")
+        print(f"PSI threshold: 0.2")
+        print(f"Drift detected: {drift_report.overall_drift_detected}")
+        if drift_report.feature_results:
+            for feat_result in drift_report.feature_results:
+                flag = " [DRIFT]" if feat_result.psi > 0.2 else ""
+                print(f"  {feat_result.feature_name}: PSI={feat_result.psi:.4f}{flag}")
 
-    print(f"\n=== DriftMonitor ===")
-    print(f"Features monitored: {len(feature_names)}")
-    print(f"PSI threshold: 0.2")
-    print(f"Drift detected: {drift_report.has_drift}")
-    if drift_report.feature_scores:
-        for feat, score in drift_report.feature_scores.items():
-            flag = " [DRIFT]" if score > 0.2 else ""
-            print(f"  {feat}: PSI={score:.4f}{flag}")
-
-    await conn.close()
-    return server
+        return server
+    finally:
+        await conn.close()
 
 
 asyncio.run(deploy_federated())

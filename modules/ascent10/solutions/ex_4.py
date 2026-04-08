@@ -434,54 +434,59 @@ print(f"{'=' * 70}")
 feature_names = feature_cols + ["amount"]
 
 
-async def _setup_monitor():
+async def _run_drift_monitoring():
     conn = ConnectionManager("sqlite:///:memory:")
     await conn.initialize()
-    mon = DriftMonitor(conn, psi_threshold=0.2)
-    ref_df = pl.DataFrame(X_train[:2000], schema=feature_names)
-    await mon.set_reference(
-        model_name="fraud_detector_v1",
-        reference_data=ref_df,
-        feature_columns=feature_names,
-    )
-    return conn, mon
+    try:
+        mon = DriftMonitor(conn, psi_threshold=0.2)
+        ref_df = pl.DataFrame(X_train[:1000], schema=feature_names)
+        await mon.set_reference(
+            model_name="fraud_detector_v1",
+            reference_data=ref_df,
+            feature_columns=feature_names,
+        )
+
+        # Simulate production traffic with gradual drift
+        rng = np.random.default_rng(42)
+
+        # Week 1: no drift
+        week1_data = X_test[:500]
+        # Week 2: slight drift in amount feature
+        week2_data = X_test[500:1000].copy()
+        week2_data[:, -1] *= 1.3  # 30% increase in transaction amounts
+        # Week 3: significant drift
+        week3_data = X_test[1000:1500].copy()
+        week3_data[:, -1] *= 2.0  # 100% increase in amounts
+        week3_data[:, 0] += rng.normal(0.5, 0.2, 500)  # Shift V1
+
+        weeks = [
+            ("Week 1 (stable)", week1_data),
+            ("Week 2 (mild drift)", week2_data),
+            ("Week 3 (significant drift)", week3_data),
+        ]
+
+        for week_name, data in weeks:
+            current_df = pl.DataFrame(data, schema=feature_names)
+            report = await mon.check_drift("fraud_detector_v1", current_df)
+            print(f"\n{week_name}:")
+            print(f"  Drift detected: {report.overall_drift_detected}")
+            print(f"  Severity: {report.overall_severity}")
+
+            drifted = [
+                (f.feature_name, f.psi) for f in report.feature_results if f.psi > 0.1
+            ]
+            if drifted:
+                print(f"  Drifted features (PSI > 0.1):")
+                for feat, psi in sorted(drifted, key=lambda x: -x[1]):
+                    flag = " [ALERT]" if psi > 0.2 else " [WARNING]"
+                    print(f"    {feat}: PSI={psi:.4f}{flag}")
+            else:
+                print(f"  All features stable (PSI < 0.1)")
+    finally:
+        await conn.close()
 
 
-conn, monitor = asyncio.run(_setup_monitor())
-
-# Simulate production traffic with gradual drift
-rng = np.random.default_rng(42)
-
-# Week 1: no drift
-week1_data = X_test[:500]
-# Week 2: slight drift in amount feature
-week2_data = X_test[500:1000].copy()
-week2_data[:, -1] *= 1.3  # 30% increase in transaction amounts
-# Week 3: significant drift
-week3_data = X_test[1000:1500].copy()
-week3_data[:, -1] *= 2.0  # 100% increase in amounts
-week3_data[:, 0] += rng.normal(0.5, 0.2, 500)  # Shift V1
-
-weeks = [
-    ("Week 1 (stable)", week1_data),
-    ("Week 2 (mild drift)", week2_data),
-    ("Week 3 (significant drift)", week3_data),
-]
-
-for week_name, data in weeks:
-    report = monitor.check_drift(data)
-    print(f"\n{week_name}:")
-    print(f"  Drift detected: {report.has_drift}")
-
-    if report.feature_scores:
-        drifted = {k: v for k, v in report.feature_scores.items() if v > 0.1}
-        if drifted:
-            print(f"  Drifted features (PSI > 0.1):")
-            for feat, psi in sorted(drifted.items(), key=lambda x: -x[1]):
-                flag = " [ALERT]" if psi > 0.2 else " [WARNING]"
-                print(f"    {feat}: PSI={psi:.4f}{flag}")
-        else:
-            print(f"  All features stable (PSI < 0.1)")
+asyncio.run(_run_drift_monitoring())
 
 # Monitoring summary
 print(f"\nMonitoring thresholds:")

@@ -608,7 +608,10 @@ async def deploy_and_monitor():
     result = await server.predict(
         model_name="capstone_fraud_regulated",
         features={
-            **{f"v{i}": float(X_test_all[0, i]) for i in range(len(feature_cols))},
+            **{
+                fname: float(X_test_all[0, idx])
+                for idx, fname in enumerate(feature_cols)
+            },
             "amount": float(X_test_all[0, -1]),
             "transaction_id": "TXN-CAP-001",
         },
@@ -616,24 +619,26 @@ async def deploy_and_monitor():
     print(f"Test prediction: {result.prediction}")
     print(f"Inference time: {result.inference_time_ms:.1f}ms")
 
-    # DriftMonitor
-    monitor = DriftMonitor(
-        reference_data=X_train_all[:2000],
-        feature_names=feature_names,
-        psi_threshold=0.2,
+    # DriftMonitor — reuse the capstone ConnectionManager
+    monitor = DriftMonitor(conn, psi_threshold=0.2)
+    ref_df = pl.DataFrame(X_train_all[:2000], schema=feature_names)
+    await monitor.set_reference(
+        model_name="capstone_fraud_regulated",
+        reference_data=ref_df,
+        feature_columns=feature_names,
     )
 
     # Check production traffic
-    rng = np.random.default_rng(42)
     prod_data = X_test_all[:500]
-    drift_report = monitor.check_drift(prod_data)
-    print(f"\nDriftMonitor status: drift={'YES' if drift_report.has_drift else 'NO'}")
-    if drift_report.feature_scores:
-        max_psi_feat = max(
-            drift_report.feature_scores, key=drift_report.feature_scores.get
-        )
-        max_psi = drift_report.feature_scores[max_psi_feat]
-        print(f"  Max PSI: {max_psi_feat}={max_psi:.4f}")
+    prod_df = pl.DataFrame(prod_data, schema=feature_names)
+    drift_report = await monitor.check_drift("capstone_fraud_regulated", prod_df)
+    print(
+        f"\nDriftMonitor status: "
+        f"drift={'YES' if drift_report.overall_drift_detected else 'NO'}"
+    )
+    if drift_report.feature_results:
+        max_feat = max(drift_report.feature_results, key=lambda f: f.psi)
+        print(f"  Max PSI: {max_feat.feature_name}={max_feat.psi:.4f}")
 
     return server, monitor
 

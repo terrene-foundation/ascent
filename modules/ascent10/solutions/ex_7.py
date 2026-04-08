@@ -16,8 +16,6 @@
 #   5. Governance incident simulation: bias -> alert -> audit -> remediation
 # ════════════════════════════════════════════════════════════════════════
 """
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import json
@@ -34,6 +32,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 
 from dataflow import DataFlow
+from kailash.db.connection import ConnectionManager
 from kailash_ml.engines.drift_monitor import DriftMonitor
 from kailash.trust import ConfidentialityLevel, TrustPosture
 from pact import GovernanceEngine, PactGovernedAgent, compile_org, load_org_yaml
@@ -59,7 +58,10 @@ setup_environment()
 
 print("=== Model Governance Registry ===\n")
 
-db = DataFlow("sqlite:///:memory:")
+_db_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_db_tmp.close()
+_db_path = _db_tmp.name
+db = DataFlow(f"sqlite:///{_db_path}")
 
 
 @db.model
@@ -137,21 +139,23 @@ async def setup_registry():
         },
     ]
 
+    created_models = []
     for model_data in models_to_register:
-        await db.express.create("GovernedModel", model_data)
+        create_result = await db.express.create("GovernedModel", model_data)
+        # Capture the auto-assigned id alongside the original payload
+        enriched = {**model_data, "id": create_result.get("id")}
+        created_models.append(enriched)
 
-    # List all registered models
-    models = await db.express.list("GovernedModel", {})
-    print(f"Registered {len(models)} models in governance registry:\n")
+    print(f"Registered {len(created_models)} models in governance registry:\n")
     print(f"{'Model ID':<25} {'Version':<10} {'Clearance':<15} {'Status':<12}")
     print("-" * 65)
-    for m in models:
+    for m in created_models:
         print(
             f"{m['model_id']:<25} {m['version']:<10} "
             f"{m['clearance_requirement']:<15} {m['compliance_status']:<12}"
         )
 
-    return db, models
+    return db, created_models
 
 
 dataflow, registered_models = asyncio.run(setup_registry())
@@ -267,12 +271,6 @@ rng = np.random.default_rng(42)
 reference_data = rng.normal(0, 1, (1000, 10))
 feature_names = [f"v{i}" for i in range(10)]
 
-monitor = DriftMonitor(
-    reference_data=reference_data,
-    feature_names=feature_names,
-    psi_threshold=0.25,
-)
-
 # Set up PACT governance for retirement
 retire_org_yaml = """
 org_id: model_lifecycle
@@ -331,87 +329,122 @@ for cs in retire_loaded.clearances:
 
 async def simulate_retirement_automation():
     """Simulate: PSI > 0.25 on two consecutive checks -> downgrade + retire."""
-
-    # Week 1: stable
-    stable_data = rng.normal(0, 1, (200, 10))
-    report_1 = monitor.check_drift(stable_data)
-    print(f"Check 1 (stable): drift={report_1.has_drift}")
-
-    # Week 2: drift begins
-    drifted_data_1 = rng.normal(0.6, 1.3, (200, 10))
-    report_2 = monitor.check_drift(drifted_data_1)
-    psi_2 = max(report_2.feature_scores.values()) if report_2.feature_scores else 0.0
-    print(f"Check 2 (mild drift): drift={report_2.has_drift}, max_PSI={psi_2:.4f}")
-
-    # Week 3: drift persists
-    drifted_data_2 = rng.normal(0.8, 1.5, (200, 10))
-    report_3 = monitor.check_drift(drifted_data_2)
-    psi_3 = max(report_3.feature_scores.values()) if report_3.feature_scores else 0.0
-    print(
-        f"Check 3 (persistent drift): drift={report_3.has_drift}, max_PSI={psi_3:.4f}"
-    )
-
-    consecutive_drift = report_2.has_drift and report_3.has_drift
-
-    if consecutive_drift:
-        print(f"\nTwo consecutive drift alerts -> triggering retirement protocol:")
-
-        # Step 1: Downgrade PACT clearance to RESTRICTED
-        restricted_clearance = RoleClearance(
-            role_address=retire_roles["model_agent"],
-            max_clearance=ConfidentialityLevel.RESTRICTED,
-            compartments=frozenset(["production_logs"]),  # Remove model_weights access
-            granted_by_role_address=retire_roles["ops_lead"],
+    drift_conn = ConnectionManager("sqlite:///:memory:")
+    await drift_conn.initialize()
+    try:
+        monitor = DriftMonitor(drift_conn, psi_threshold=0.25)
+        ref_df = pl.DataFrame(reference_data, schema=feature_names)
+        await monitor.set_reference(
+            model_name="fraud_detector_v1",
+            reference_data=ref_df,
+            feature_columns=feature_names,
         )
-        retire_engine.grant_clearance(retire_roles["model_agent"], restricted_clearance)
-        print(f"  1. Clearance downgraded to RESTRICTED")
 
-        # Step 2: Update registry
-        model_record = registered_models[0]
-        await db.express.update(
-            "GovernedModel",
-            str(model_record["id"]),
-            {
+        def _max_psi(report) -> float:
+            if not report.feature_results:
+                return 0.0
+            return max(f.psi for f in report.feature_results)
+
+        # Week 1: stable
+        stable_data = rng.normal(0, 1, (200, 10))
+        stable_df = pl.DataFrame(stable_data, schema=feature_names)
+        report_1 = await monitor.check_drift("fraud_detector_v1", stable_df)
+        print(f"Check 1 (stable): drift={report_1.overall_drift_detected}")
+
+        # Week 2: drift begins
+        drifted_data_1 = rng.normal(0.6, 1.3, (200, 10))
+        drifted_df_1 = pl.DataFrame(drifted_data_1, schema=feature_names)
+        report_2 = await monitor.check_drift("fraud_detector_v1", drifted_df_1)
+        psi_2 = _max_psi(report_2)
+        print(
+            f"Check 2 (mild drift): drift={report_2.overall_drift_detected}, "
+            f"max_PSI={psi_2:.4f}"
+        )
+
+        # Week 3: drift persists
+        drifted_data_2 = rng.normal(0.8, 1.5, (200, 10))
+        drifted_df_2 = pl.DataFrame(drifted_data_2, schema=feature_names)
+        report_3 = await monitor.check_drift("fraud_detector_v1", drifted_df_2)
+        psi_3 = _max_psi(report_3)
+        print(
+            f"Check 3 (persistent drift): drift={report_3.overall_drift_detected}, "
+            f"max_PSI={psi_3:.4f}"
+        )
+
+        consecutive_drift = (
+            report_2.overall_drift_detected and report_3.overall_drift_detected
+        )
+
+        if consecutive_drift:
+            print(f"\nTwo consecutive drift alerts -> triggering retirement protocol:")
+
+            # Step 1: Downgrade PACT clearance to RESTRICTED
+            restricted_clearance = RoleClearance(
+                role_address=retire_roles["model_agent"],
+                max_clearance=ConfidentialityLevel.RESTRICTED,
+                compartments=frozenset(
+                    ["production_logs"]
+                ),  # Remove model_weights access
+                granted_by_role_address=retire_roles["ops_lead"],
+            )
+            retire_engine.grant_clearance(
+                retire_roles["model_agent"], restricted_clearance
+            )
+            print(f"  1. Clearance downgraded to RESTRICTED")
+
+            # Step 2: Update registry
+            model_record = registered_models[0]
+            await db.express.update(
+                "GovernedModel",
+                str(model_record["id"]),
+                {
+                    "retirement_status": "RETIRING",
+                    "drift_psi_latest": float(psi_3),
+                    "compliance_status": "NON_COMPLIANT",
+                },
+            )
+            print(f"  2. Registry updated: status=RETIRING, PSI={psi_3:.4f}")
+
+            # Step 3: Log governance event
+            await db.express.create(
+                "GovernanceEvent",
+                {
+                    "event_type": "RETIREMENT",
+                    "model_id": model_record["model_id"],
+                    "actor": retire_roles["ops_lead"],
+                    "details": json.dumps(
+                        {
+                            "reason": "Consecutive drift alerts",
+                            "psi_values": [psi_2, psi_3],
+                            "new_clearance": "RESTRICTED",
+                        }
+                    ),
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
+            print(f"  3. Governance event logged")
+
+            # Step 4: Verify restricted agent cannot access model weights
+            ctx = retire_engine.get_context(retire_roles["model_agent"])
+            print(f"  4. Agent clearance now: {ctx.effective_clearance_level}")
+            print(f"     Compartments: {sorted(ctx.compartments)}")
+
+            # Re-apply policies using the in-memory record updated with new state
+            updated_model = {
+                **model_record,
                 "retirement_status": "RETIRING",
-                "drift_psi_latest": psi_3,
+                "drift_psi_latest": float(psi_3),
                 "compliance_status": "NON_COMPLIANT",
-            },
-        )
-        print(f"  2. Registry updated: status=RETIRING, PSI={psi_3:.4f}")
+            }
+            verdict = apply_policies(updated_model)
+            print(f"  5. Policy verdict: {verdict['overall']}")
+            for v in verdict["blocking_violations"]:
+                print(f"     BLOCKED: {v}")
 
-        # Step 3: Log governance event
-        await db.express.create(
-            "GovernanceEvent",
-            {
-                "event_type": "RETIREMENT",
-                "model_id": model_record["model_id"],
-                "actor": retire_roles["ops_lead"],
-                "details": json.dumps(
-                    {
-                        "reason": "Consecutive drift alerts",
-                        "psi_values": [psi_2, psi_3],
-                        "new_clearance": "RESTRICTED",
-                    }
-                ),
-                "timestamp": datetime.now().isoformat(),
-            },
-        )
-        print(f"  3. Governance event logged")
-
-        # Step 4: Verify restricted agent cannot access model weights
-        ctx = retire_engine.get_context(retire_roles["model_agent"])
-        print(f"  4. Agent clearance now: {ctx.effective_clearance_level}")
-        print(f"     Compartments: {sorted(ctx.compartments)}")
-
-        # Re-apply policies
-        updated_model = await db.express.read("GovernedModel", str(model_record["id"]))
-        verdict = apply_policies(updated_model)
-        print(f"  5. Policy verdict: {verdict['overall']}")
-        for v in verdict["blocking_violations"]:
-            print(f"     BLOCKED: {v}")
-
-    else:
-        print(f"\nNo consecutive drift -- model remains active.")
+        else:
+            print(f"\nNo consecutive drift -- model remains active.")
+    finally:
+        await drift_conn.close()
 
 
 asyncio.run(simulate_retirement_automation())
@@ -641,9 +674,10 @@ if fpr_gap > 0.02:
     asyncio.run(log_incident())
 
 # Clean up DataFlow
-asyncio.run(dataflow.close())
+asyncio.run(dataflow.close_async())
 
 # Remove temporary database
+Path(_db_path).unlink(missing_ok=True)
 db_path = Path("ascent10_governance.db")
 if db_path.exists():
     db_path.unlink()

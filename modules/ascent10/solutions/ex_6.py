@@ -324,22 +324,6 @@ reference_data = rng.normal(0, 1, (200, 10))
 feature_names = [f"feature_{i}" for i in range(10)]
 
 
-async def _setup_drift_monitor():
-    conn = ConnectionManager("sqlite:///:memory:")
-    await conn.initialize()
-    mon = DriftMonitor(conn, psi_threshold=0.2)
-    ref_df = pl.DataFrame(reference_data, schema=feature_names)
-    await mon.set_reference(
-        model_name="compliance_monitor",
-        reference_data=ref_df,
-        feature_columns=feature_names,
-    )
-    return conn, mon
-
-
-drift_conn, monitor = asyncio.run(_setup_drift_monitor())
-
-
 def on_drift_detected(drift_report, pipeline_artefacts: dict) -> dict:
     """Callback: when DriftMonitor detects drift, trigger compliance audit.
 
@@ -352,7 +336,7 @@ def on_drift_detected(drift_report, pipeline_artefacts: dict) -> dict:
     """
     # Update artefacts based on drift
     updated_artefacts = pipeline_artefacts.copy()
-    if drift_report.has_drift:
+    if drift_report.overall_drift_detected:
         # Drift invalidates the current bias audit (model may be biased on new data)
         updated_artefacts["bias_audit_conducted"] = False
         # Drift means model card performance metrics may be stale
@@ -361,27 +345,47 @@ def on_drift_detected(drift_report, pipeline_artefacts: dict) -> dict:
     return run_compliance_audit(updated_artefacts)
 
 
-# Simulate stable traffic (no drift)
-stable_data = rng.normal(0, 1, (200, 10))
-stable_report = monitor.check_drift(stable_data)
-print(f"Week 1 (stable): drift={stable_report.has_drift}")
-if not stable_report.has_drift:
-    print(f"  No compliance audit triggered.\n")
+async def _run_continuous_compliance():
+    """Set up DriftMonitor, run drift checks, trigger compliance audits."""
+    conn = ConnectionManager("sqlite:///:memory:")
+    await conn.initialize()
+    try:
+        monitor = DriftMonitor(conn, psi_threshold=0.2)
+        ref_df = pl.DataFrame(reference_data, schema=feature_names)
+        await monitor.set_reference(
+            model_name="compliance_monitor",
+            reference_data=ref_df,
+            feature_columns=feature_names,
+        )
 
-# Simulate drifted traffic (triggers audit)
-drifted_data = rng.normal(0.8, 1.5, (200, 10))
-drift_report = monitor.check_drift(drifted_data)
-print(f"Week 2 (drift): drift={drift_report.has_drift}")
+        # Simulate stable traffic (no drift)
+        stable_data = rng.normal(0, 1, (200, 10))
+        stable_df = pl.DataFrame(stable_data, schema=feature_names)
+        stable_report = await monitor.check_drift("compliance_monitor", stable_df)
+        print(f"Week 1 (stable): drift={stable_report.overall_drift_detected}")
+        if not stable_report.overall_drift_detected:
+            print(f"  No compliance audit triggered.\n")
 
-if drift_report.has_drift:
-    print(f"  Drift detected -> triggering compliance audit...\n")
-    drift_audit = on_drift_detected(drift_report, pipeline_artefacts)
-    print(f"  Audit Status: {drift_audit['overall_status']}")
-    for reg_name, reg_result in drift_audit["regulations"].items():
-        if reg_result["status"] != "COMPLIANT":
-            print(f"  {reg_name}: {reg_result['status']}")
-            for action in reg_result["remediation"]:
-                print(f"    - {action}")
+        # Simulate drifted traffic (triggers audit)
+        drifted_data = rng.normal(0.8, 1.5, (200, 10))
+        drifted_df = pl.DataFrame(drifted_data, schema=feature_names)
+        drift_report = await monitor.check_drift("compliance_monitor", drifted_df)
+        print(f"Week 2 (drift): drift={drift_report.overall_drift_detected}")
+
+        if drift_report.overall_drift_detected:
+            print(f"  Drift detected -> triggering compliance audit...\n")
+            drift_audit = on_drift_detected(drift_report, pipeline_artefacts)
+            print(f"  Audit Status: {drift_audit['overall_status']}")
+            for reg_name, reg_result in drift_audit["regulations"].items():
+                if reg_result["status"] != "COMPLIANT":
+                    print(f"  {reg_name}: {reg_result['status']}")
+                    for action in reg_result["remediation"]:
+                        print(f"    - {action}")
+    finally:
+        await conn.close()
+
+
+asyncio.run(_run_continuous_compliance())
 
 print(f"\nContinuous compliance loop:")
 print(f"  DriftMonitor (PSI > 0.2) -> ComplianceAuditAgent -> Remediation Plan")
