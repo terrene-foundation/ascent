@@ -85,24 +85,24 @@ print(fx_rates.head(5))
 # the Q1 figure applies to Jan, Feb, and Mar; Q2 to Apr, May, Jun, etc.
 
 # Parse all date columns to proper date types
-cpi = cpi.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
+# TODO: Parse the cpi "date" column with format "%Y-%m-%d"
+cpi = cpi.with_columns(pl.col("date").str.to_date(____))
 employment = employment.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
 fx_rates = fx_rates.with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
 
 # Truncate all dates to the first of the month for joining
-# TODO: truncate the 'date' column to monthly frequency
-cpi = cpi.with_columns(
-    pl.col("date").dt.truncate(____).alias("month_date")
-)  # Hint: interval string like "1mo"
+# TODO: Use "1mo" as the truncation interval to round down to month start
+cpi = cpi.with_columns(pl.col("date").dt.truncate(____).alias("month_date"))
 employment = employment.with_columns(
-    pl.col("date").dt.truncate(____).alias("month_date")  # Hint: same interval as cpi
+    pl.col("date").dt.truncate("1mo").alias("month_date")
 )
 
 # Build a complete monthly spine from the CPI date range
 date_range = pl.date_range(
-    cpi["month_date"].min(),
+    # TODO: Use the minimum month_date as the start of the range
+    cpi["month_date"].____(),
     cpi["month_date"].max(),
-    interval=____,  # Hint: "1mo"
+    interval="1mo",
     eager=True,
 )
 monthly_spine = pl.DataFrame({"month_date": date_range})
@@ -112,13 +112,15 @@ monthly_spine = pl.DataFrame({"month_date": date_range})
 employment_monthly = (
     monthly_spine.join(
         employment.drop("date"),
-        on="month_date",
-        how=____,  # Hint: "left" keeps all spine rows
+        # TODO: Join on the "month_date" column
+        on=____,
+        how="left",
     )
     .sort("month_date")
     .with_columns(
         [
-            pl.col(c).forward_fill()
+            # TODO: Forward-fill nulls so each month inherits the previous quarter
+            pl.col(c).____()
             for c in employment.columns
             if c not in ("date", "month_date")
         ]
@@ -129,19 +131,16 @@ employment_monthly = (
 fx_monthly = (
     fx_rates.with_columns(pl.col("date").dt.truncate("1mo").alias("month_date"))
     .group_by("month_date")
-    .agg([pl.col(c).mean() for c in fx_rates.columns if c != "date"])
+    # TODO: Aggregate each non-date column with .mean() (daily → monthly mean)
+    .agg([pl.col(c).____() for c in fx_rates.columns if c != "date"])
     .sort("month_date")
 )
 
 # Merge all three sources on month_date
-# TODO: join cpi with employment_monthly and fx_monthly
 economic = (
-    cpi.join(
-        employment_monthly, on="month_date", how=____, suffix=____
-    )  # Hint: how="left", suffix="_emp"
-    .join(
-        fx_monthly, on="month_date", how=____, suffix=____
-    )  # Hint: how="left", suffix="_fx"
+    # TODO: Use how="left" to keep all cpi rows
+    cpi.join(employment_monthly, on="month_date", how=____, suffix="_emp")
+    .join(fx_monthly, on="month_date", how="left", suffix="_fx")
     .sort("month_date")
 )
 
@@ -168,24 +167,30 @@ if null_summary:
 # economic time-series data has different characteristics, so we tune each
 # threshold to match what we actually expect to see in this dataset.
 
-# TODO: create an AlertConfig with domain-appropriate thresholds
 alert_config = AlertConfig(
-    # Correlation: macro indicators are structurally correlated
-    high_correlation_threshold=____,  # Hint: 0.95 (only flag near-perfect collinearity)
+    # Correlation: macro indicators are structurally correlated —
+    # only flag near-perfect collinearity
+    # TODO: Set a high threshold (0.95) so expected correlations don't spam alerts
+    high_correlation_threshold=____,
     # Nulls: quarterly data forward-filled to monthly will have ~0% nulls mid-series
-    high_null_pct_threshold=____,  # Hint: 0.10
+    high_null_pct_threshold=0.10,
     # Constants: a column with only one unique value is a pipeline failure
-    constant_threshold=____,  # Hint: 1
-    # Cardinality: date-derived columns look "high cardinality"
-    high_cardinality_ratio=____,  # Hint: 0.95
+    # TODO: Set to 1 (any column with <=1 unique value is a problem)
+    constant_threshold=____,
+    # Cardinality: date-derived columns will look "high cardinality"
+    high_cardinality_ratio=0.95,
     # Skewness: crisis periods create extreme spikes
-    skewness_threshold=____,  # Hint: 3.0
+    # TODO: Set to 3.0 to flag only severe skew (crises, not normal variance)
+    skewness_threshold=____,
     # Zeros: some indicators legitimately hit zero
-    zero_pct_threshold=____,  # Hint: 0.30
+    # TODO: Allow up to 30% zeros (0.30)
+    zero_pct_threshold=____,
     # Imbalance: strict — 98% one value adds no information
-    imbalance_ratio_threshold=____,  # Hint: 0.05
+    # TODO: Set to 0.05 (flag columns where minority class is below 5%)
+    imbalance_ratio_threshold=____,
     # Duplicates: forward-filling creates repeated values but not duplicate rows
-    duplicate_pct_threshold=____,  # Hint: 0.05
+    # TODO: Set to 0.05 (flag if more than 5% rows are duplicates)
+    duplicate_pct_threshold=____,
 )
 
 print(f"\n=== Custom AlertConfig ===")
@@ -248,12 +253,12 @@ def _interpret_alert(alert_type: str, column: str, value) -> str:
 
 async def profile_economic_data():
     """Profile the merged economic dataset with DataExplorer."""
-    # TODO: create DataExplorer with the custom alert_config
-    explorer = DataExplorer(alert_config=____)  # Hint: pass alert_config
+    # TODO: Construct DataExplorer and pass alert_config as the alert_config argument
+    explorer = DataExplorer(alert_config=____)
 
     print("\n=== Running DataExplorer Profile ===")
-    # TODO: call explorer.profile() on the economic dataframe
-    profile = await explorer.profile(____)  # Hint: pass economic
+    # TODO: Profile the `economic` dataframe (await the coroutine)
+    profile = await explorer.profile(____)
 
     # Top-level summary
     print(f"Rows: {profile.n_rows}  Columns: {profile.n_columns}")
@@ -305,8 +310,7 @@ async def profile_economic_data():
 
     # Generate HTML visualisations
     print("\n--- Generating Visualisations ---")
-    # TODO: call explorer.visualize() on the economic dataframe
-    vis_report = await explorer.visualize(____)  # Hint: pass economic
+    vis_report = await explorer.visualize(economic)
     for name, fig in vis_report.figures.items():
         filename = f"ex7_{name}.html"
         fig.write_html(filename)
@@ -329,18 +333,18 @@ async def compare_periods():
     """
     explorer = DataExplorer(alert_config=alert_config)
 
-    covid_cutoff = pl.date(2020, 3, 1)
+    # TODO: COVID started spreading globally in March 2020 — use that as the cutoff year
+    covid_cutoff = pl.date(____, 3, 1)
     pre_covid = economic.filter(pl.col("month_date") < covid_cutoff)
     during_covid = economic.filter(pl.col("month_date") >= covid_cutoff)
 
     print(f"\n=== Period Comparison ===")
-    print(f"Pre-COVID months:  {pre_covid.height}")
+    # TODO: Use the .height attribute to count rows in each period DataFrame
+    print(f"Pre-COVID months:  {pre_covid.____}")
     print(f"COVID-era months:  {during_covid.height}")
 
-    # TODO: call explorer.compare() on the two period DataFrames
-    comparison = await explorer.compare(
-        ____, ____
-    )  # Hint: compare(pre_covid, during_covid)
+    # TODO: Compare the two periods — pass pre_covid as the first argument
+    comparison = await explorer.compare(____, during_covid)
 
     print(f"\nShape comparison: {comparison['shape_comparison']}")
     print(f"Shared columns:   {len(comparison['shared_columns'])}")
@@ -374,10 +378,10 @@ async def generate_report():
     """
     explorer = DataExplorer(alert_config=alert_config)
 
-    # TODO: call explorer.to_html() on the economic dataframe
+    # TODO: Pass the `economic` dataframe to to_html()
     report_html = await explorer.to_html(
-        ____,  # Hint: pass economic
-        title=____,  # Hint: "Singapore Economic Indicators — Data Profile"
+        ____,
+        title="Singapore Economic Indicators — Data Profile",
     )
 
     report_path = "ex7_economic_profile_report.html"

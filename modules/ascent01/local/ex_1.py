@@ -35,26 +35,24 @@ df = loader.load("ascent01", "sg_weather.csv")
 # A variable stores a value. The name on the left, value on the right.
 # Python figures out the type automatically — no need to declare it.
 
-# TODO: Create a string variable for the city name
-city = ____  # Hint: str value, e.g. "Singapore"
+# TODO: Create a string variable holding the city name "Singapore"
+city = ____
 country = "Singapore"  # another string
 # TODO: Create an integer variable for years of data (use 30)
-years_of_data = ____  # Hint: int, whole number
+years_of_data = ____
 latitude = 1.35  # float: a decimal number
 
 # f-strings let you embed variables directly in text.
 # Put the variable name inside curly braces {}  within an f"..." string.
-# TODO: Complete the f-string — embed city and country variables
-print(f"Dataset: Weather data for {____}, {____}")  # Hint: use city, country
+print(f"Dataset: Weather data for {city}, {country}")
 print(f"Coverage: {years_of_data} years of records")
 print(f"Latitude: {latitude} degrees north")
 
 # You can do arithmetic directly in f-strings
 celsius_avg = 27.5
-# TODO: Compute fahrenheit from celsius using the formula: C * 9/5 + 32
-fahrenheit_avg = ____  # Hint: celsius_avg * 9 / 5 + 32
-# TODO: Complete the f-string — embed both temperature values
-print(f"Average temperature: {____}°C / {____:.1f}°F")
+# TODO: Convert Celsius to Fahrenheit using the formula: C * 9/5 + 32
+fahrenheit_avg = ____
+print(f"Average temperature: {celsius_avg}°C / {fahrenheit_avg:.1f}°F")
 # The :.1f means "show 1 decimal place" — we'll see more formatting later
 
 
@@ -65,7 +63,7 @@ print(f"Average temperature: {____}°C / {____:.1f}°F")
 # .shape returns a tuple: (number_of_rows, number_of_columns)
 # A tuple is like a list but cannot be changed — (rows, cols)
 # TODO: Unpack df.shape into two variables: rows and cols
-rows, cols = ____  # Hint: df.shape returns (n_rows, n_cols)
+rows, cols = ____
 print(f"\n=== Dataset Overview ===")
 print(f"Rows: {rows:,}")  # :, adds comma thousands separator
 print(f"Columns: {cols}")
@@ -85,8 +83,8 @@ for col_name, dtype in zip(df.columns, df.dtypes):
 
 # .head(n) shows the first n rows — always look at raw data before analysis
 print(f"\nFirst 5 rows:")
-# TODO: Print the first 5 rows of df
-print(____)  # Hint: df.head(5)
+# TODO: Print the first 5 rows of df using .head(5)
+print(____)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -97,15 +95,16 @@ print(____)  # Hint: df.head(5)
 # This single call replaces writing 5 separate functions — that's the
 # point of a data library: common operations should take one line.
 print(f"\n=== Summary Statistics ===")
-# TODO: Print the summary statistics for df
-print(____)  # Hint: df.describe()
+# TODO: Call df.describe() to get summary statistics
+print(____)
 
 # You can access a single column with df["column_name"]
-# Then call aggregation methods directly on that column
-# TODO: Compute the mean of mean_temperature_c
-mean_temp = ____  # Hint: df["mean_temperature_c"].mean()
+# Then call aggregation methods directly on that column.
+# TODO: Compute the mean of the "mean_temperature_c" column
+mean_temp = ____
 min_temp = df["mean_temperature_c"].min()
-max_temp = df["mean_temperature_c"].max()
+# TODO: Compute the maximum of the "mean_temperature_c" column
+max_temp = ____
 std_temp = df["mean_temperature_c"].std()
 
 print(f"\nTemperature details:")
@@ -131,20 +130,17 @@ print(f"  Maximum:  {max_rain:.1f} mm/month")
 # .max() returns the single highest value in a column
 
 # The hottest month: filter where temperature equals the maximum temperature
-# TODO: Filter df to rows where mean_temperature_c equals its maximum value
-hottest_row = df.filter(pl.col("mean_temperature_c") == ____)
-# Hint: df["mean_temperature_c"].max()
+# TODO: Filter df to the row where mean_temperature_c equals its max value
+#       (hint: pl.col("mean_temperature_c") == df["mean_temperature_c"].max())
+hottest_row = df.filter(____)
 
-# TODO: Filter df to rows where mean_temperature_c equals its minimum value
-coldest_row = df.filter(pl.col("mean_temperature_c") == ____)
-# Hint: df["mean_temperature_c"].min()
+coldest_row = df.filter(pl.col("mean_temperature_c") == df["mean_temperature_c"].min())
 
-# TODO: Filter df to rows where total_rainfall_mm equals its maximum value
-wettest_row = df.filter(pl.col("total_rainfall_mm") == ____)
-# Hint: df["total_rainfall_mm"].max()
+# TODO: Filter df to the row where total_rainfall_mm equals its max value
+wettest_row = df.filter(____)
 
-# .item() extracts a single value from a one-cell DataFrame
-hottest_month = hottest_row["month"][0]  # [0] gets the first (only) element
+# [0] gets the first (only) element from the filtered result
+hottest_month = hottest_row["month"][0]
 hottest_temp = hottest_row["mean_temperature_c"][0]
 
 coldest_month = coldest_row["month"][0]
@@ -165,8 +161,8 @@ print(f"Wettest:  {wettest_month} with {wettest_rain:.1f} mm")
 
 # Let's put it all together in a readable report
 # "=" * 50 creates a string of 50 "=" characters — a simple separator
-# TODO: Create a separator string of 50 "=" characters
-separator = ____  # Hint: "=" * 50
+# TODO: Build a separator string of 50 "=" characters (use string * int)
+separator = ____
 
 print(f"\n{separator}")
 print(f"  SINGAPORE WEATHER SUMMARY")
@@ -176,8 +172,7 @@ print(f"  Date columns:    {cols:>6}")
 print(f"")
 print(f"  Temperature (°C)")
 print(f"    Mean: {mean_temp:>8.2f}")
-# TODO: Complete the Min line — embed min_temp and coldest_month
-print(f"    Min:  {____:>8.2f}  ({____})")  # Hint: min_temp, coldest_month
+print(f"    Min:  {min_temp:>8.2f}  ({coldest_month})")
 print(f"    Max:  {max_temp:>8.2f}  ({hottest_month})")
 print(f"")
 print(f"  Rainfall (mm/month)")

@@ -47,14 +47,15 @@ print(f"Shape: {hdb.shape}")
 # Sorting by town then date is critical — rolling windows depend on order.
 
 monthly_prices = (
-    # TODO: Group by "town" and "transaction_date"
-    hdb.group_by(____, ____).agg(  # Hint: "town", "transaction_date"
-        pl.col("price_per_sqm").median().alias("median_price_sqm"),
+    # TODO: Group by both "town" and "transaction_date"
+    hdb.group_by(____, "transaction_date").agg(
+        # TODO: Compute the median of price_per_sqm
+        pl.col("price_per_sqm").____().alias("median_price_sqm"),
         pl.col("resale_price").median().alias("median_resale_price"),
         pl.len().alias("transaction_count"),
     )
-    # TODO: Sort by "town" then "transaction_date"
-    .sort(____, ____)  # Hint: "town", "transaction_date"
+    # TODO: Sort by "town" first, then "transaction_date" (window order matters)
+    .sort(____, ____)
 )
 
 print(f"\n=== Monthly Price Series ===")
@@ -78,18 +79,18 @@ print(monthly_prices.filter(pl.col("town") == "BISHAN").head(6))
 
 monthly_prices = monthly_prices.with_columns(
     pl.col("median_price_sqm")
-    # TODO: Apply a 12-month rolling mean partitioned by town
-    .rolling_mean(window_size=____)  # Hint: 12
-    .over(____)  # Hint: "town"
+    # TODO: Apply a 12-month rolling mean (window_size=12)
+    .rolling_mean(window_size=____)
+    .over("town")
     .alias("rolling_12m_price_sqm"),
 )
 
 # A shorter 3-month window for a more reactive signal
 monthly_prices = monthly_prices.with_columns(
     pl.col("median_price_sqm")
-    # TODO: Apply a 3-month rolling mean partitioned by town
-    .rolling_mean(window_size=____)  # Hint: 3
-    .over("town")
+    .rolling_mean(window_size=3)
+    # TODO: Partition the window by "town" so it doesn't cross town boundaries
+    .over(____)
     .alias("rolling_3m_price_sqm"),
 )
 
@@ -119,15 +120,18 @@ print(
 
 monthly_prices = monthly_prices.with_columns(
     # TODO: Shift median_price_sqm by 12 positions, partitioned by town
-    pl.col("median_price_sqm").shift(____).over(____).alias("price_sqm_12m_ago"),
-    # Hint: 12, "town"
+    pl.col("median_price_sqm")
+    .shift(____)
+    .over("town")
+    .alias("price_sqm_12m_ago"),
 )
 
 monthly_prices = monthly_prices.with_columns(
+    # TODO: YoY % = (current - 12_months_ago) / 12_months_ago * 100
     (
         (pl.col("median_price_sqm") - pl.col("price_sqm_12m_ago"))
         / pl.col("price_sqm_12m_ago")
-        * 100
+        * ____
     ).alias("yoy_price_change_pct"),
 )
 
@@ -145,11 +149,15 @@ print(
 
 # Market-wide YoY: which months had the strongest national price growth?
 national_monthly = (
-    hdb.group_by("transaction_date")
+    # TODO: Group hdb by "transaction_date" only (national, not per-town)
+    hdb.group_by(____)
     .agg(pl.col("price_per_sqm").median().alias("national_median_sqm"))
     .sort("transaction_date")
     .with_columns(
-        pl.col("national_median_sqm").shift(12).alias("national_sqm_12m_ago"),
+        # TODO: Shift the national series by 12 months
+        pl.col("national_median_sqm")
+        .shift(____)
+        .alias("national_sqm_12m_ago"),
     )
     .with_columns(
         (
@@ -187,15 +195,17 @@ print(
 # Using lazy evaluation for the multi-step aggregation pipeline
 
 recent_yoy = (
-    # TODO: Convert monthly_prices to a LazyFrame with .lazy()
-    monthly_prices.____()  # Hint: .lazy()
+    # TODO: Convert monthly_prices to a LazyFrame by calling .lazy()
+    monthly_prices.____()
     # Filter to last 3 years of data — lazy: no data moves yet
-    .filter(pl.col("transaction_date") >= pl.date(2021, 1, 1))
+    # TODO: Filter to dates on or after Jan 1, 2021
+    .filter(pl.col("transaction_date") >= pl.date(____, 1, 1))
     # Drop rows where YoY is null (first 12 months per town)
     .drop_nulls("yoy_price_change_pct")
     # Aggregate per town
     .group_by("town").agg(
-        pl.col("yoy_price_change_pct").mean().alias("mean_yoy_pct"),
+        # TODO: Compute the mean YoY growth per town
+        pl.col("yoy_price_change_pct").____().alias("mean_yoy_pct"),
         pl.col("yoy_price_change_pct").std().alias("std_yoy_pct"),
         pl.col("yoy_price_change_pct").max().alias("peak_yoy_pct"),
         pl.col("yoy_price_change_pct").min().alias("trough_yoy_pct"),
@@ -203,8 +213,8 @@ recent_yoy = (
     )
     # Sort by mean YoY descending
     .sort("mean_yoy_pct", descending=True)
-    # TODO: Execute the lazy plan by calling .collect()
-    .____()  # Hint: .collect()
+    # TODO: Trigger execution by calling .collect() on the lazy plan
+    .____()
 )
 
 print(f"\n=== Town YoY Growth Rankings (2021–present) ===")
@@ -221,9 +231,10 @@ print(recent_yoy.head(10))
 # This is different from sort() — rank adds a column without reordering rows.
 
 recent_yoy = recent_yoy.with_columns(
-    # TODO: Rank towns by mean_yoy_pct (descending, ordinal method)
-    pl.col("mean_yoy_pct").rank(method=____, descending=____).alias("growth_rank"),
-    # Hint: method="ordinal", descending=True
+    # TODO: Rank by mean_yoy_pct with method="ordinal" and descending=True
+    pl.col("mean_yoy_pct")
+    .rank(method="ordinal", descending=____)
+    .alias("growth_rank"),
 )
 
 # Classify towns as trend leaders, followers, or laggards
@@ -232,7 +243,8 @@ std_growth = recent_yoy["mean_yoy_pct"].std()
 
 recent_yoy = recent_yoy.with_columns(
     pl.when(pl.col("mean_yoy_pct") > mean_growth + std_growth)
-    .then(pl.lit("leader"))
+    # TODO: Mark high-growth towns as "leader"
+    .then(pl.lit(____))
     .when(pl.col("mean_yoy_pct") < mean_growth - std_growth)
     .then(pl.lit("laggard"))
     .otherwise(pl.lit("follower"))

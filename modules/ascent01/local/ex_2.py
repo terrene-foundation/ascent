@@ -42,37 +42,36 @@ print(hdb.head(3))
 # Filter for a single town
 # pl.col("town") creates a column reference — like pointing at the column
 # TODO: Filter hdb to rows where town equals "ANG MO KIO"
-ang_mo_kio = hdb.filter(pl.col("town") == ____)  # Hint: "ANG MO KIO"
+ang_mo_kio = hdb.filter(pl.col("town") == ____)
 print(f"\nAng Mo Kio transactions: {ang_mo_kio.height:,}")
 
 # Filter by price range
 # Note: use & for AND (both must be True), | for OR (either can be True)
 # You MUST wrap each condition in parentheses when combining with & or |
-# TODO: Filter hdb to rows where resale_price is between 300,000 and 500,000
+# TODO: Complete the filter — keep rows where resale_price is between 300k and 500k
 affordable = hdb.filter(
-    (pl.col("resale_price") >= ____)
-    & (pl.col("resale_price") <= ____)
-    # Hint: 300_000 and 500_000 (underscores are optional readability aids)
+    (pl.col("resale_price") >= 300_000) & (pl.col("resale_price") <= ____)
 )
 print(f"Transactions S$300k–500k: {affordable.height:,}")
 
 # Filter by flat type
 # TODO: Filter hdb to rows where flat_type equals "4 ROOM"
-four_room = hdb.filter(pl.col("flat_type") == ____)  # Hint: "4 ROOM"
+four_room = hdb.filter(pl.col("flat_type") == ____)
 print(f"4-room flats: {four_room.height:,}")
 
 # Combine multiple conditions — Ang Mo Kio 4-room under S$500k
+# TODO: Combine three conditions with & — town, flat_type, and price <= 500k
 amk_4room_affordable = hdb.filter(
     (pl.col("town") == "ANG MO KIO")
     & (pl.col("flat_type") == "4 ROOM")
-    & (pl.col("resale_price") <= 500_000)
+    & (pl.col("resale_price") <= ____)
 )
 print(f"AMK 4-room under S$500k: {amk_4room_affordable.height:,}")
 
 # .is_in() filters for any of several values — cleaner than chaining ==
 central_towns = ["BISHAN", "TOA PAYOH", "QUEENSTOWN", "BUKIT MERAH"]
-# TODO: Filter hdb to rows where town is in the central_towns list
-central = hdb.filter(pl.col("town").is_in(____))  # Hint: central_towns
+# TODO: Use .is_in() to filter hdb rows where town is in central_towns
+central = hdb.filter(pl.col("town").is_in(____))
 print(f"Central towns transactions: {central.height:,}")
 
 
@@ -95,12 +94,12 @@ print(f"\nAfter select: {core_cols.columns}")
 
 # .rename() changes column names — useful when names are awkward or long
 # Pass a dict: {"old_name": "new_name"}
-# TODO: Rename "month" → "sale_month", "floor_area_sqm" → "area_sqm", "resale_price" → "price"
+# TODO: Rename "month" to "sale_month" in the rename dict
 renamed = core_cols.rename(
     {
-        ____: "sale_month",  # Hint: "month"
-        ____: "area_sqm",  # Hint: "floor_area_sqm"
-        ____: "price",  # Hint: "resale_price"
+        ____: "sale_month",
+        "floor_area_sqm": "area_sqm",
+        "resale_price": "price",
     }
 )
 print(f"After rename: {renamed.columns}")
@@ -117,20 +116,19 @@ print(renamed.head(3))
 
 hdb = hdb.with_columns(
     # Price per square metre — a normalised measure for fair comparison
-    # TODO: Divide resale_price by floor_area_sqm and name it "price_per_sqm"
-    (pl.col("resale_price") / pl.col(____)).alias(____)
-    # Hint: "floor_area_sqm", "price_per_sqm"
+    # TODO: Divide resale_price by floor_area_sqm, alias as "price_per_sqm"
+    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias(____)
 )
 
 # You can add multiple columns in one call — more efficient than chaining
 hdb = hdb.with_columns(
     # Parse the "month" string (e.g. "2023-01") into a proper date
     # str.to_date() converts text → date; "%Y-%m" is the format pattern
-    # TODO: Parse "month" column to date with format "%Y-%m", alias "transaction_date"
-    pl.col("month").str.to_date(____).alias(____),
-    # Hint: "%Y-%m", "transaction_date"
+    # TODO: Parse "month" with format "%Y-%m", alias as "transaction_date"
+    pl.col("month").str.to_date(____).alias("transaction_date"),
     # Extract the year as an integer for grouping later
-    pl.col("month").str.slice(0, 4).cast(pl.Int32).alias("year"),
+    # TODO: Slice the first 4 characters of "month" and cast to Int32, alias "year"
+    pl.col("month").str.slice(0, ____).cast(pl.Int32).alias("year"),
 )
 
 print(f"\n=== After adding derived columns ===")
@@ -148,10 +146,10 @@ print(hdb.select("month", "transaction_date", "year", "price_per_sqm").head(5))
 hdb = hdb.with_columns(
     pl.when(pl.col("resale_price") < 350_000)
     .then(pl.lit("budget"))
-    # TODO: Add a .when().then() for mid_range (price < 500_000)
-    .when(pl.col("resale_price") < ____)  # Hint: 500_000
-    .then(pl.lit(____))  # Hint: "mid_range"
-    .when(pl.col("resale_price") < 700_000)
+    .when(pl.col("resale_price") < 500_000)
+    .then(pl.lit("mid_range"))
+    # TODO: Add a .when().then() branch for "premium" (price < 700_000)
+    .when(pl.col("resale_price") < ____)
     .then(pl.lit("premium"))
     .otherwise(pl.lit("luxury"))
     .alias("price_tier")
@@ -184,11 +182,11 @@ print(tier_counts)
 recent_premium = (
     hdb
     # Step 1: Keep only recent years
-    # TODO: Filter to rows where year >= 2020
-    .filter(pl.col("year") >= ____)  # Hint: 2020
+    # TODO: Filter to rows where year is 2020 or later
+    .filter(pl.col("year") >= ____)
     # Step 2: Keep only premium and luxury flats
-    # TODO: Filter to rows where price_tier is in ["premium", "luxury"]
-    .filter(pl.col("price_tier").is_in(____))  # Hint: ["premium", "luxury"]
+    # TODO: Use is_in() to keep rows where price_tier is "premium" OR "luxury"
+    .filter(pl.col("price_tier").is_in(____))
     # Step 3: Keep only the columns we care about
     .select(
         "transaction_date",
@@ -199,8 +197,8 @@ recent_premium = (
         "resale_price",
     )
     # Step 4: Sort by price descending to see the most expensive first
-    # TODO: Sort by "resale_price" in descending order
-    .sort(____, descending=____)  # Hint: "resale_price", True
+    # TODO: Sort by "resale_price" with descending=True
+    .sort("resale_price", descending=____)
 )
 
 print(f"\n=== Recent Premium/Luxury Transactions (2020+) ===")

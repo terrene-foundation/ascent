@@ -51,15 +51,15 @@ def format_sgd(amount: float) -> str:
     # The : tells Python this is a type hint — it documents what type
     # the parameter should be, but Python does not enforce it at runtime.
     # -> str says this function returns a string.
-    # TODO: Return a formatted string like "S$485,000" using an f-string
-    return ____  # Hint: f"S${amount:,.0f}"
+    # TODO: Return an f-string like "S$485,000" — use {amount:,.0f} for formatting
+    return ____
 
 
 def price_range_label(price: float) -> str:
     """Classify a resale price into a human-readable tier."""
     # TODO: Return "Budget (<350k)" when price < 350_000
-    if price < ____:  # Hint: 350_000
-        return ____  # Hint: "Budget (<350k)"
+    if price < 350_000:
+        return ____
     elif price < 500_000:
         return "Mid-range (350k–500k)"
     elif price < 700_000:
@@ -74,9 +74,9 @@ def compute_iqr(series: pl.Series) -> float:
     IQR measures spread without being skewed by extreme outliers.
     A wide IQR means prices vary a lot within the district.
     """
-    # TODO: Compute q75 (0.75 quantile) and q25 (0.25 quantile) of series
-    q75 = series.quantile(____)  # Hint: 0.75
-    q25 = series.quantile(____)  # Hint: 0.25
+    # TODO: Compute q75 as the 0.75 quantile of series
+    q75 = series.quantile(____)
+    q25 = series.quantile(0.25)
     # quantile() can return None if the series is empty — guard for that
     if q75 is None or q25 is None:
         return 0.0
@@ -105,26 +105,27 @@ print(f"IQR of test prices: {format_sgd(compute_iqr(test_prices))}")
 # "For each [group], compute [statistics]."
 
 district_stats = (
-    # TODO: Group hdb by "town"
-    hdb.group_by(____).agg(  # Hint: "town"
+    # TODO: Group hdb by the "town" column
+    hdb.group_by(____)
+    .agg(
         # Count: how many transactions in each town?
         pl.len().alias("transaction_count"),
         # Price statistics
-        pl.col("resale_price").mean().alias("mean_price"),
+        # TODO: Compute mean of resale_price, alias as "mean_price"
+        pl.col("resale_price").____().alias("mean_price"),
         pl.col("resale_price").median().alias("median_price"),
         pl.col("resale_price").std().alias("std_price"),
         pl.col("resale_price").min().alias("min_price"),
         pl.col("resale_price").max().alias("max_price"),
-        # TODO: Compute 25th and 75th percentile of resale_price
-        pl.col("resale_price").quantile(____).alias("q25_price"),  # Hint: 0.25
-        pl.col("resale_price").quantile(____).alias("q75_price"),  # Hint: 0.75
+        pl.col("resale_price").quantile(0.25).alias("q25_price"),
+        # TODO: Compute the 75th percentile of resale_price, alias "q75_price"
+        pl.col("resale_price").quantile(____).alias("q75_price"),
         # Price per sqm — a normalised measure for comparing differently-sized flats
         pl.col("price_per_sqm").median().alias("median_price_sqm"),
         # Area statistics
         pl.col("floor_area_sqm").median().alias("median_area_sqm"),
     )
-    # TODO: Sort by median_price in descending order
-    .sort(____, descending=____)  # Hint: "median_price", True
+    .sort("median_price", descending=True)
 )
 
 print(f"\n=== District Statistics ===")
@@ -142,14 +143,15 @@ print(district_stats.head(5))
 district_stats = district_stats.with_columns(
     # IQR: spread of the middle 50% of prices
     # TODO: Compute iqr_price as q75_price minus q25_price
-    (pl.col("q75_price") - pl.col(____)).alias("iqr_price"),  # Hint: "q25_price"
+    (pl.col("q75_price") - pl.col(____)).alias("iqr_price"),
     # Coefficient of variation (CV): std / mean * 100
     # A higher CV means prices within the district are more spread out.
     # This is more informative than std alone because it's relative.
     (pl.col("std_price") / pl.col("mean_price") * 100).alias("cv_price_pct"),
     # Premium ratio: what fraction of the max price is the median?
     # Districts near 1.0 have mostly high-end transactions.
-    (pl.col("median_price") / pl.col("max_price")).alias("premium_ratio"),
+    # TODO: Premium ratio = median_price / max_price (alias "premium_ratio")
+    (pl.col("median_price") / pl.col(____)).alias("premium_ratio"),
 )
 
 print(f"\n=== District Stats with Derived Columns ===")
@@ -172,8 +174,8 @@ print(
 # unique (town, flat_type) combination.
 
 town_flat_stats = (
-    # TODO: Group by both "town" and "flat_type"
-    hdb.group_by(____, ____)  # Hint: "town", "flat_type"
+    # TODO: Group by BOTH "town" and "flat_type" (pass two column names)
+    hdb.group_by(____, ____)
     .agg(
         pl.len().alias("count"),
         pl.col("resale_price").median().alias("median_price"),
@@ -187,8 +189,9 @@ print(f"Groups: {town_flat_stats.height}")
 print(town_flat_stats.filter(pl.col("town") == "ANG MO KIO"))
 
 # Annual transaction volume by town — shows market activity over time
+# TODO: Group by both "year" and "town"
 annual_volume = (
-    hdb.group_by("year", "town")
+    hdb.group_by(____, ____)
     .agg(
         pl.len().alias("transactions"),
         pl.col("resale_price").median().alias("median_price"),
@@ -212,8 +215,8 @@ print(annual_volume.filter(pl.col("town") == "BISHAN"))
 def district_report_line(row: dict) -> str:
     """Format one district row as a human-readable report line."""
     town = row["town"]
-    # TODO: Use format_sgd() to format the median price
-    median = format_sgd(____)  # Hint: row["median_price"]
+    # TODO: Pass row["median_price"] to format_sgd() to get the formatted string
+    median = format_sgd(____)
     count = row["transaction_count"]
     cv = row["cv_price_pct"]
     sqm = format_sgd(row["median_price_sqm"])
@@ -230,8 +233,8 @@ print(
 print(f"  {'-' * 66}")
 
 top_15 = district_stats.head(15)
-# TODO: Iterate over top_15 rows using iter_rows(named=True)
-for row in top_15.iter_rows(named=____):  # Hint: True
+# TODO: Iterate over top_15 rows using .iter_rows(named=True)
+for row in top_15.iter_rows(named=____):
     # named=True means each row is a dict — use row["column_name"]
     print(district_report_line(row))
 
@@ -240,7 +243,8 @@ print(f"{'=' * 70}")
 # Summary statistics across all districts
 all_medians = district_stats["median_price"]
 print(f"\nCross-district summary:")
-print(f"  Most expensive district:   {format_sgd(all_medians.max())}")
+# TODO: Get the maximum value of the all_medians Series
+print(f"  Most expensive district:   {format_sgd(all_medians.____())}")
 print(f"  Least expensive district:  {format_sgd(all_medians.min())}")
 print(f"  Average district median:   {format_sgd(all_medians.mean())}")
 print(

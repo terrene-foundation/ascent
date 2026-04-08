@@ -41,8 +41,8 @@ print("=== HDB Resale Dataset ===")
 print(f"Shape: {hdb.shape}")
 
 # Initialise the visualiser — one instance, many chart types
-# TODO: Create a ModelVisualizer instance
-viz = ____  # Hint: ModelVisualizer()
+# TODO: Create a ModelVisualizer instance (no arguments required)
+viz = ____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -77,12 +77,13 @@ viz = ____  # Hint: ModelVisualizer()
 # - Are there multiple peaks? (different market segments)
 
 # feature_distribution() expects a list of values and a feature name
-prices = hdb["resale_price"].to_list()
+# TODO: Convert the "resale_price" column to a Python list with .to_list()
+prices = hdb["resale_price"].____()
 
-# TODO: Call viz.feature_distribution() with values=prices and a feature name
+# TODO: Pass the prices list as the values argument
 fig_hist = viz.feature_distribution(
-    values=____,  # Hint: prices
-    feature_name=____,  # Hint: "Resale Price (S$)"
+    values=____,
+    feature_name="Resale Price (S$)",
 )
 fig_hist.update_layout(
     title="HDB Resale Price Distribution",
@@ -112,17 +113,18 @@ print("Saved: ex6_price_per_sqm_histogram.html")
 # Outliers stand out as isolated points far from the main cluster.
 
 # Sample for plotting speed — a scatter of 500k points is unreadable
-hdb_sample = hdb.sample(n=min(5_000, hdb.height), seed=42)
+# TODO: Sample 5_000 rows for plotting (use seed=42 for reproducibility)
+hdb_sample = hdb.sample(n=min(5_000, hdb.height), seed=____)
 
 x_values = hdb_sample["floor_area_sqm"].to_list()
 y_values = hdb_sample["resale_price"].to_list()
 
-# TODO: Call viz.scatter_plot() with x_values, y_values, and axis labels
+# TODO: Pass y_values to the y_values parameter
 fig_scatter = viz.scatter_plot(
-    x_values=____,  # Hint: x_values
-    y_values=____,  # Hint: y_values
-    x_label=____,  # Hint: "Floor Area (sqm)"
-    y_label=____,  # Hint: "Resale Price (S$)"
+    x_values=x_values,
+    y_values=____,
+    x_label="Floor Area (sqm)",
+    y_label="Resale Price (S$)",
 )
 fig_scatter.update_layout(title="HDB Resale Price vs Floor Area")
 fig_scatter.write_html("ex6_price_vs_area_scatter.html")
@@ -138,14 +140,15 @@ print("Saved: ex6_price_vs_area_scatter.html")
 # it was designed for ML feature importance but works for any ranked comparison.
 
 # Aggregate: one row per district, sorted by median price
+# TODO: Group hdb by "town" so we get one row per district
 district_prices = (
-    hdb.group_by("town")
-    .agg(
+    hdb.group_by(____).agg(
         pl.col("resale_price").median().alias("median_price"),
         pl.col("price_per_sqm").median().alias("median_price_sqm"),
         pl.len().alias("transaction_count"),
     )
-    .sort("median_price", descending=True)
+    # TODO: Sort descending so the most expensive towns come first
+    .sort("median_price", descending=____)
 )
 
 # feature_importance() wants a dict: {label: value}
@@ -157,10 +160,10 @@ price_by_town = dict(
     )
 )
 
-# TODO: Call viz.feature_importance() with importance_dict and a title
+# TODO: Pass price_by_town as the importance_dict argument
 fig_bar = viz.feature_importance(
-    importance_dict=____,  # Hint: price_by_town
-    title=____,  # Hint: "Median HDB Resale Price by Town"
+    importance_dict=____,
+    title="Median HDB Resale Price by Town",
 )
 fig_bar.update_layout(
     xaxis_title="Median Resale Price (S$)",
@@ -202,21 +205,23 @@ print("Saved: ex6_volume_by_town.html")
 
 # Build the correlation matrix from numeric columns
 numeric_cols = ["resale_price", "floor_area_sqm", "price_per_sqm", "year"]
-hdb_numeric = hdb.select(numeric_cols).drop_nulls()
+# TODO: Drop rows with any null values from the numeric subset
+hdb_numeric = hdb.select(numeric_cols).____()
 
 # Compute Pearson correlations using Polars
 corr_data: list[list[float]] = []
 for col_a in numeric_cols:
     row = []
     for col_b in numeric_cols:
-        corr = hdb_numeric[col_a].pearson_corr(hdb_numeric[col_b])
+        # TODO: Compute pearson correlation between col_a and col_b
+        corr = hdb_numeric[col_a].pearson_corr(hdb_numeric[____])
         row.append(round(corr, 3))
     corr_data.append(row)
 
-# TODO: Call viz.confusion_matrix() with the correlation grid and column labels
+# TODO: Pass corr_data as the matrix argument
 fig_heatmap = viz.confusion_matrix(
-    matrix=____,  # Hint: corr_data
-    labels=____,  # Hint: numeric_cols
+    matrix=____,
+    labels=numeric_cols,
 )
 fig_heatmap.update_layout(
     title="Pearson Correlation Matrix — HDB Features",
@@ -243,12 +248,16 @@ for col_a, row in zip(numeric_cols, corr_data):
 # ML training curves but equally useful for any x→y trend.
 
 # Annual median price for the top 5 most-transacted towns
+# TODO: Take the top 5 towns by transaction_count
 top_5_towns = (
-    district_prices.sort("transaction_count", descending=True)["town"].head(5).to_list()
+    district_prices.sort("transaction_count", descending=True)["town"]
+    .head(____)
+    .to_list()
 )
 
 annual_prices = (
-    hdb.filter(pl.col("town").is_in(top_5_towns))
+    # TODO: Filter to rows where town is in top_5_towns
+    hdb.filter(pl.col("town").is_in(____))
     .group_by("year", "town")
     .agg(pl.col("resale_price").median().alias("median_price"))
     .sort("year")
@@ -267,11 +276,11 @@ for town in top_5_towns:
     )
     price_series[town] = [town_prices_by_year.get(y) for y in years]
 
-# TODO: Call viz.training_history() with the price series dict and axis labels
+# TODO: Pass price_series as the history argument
 fig_line = viz.training_history(
-    history=____,  # Hint: price_series
-    x_label=____,  # Hint: "Year"
-    y_label=____,  # Hint: "Median Resale Price (S$)"
+    history=____,
+    x_label="Year",
+    y_label="Median Resale Price (S$)",
 )
 fig_line.update_layout(title="Annual Median HDB Price — Top 5 Towns")
 fig_line.write_html("ex6_price_trends.html")
@@ -279,7 +288,8 @@ print("Saved: ex6_price_trends.html")
 
 # National trend (all towns)
 national_annual = (
-    hdb.group_by("year")
+    # TODO: Group hdb by "year" only
+    hdb.group_by(____)
     .agg(
         pl.col("resale_price").median().alias("median_price"),
         pl.col("price_per_sqm").median().alias("median_price_sqm"),

@@ -90,24 +90,25 @@ for col in numeric_cols:
 async def profile_raw_data():
     """Profile the raw taxi data and collect recommended cleaning actions."""
 
-    # TODO: create an AlertConfig with strict thresholds for raw data profiling
+    # TODO: Strict thresholds for raw data — set high_null_pct_threshold to 0.02
     alert_config = AlertConfig(
-        high_null_pct_threshold=____,  # Hint: 0.02 (even 2% missing is worth investigating)
-        skewness_threshold=____,  # Hint: 2.0 (flag heavy tails in fare/distance)
-        high_cardinality_ratio=____,  # Hint: 0.80
-        zero_pct_threshold=____,  # Hint: 0.10
-        high_correlation_threshold=____,  # Hint: 0.90
+        high_null_pct_threshold=____,
+        skewness_threshold=2.0,
+        high_cardinality_ratio=0.80,
+        zero_pct_threshold=0.10,
+        high_correlation_threshold=0.90,
     )
 
     explorer = DataExplorer(alert_config=alert_config)
 
     # Sample for profiling speed — full dataset may be millions of rows
     sample_size = min(200_000, taxi_raw.height)
-    taxi_sample = taxi_raw.sample(n=sample_size, seed=42)
+    # TODO: Pass sample_size as n and seed=42 for reproducibility
+    taxi_sample = taxi_raw.sample(n=____, seed=42)
 
     print(f"\n=== DataExplorer Profile (n={sample_size:,}) ===")
-    # TODO: profile the taxi sample
-    profile = await explorer.profile(____)  # Hint: pass taxi_sample
+    # TODO: Profile the taxi_sample dataframe
+    profile = await explorer.profile(____)
 
     print(f"Rows: {profile.n_rows}  Columns: {profile.n_columns}")
     print(f"Duplicates: {profile.duplicate_count} ({profile.duplicate_pct:.1%})")
@@ -154,7 +155,8 @@ profile_raw, cleaning_actions = asyncio.run(profile_raw_data())
 
 # Singapore's geographic bounding box — any coordinate outside this
 # is either a GPS error or a trip that didn't occur in Singapore
-SG_LAT_MIN, SG_LAT_MAX = 1.15, 1.47
+# TODO: Singapore's southernmost point is around latitude 1.15
+SG_LAT_MIN, SG_LAT_MAX = ____, 1.47
 SG_LNG_MIN, SG_LNG_MAX = 103.60, 104.05
 
 taxi_clean = taxi_raw.clone()
@@ -166,12 +168,10 @@ lng_cols = [c for c in taxi_clean.columns if "lng" in c.lower() or "lon" in c.lo
 
 for lat_col in lat_cols:
     before = taxi_clean.height
-    # TODO: filter to keep rows where lat_col is null OR within SG bounds
+    # TODO: Use SG_LAT_MAX as the upper bound for valid latitudes
     taxi_clean = taxi_clean.filter(
         pl.col(lat_col).is_null()
-        | (
-            (pl.col(lat_col) >= ____) & (pl.col(lat_col) <= ____)
-        )  # Hint: SG_LAT_MIN, SG_LAT_MAX
+        | ((pl.col(lat_col) >= SG_LAT_MIN) & (pl.col(lat_col) <= ____))
     )
     removed = before - taxi_clean.height
     if removed > 0:
@@ -190,12 +190,13 @@ for lng_col in lng_cols:
 # Step 3b: Remove fare outliers
 if "fare" in taxi_clean.columns:
     before = taxi_clean.height
-    # TODO: filter out non-positive fares
-    taxi_clean = taxi_clean.filter(pl.col("fare") > ____)  # Hint: 0
+    # TODO: Filter out non-positive fares (fare > 0)
+    taxi_clean = taxi_clean.filter(pl.col("fare") > ____)
     print(f"Negative fare filter: removed {before - taxi_clean.height:,} rows")
 
     # 99.9th percentile cap
-    fare_p999 = taxi_clean["fare"].quantile(0.999)
+    # TODO: Use the 0.999 quantile to find the cap value
+    fare_p999 = taxi_clean["fare"].quantile(____)
     before = taxi_clean.height
     taxi_clean = taxi_clean.filter(pl.col("fare") <= fare_p999)
     print(
@@ -205,19 +206,21 @@ if "fare" in taxi_clean.columns:
 # Step 3c: Remove duration anomalies
 if "trip_duration_sec" in taxi_clean.columns:
     before = taxi_clean.height
-    taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") > 60)
+    # TODO: Drop trips shorter than 60 seconds
+    taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") > ____)
     print(f"Short trip filter (<60 s): removed {before - taxi_clean.height:,} rows")
 
     before = taxi_clean.height
-    taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") <= 10_800)
+    # TODO: Drop trips longer than 10,800 seconds (3 hours)
+    taxi_clean = taxi_clean.filter(pl.col("trip_duration_sec") <= ____)
     print(f"Long trip filter (>3 h): removed {before - taxi_clean.height:,} rows")
 
 # Step 3d: Drop rows missing critical coordinates
 critical_cols = lat_cols + lng_cols
 if critical_cols:
     before = taxi_clean.height
-    # TODO: drop rows with nulls in critical coordinate columns
-    taxi_clean = taxi_clean.drop_nulls(subset=____)  # Hint: critical_cols
+    # TODO: Drop nulls in the critical_cols list (subset=critical_cols)
+    taxi_clean = taxi_clean.drop_nulls(subset=____)
     print(f"Null coordinate filter: removed {before - taxi_clean.height:,} rows")
 
 print(f"\n=== Cleaning Summary ===")
@@ -252,22 +255,23 @@ pickup_col = next(
 )
 
 if pickup_col:
-    # TODO: extract hour_of_day, day_of_week, month, is_weekend from pickup_col
     taxi_clean = taxi_clean.with_columns(
-        pl.col(pickup_col).dt.hour().alias("hour_of_day"),
-        pl.col(pickup_col).dt.weekday().alias(____),  # Hint: "day_of_week"
+        # TODO: Extract the hour from the pickup datetime (use .dt.hour())
+        pl.col(pickup_col).dt.____().alias("hour_of_day"),
+        pl.col(pickup_col).dt.weekday().alias("day_of_week"),
         pl.col(pickup_col).dt.month().alias("month"),
-        (pl.col(pickup_col).dt.weekday() >= ____).alias(
-            "is_weekend"
-        ),  # Hint: 5 (Saturday/Sunday)
+        # TODO: Saturday is weekday() == 5, Sunday is 6 — flag both as weekend
+        (pl.col(pickup_col).dt.weekday() >= ____).alias("is_weekend"),
     )
 
     # Peak-hour classification
     taxi_clean = taxi_clean.with_columns(
-        pl.when((pl.col("hour_of_day") >= 7) & (pl.col("hour_of_day") <= 9))
+        # TODO: Morning peak runs from 7am to 9am inclusive
+        pl.when((pl.col("hour_of_day") >= ____) & (pl.col("hour_of_day") <= 9))
         .then(pl.lit("morning_peak"))
         .when((pl.col("hour_of_day") >= 17) & (pl.col("hour_of_day") <= 20))
-        .then(pl.lit("evening_peak"))
+        # TODO: Label the evening peak window as "evening_peak"
+        .then(pl.lit(____))
         .when((pl.col("hour_of_day") >= 22) | (pl.col("hour_of_day") <= 5))
         .then(pl.lit("late_night"))
         .otherwise(pl.lit("off_peak"))
@@ -308,8 +312,9 @@ if lat_cols and lng_cols and len(lat_cols) >= 2 and len(lng_cols) >= 2:
         )
 
         before = taxi_clean.height
+        # TODO: Drop trips faster than 120 km/h (impossible in Singapore traffic)
         taxi_clean = taxi_clean.filter(
-            (pl.col("avg_speed_kmh") > 0) & (pl.col("avg_speed_kmh") <= 120)
+            (pl.col("avg_speed_kmh") > 0) & (pl.col("avg_speed_kmh") <= ____)
         )
         if before - taxi_clean.height > 0:
             print(
@@ -318,7 +323,8 @@ if lat_cols and lng_cols and len(lat_cols) >= 2 and len(lng_cols) >= 2:
 
 if "fare" in taxi_clean.columns and "haversine_km" in taxi_clean.columns:
     taxi_clean = taxi_clean.with_columns(
-        (pl.col("fare") / pl.col("haversine_km")).alias("fare_per_km")
+        # TODO: fare_per_km = fare / haversine_km
+        (pl.col("fare") / pl.col(____)).alias("fare_per_km")
     )
 
 new_cols = [c for c in taxi_clean.columns if c not in taxi_raw.columns]
@@ -350,7 +356,8 @@ feature_cols = [
 
 for col in feature_cols:
     if taxi_clean[col].dtype == pl.Utf8:
-        taxi_clean = taxi_clean.with_columns(pl.col(col).cast(pl.Categorical))
+        # TODO: Cast string columns to pl.Categorical for the preprocessing pipeline
+        taxi_clean = taxi_clean.with_columns(pl.col(col).cast(____))
 
 taxi_sample = taxi_clean.sample(n=min(50_000, taxi_clean.height), seed=42)
 
@@ -360,15 +367,18 @@ if "fare" in taxi_sample.columns:
     )
 
     pipeline = PreprocessingPipeline()
-    # TODO: configure the pipeline for fare prediction
     result = pipeline.setup(
         data=pipeline_df,
-        target=____,  # Hint: "fare"
-        train_size=____,  # Hint: 0.8
+        # TODO: Set "fare" as the target column for regression
+        target=____,
+        # TODO: Use 80% of data for training (0.8)
+        train_size=____,
         seed=42,
-        normalize=____,  # Hint: True (required for linear models)
-        categorical_encoding=____,  # Hint: "onehot"
-        imputation_strategy=____,  # Hint: "median"
+        normalize=True,
+        # TODO: Use "onehot" encoding for categorical columns
+        categorical_encoding=____,
+        # TODO: Impute missing numeric values with the column median
+        imputation_strategy=____,
     )
 
     print(f"\n=== PreprocessingPipeline Result ===")
@@ -397,10 +407,10 @@ clean_fares = (
 )
 
 if clean_fares:
-    # TODO: create a feature distribution chart for cleaned fares
+    # TODO: Pass clean_fares as the values argument
     fig_dist = viz.feature_distribution(
-        values=____,  # Hint: clean_fares
-        feature_name=____,  # Hint: "Fare (S$) — Cleaned"
+        values=____,
+        feature_name="Fare (S$) — Cleaned",
     )
     fig_dist.update_layout(title="Taxi Fare Distribution (After Cleaning)")
     fig_dist.write_html("ex8_fare_distribution.html")
@@ -430,8 +440,9 @@ if "time_period" in taxi_clean.columns and "fare" in taxi_clean.columns:
         print("Saved: ex8_time_period_metrics.html")
 
 if "hour_of_day" in taxi_clean.columns:
+    # TODO: Group by "hour_of_day" to get one row per hour
     hourly = (
-        taxi_clean.group_by("hour_of_day")
+        taxi_clean.group_by(____)
         .agg(
             pl.len().alias("trip_count"),
             (
@@ -475,14 +486,14 @@ async def profile_cleaned_data():
     # Stricter thresholds post-cleaning
     explorer = DataExplorer(
         alert_config=AlertConfig(
-            high_null_pct_threshold=____,  # Hint: 0.01
-            skewness_threshold=____,  # Hint: 2.0
+            high_null_pct_threshold=0.01,
+            skewness_threshold=2.0,
         )
     )
 
     sample = taxi_clean.sample(n=min(200_000, taxi_clean.height), seed=42)
-    # TODO: profile the cleaned sample
-    profile_clean = await explorer.profile(____)  # Hint: pass sample
+    # TODO: Profile the `sample` dataframe (await the coroutine)
+    profile_clean = await explorer.profile(____)
 
     print(f"\n=== Data Quality: Before vs After Cleaning ===")
     print(f"  Alerts before: {len(profile_raw.alerts)}")
@@ -498,10 +509,9 @@ async def profile_cleaned_data():
     else:
         print("  No remaining alerts — data quality confirmed clean.")
 
-    # TODO: generate an HTML report for the cleaned data
     report_html = await explorer.to_html(
-        ____,  # Hint: pass sample
-        title=____,  # Hint: "Singapore Taxi Trips — Cleaned Data Profile"
+        sample,
+        title="Singapore Taxi Trips — Cleaned Data Profile",
     )
     with open("ex8_taxi_profile_clean.html", "w") as f:
         f.write(report_html)

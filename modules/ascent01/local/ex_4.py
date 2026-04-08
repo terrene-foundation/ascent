@@ -60,7 +60,8 @@ print(schools.head(5))
 # Check join key overlap — how many HDB towns have MRT data?
 hdb_towns = set(hdb["town"].unique().to_list())
 mrt_towns = set(mrt_stations["town"].unique().to_list())
-matched = hdb_towns & mrt_towns
+# TODO: matched = set intersection (towns in BOTH sets) — use the & operator
+matched = ____
 unmatched = hdb_towns - mrt_towns
 
 print(f"\nJoin key check (town):")
@@ -86,33 +87,35 @@ if unmatched:
 # .select() on the right table prevents duplicate columns and limits
 # which columns are brought across.
 
-# TODO: Join hdb with mrt_stations (select "town", "nearest_mrt", "distance_to_mrt_km")
+# TODO: Complete the join — use on="town" and how="left"
 hdb_enriched = hdb.join(
-    mrt_stations.select(____),  # Hint: "town", "nearest_mrt", "distance_to_mrt_km"
-    on=____,  # Hint: "town"
-    how=____,  # Hint: "left"
+    mrt_stations.select("town", "nearest_mrt", "distance_to_mrt_km"),
+    on="town",
+    how=____,
 )
 
 # Aggregate school data to town level before joining
 # (schools table has one row per school; we want a count per town)
-# TODO: Count schools per town using group_by + agg
-school_counts = schools.group_by(____).agg(  # Hint: "town"
-    pl.col("school_name").count().alias(____)  # Hint: "school_count"
+# TODO: Group schools by "town" so we get one row per town
+school_counts = schools.group_by(____).agg(
+    pl.col("school_name").count().alias("school_count")
 )
 
-# TODO: Join hdb_enriched with school_counts on "town" (left join)
+# TODO: Join hdb_enriched with school_counts using a LEFT join on "town"
 hdb_enriched = hdb_enriched.join(
     school_counts,
-    on=____,  # Hint: "town"
-    how=____,  # Hint: "left"
+    on=____,
+    how="left",
 )
 
 # After a left join, unmatched rows have NULL school_count — fill with 0
-hdb_enriched = hdb_enriched.with_columns(pl.col("school_count").fill_null(0))
+# TODO: Replace null school_counts with 0 using fill_null()
+hdb_enriched = hdb_enriched.with_columns(pl.col("school_count").fill_null(____))
 
 # Add a price per sqm column — used in the district summary below
 hdb_enriched = hdb_enriched.with_columns(
-    (pl.col("resale_price") / pl.col("floor_area_sqm")).alias("price_per_sqm")
+    # TODO: Compute price_per_sqm = resale_price / floor_area_sqm
+    (pl.col("resale_price") / pl.col(____)).alias("price_per_sqm")
 )
 
 print(f"\n=== After Enrichment ===")
@@ -143,7 +146,8 @@ for col in ("nearest_mrt", "distance_to_mrt_km", "school_count"):
 # so .first() is the right aggregation — we just want one copy of the value.
 
 district_summary = (
-    hdb_enriched.group_by("town")
+    # TODO: Group hdb_enriched by "town"
+    hdb_enriched.group_by(____)
     .agg(
         # Volume
         pl.len().alias("total_transactions"),
@@ -152,24 +156,26 @@ district_summary = (
         pl.col("resale_price").median().alias("median_price"),
         pl.col("resale_price").mean().alias("mean_price"),
         pl.col("resale_price").std().alias("std_price"),
-        pl.col("resale_price").quantile(0.25).alias("q25_price"),
+        # TODO: Compute the 25th percentile of resale_price
+        pl.col("resale_price").quantile(____).alias("q25_price"),
         pl.col("resale_price").quantile(0.75).alias("q75_price"),
         # Price per sqm — normalised comparison across flat sizes
         pl.col("price_per_sqm").median().alias("median_price_sqm"),
         # Flat size
         pl.col("floor_area_sqm").median().alias("median_area_sqm"),
         # Spatial features — same value for every row in a town, so use .first()
-        # TODO: Aggregate nearest_mrt using .first() to get one value per town
-        pl.col("nearest_mrt").first().alias(____),  # Hint: "nearest_mrt"
-        pl.col("distance_to_mrt_km").first().alias(____),  # Hint: "distance_to_mrt_km"
-        pl.col("school_count").first().alias(____),  # Hint: "school_count"
+        pl.col("nearest_mrt").first().alias("nearest_mrt"),
+        # TODO: Aggregate distance_to_mrt_km with .first() (one value per town)
+        pl.col("distance_to_mrt_km").____().alias("distance_to_mrt_km"),
+        pl.col("school_count").first().alias("school_count"),
     )
     .sort("median_price", descending=True)
 )
 
 # Derived spread metrics
 district_summary = district_summary.with_columns(
-    (pl.col("q75_price") - pl.col("q25_price")).alias("iqr_price"),
+    # TODO: IQR = q75_price - q25_price (alias "iqr_price")
+    (pl.col("q75_price") - pl.col(____)).alias("iqr_price"),
     (pl.col("std_price") / pl.col("mean_price") * 100).alias("cv_price_pct"),
 )
 
@@ -194,9 +200,9 @@ print(
 )
 
 # Does MRT proximity correlate with price?
-# TODO: Compute Pearson correlation between distance_to_mrt_km and median_price
+# TODO: Compute Pearson correlation with the other series ("median_price")
 corr_mrt_price = district_summary["distance_to_mrt_km"].pearson_corr(
-    district_summary[____]  # Hint: "median_price"
+    district_summary[____]
 )
 corr_school_price = district_summary["school_count"].pearson_corr(
     district_summary["median_price"]
