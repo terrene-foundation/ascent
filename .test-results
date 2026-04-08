@@ -1,17 +1,29 @@
-# Test Results — Red Team Round 1
+# Test Results — Red Team Round 3 Final
 # Generated: 2026-04-08
-# Base commit: d2ee21b (uncommitted changes present)
+# Base commit: 0b3ece3
 
-## Static Tests (test_consistency + test_imports + test_datasets)
-- Result: 1121 passed in 5.10s
+## Combined Full Suite
+- Result: 1201 passed in 1311.99s (21:52)
 - Failures: 0
 - Errors: 0
 
-## Solution Tests (test_solutions -m "not slow")
-- Result: 69 passed (verified session 15)
-- Slow exercises skipped: 11 (6 original + 5 M10)
+## Breakdown
+- Static (consistency + imports + datasets): 1121 tests
+- Non-slow solutions: 73 tests (up from 69 — 4 M10 tests moved off slow list)
+- Slow solutions: 7 tests (down from 11 — M10 ex_2/4/6/7 now fast)
 
-## Slow Exercises (not run)
-- ascent03/ex_6, ascent04/ex_4, ascent04/ex_6, ascent04/ex_8
-- ascent05/ex_6, ascent05/ex_8
-- ascent10/ex_2, ascent10/ex_4, ascent10/ex_6, ascent10/ex_7, ascent10/ex_8
+## Slow Exercises (still slow, all passing)
+- ascent03/ex_7: HyperparameterSearch + TrainingPipeline
+- ascent03/ex_8: Production pipeline capstone (39s)
+- ascent04/ex_1: AutoML clustering
+- ascent04/ex_7: DL intro
+- ascent07/ex_8: DL capstone (1s work + shutdown)
+- ascent08/ex_7: NLP capstone (2s work + shutdown)
+- ascent10/ex_8: Regulated AI capstone (73s)
+
+## Key Fixes This Session
+- DriftMonitor API: 5 files (M10 ex_2/4/6/7/8)
+- Removed non-existent .initialize() calls (M3/ex_8)
+- Vectorized Python loops with numpy (M7/ex_8, M8/ex_7)
+- ConnectionManager try/finally cleanup (prevents subprocess hang)
+- M10 iteration count optimizations
