@@ -31,6 +31,9 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+
+# ── Data Loading ──────────────────────────────────────────────────────
+
 loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_parliament_speeches.parquet")
 
@@ -41,6 +44,7 @@ print(summary)
 
 
 def tokenize(text: str) -> list[str]:
+    """Lowercase, strip non-alphanumeric, split on whitespace."""
     import re
 
     return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
@@ -61,7 +65,8 @@ def build_vocabulary(
     tokenized_docs: list[list[str]], max_vocab: int = 2000
 ) -> list[str]:
     """Build vocabulary from most common tokens across corpus."""
-    # TODO: Count tokens across all docs; return top max_vocab words
+    # TODO: count tokens across all docs with Counter, then return top max_vocab words
+    #       Hint: use Counter.update(doc) per document, then .most_common(max_vocab)
     ____
     ____
     return ____
@@ -69,11 +74,10 @@ def build_vocabulary(
 
 def bow_vectorize(tokens: list[str], vocab: list[str]) -> list[int]:
     """Convert token list to BoW vector using vocabulary."""
-    # TODO: build word_to_idx; zero vector; count each in-vocab token
+    # TODO: build word_to_idx, zero vector, then increment vector[idx] per in-vocab token
+    word_to_idx = ____
+    vector = ____
     ____
-    ____
-    for token in tokens:
-        ____
     return vector
 
 
@@ -81,8 +85,9 @@ vocab = build_vocabulary(tokenized_corpus, max_vocab=2000)
 print(f"\nVocabulary: {len(vocab)}, top 10: {vocab[:10]}")
 bow_vectors = [bow_vectorize(doc, vocab) for doc in tokenized_corpus]
 print(f"BoW shape: ({len(bow_vectors)}, {len(bow_vectors[0])})")
-nonzero = sum(1 for row in bow_vectors for v in row if v > 0)
-____  # TODO: print sparsity: 1 - nonzero/(rows*cols) as percentage
+# TODO: compute and print sparsity: 1 - nonzero/(rows*cols)
+nonzero = ____
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -92,21 +97,22 @@ ____  # TODO: print sparsity: 1 - nonzero/(rows*cols) as percentage
 
 def compute_tf(tokens: list[str], vocab: list[str]) -> list[float]:
     """Term frequency: count(t, d) / len(d)."""
-    # TODO: word_to_idx; tf list of floats; add 1/doc_len per in-vocab token
+    # TODO: build word_to_idx, allocate tf list of zeros, accumulate 1/doc_len per in-vocab token
     ____
     ____
-    for token in tokens:
-        ____
+    doc_len = len(tokens) if tokens else 1
+    ____
     return tf
 
 
 def compute_idf(tokenized_docs: list[list[str]], vocab: list[str]) -> list[float]:
-    """Inverse document frequency: smoothed log((N+1)/(df+1))+1."""
-    # TODO: count doc_freq per vocab token; build idf list with smoothed formula
+    """Smoothed IDF: log((N+1)/(df+1)) + 1."""
+    n_docs = len(tokenized_docs)
+    # TODO: count doc_freq[token] = number of docs containing token (use set(doc))
+    doc_freq = ____
     ____
-    ____
-    ____
-    ____
+    # TODO: idf[w] = log((n_docs+1)/(doc_freq[w]+1)) + 1 for each w in vocab
+    idf = ____
     return idf
 
 
@@ -115,7 +121,8 @@ def tfidf_vectorize(
 ) -> list[float]:
     """TF-IDF = TF * IDF element-wise."""
     tf = compute_tf(tokens, vocab)
-    return ____  # Hint: [t*i for t,i in zip(tf, idf)]
+    # TODO: element-wise multiply tf and idf
+    return ____
 
 
 idf_values = compute_idf(tokenized_corpus, vocab)
@@ -144,20 +151,26 @@ def bm25_score(
     k1: float = 1.5,
     b: float = 0.75,
 ) -> float:
-    """BM25: idf=(log((N-df+0.5)/(df+0.5)+1)), tf_norm=(tf*(k1+1))/(tf+k1*(1-b+b*dl/avg_dl))."""
-    # TODO: compute n_docs, avg_dl, dl, doc_freq; loop query tokens; sum idf*tf_norm
+    """BM25: sum of idf * ((tf*(k1+1)) / (tf + k1*(1-b+b*dl/avg_dl))) per query term."""
+    n_docs = len(tokenized_docs)
+    # TODO: avg_dl = average tokens per doc; dl = current doc length
+    avg_dl = ____
+    dl = ____
+    # TODO: doc_freq[token] = count of docs containing token (Counter over set(doc))
+    doc_freq = ____
+    ____
+
+    score = 0.0
+    doc_counts = Counter(doc_tokens)
+    # TODO: loop query tokens; for in-vocab tokens compute idf and tf_norm; accumulate score
+    #       idf = log((n_docs - df + 0.5)/(df + 0.5) + 1)
+    #       tf_norm = (tf*(k1+1)) / (tf + k1*(1 - b + b*dl/avg_dl))
     ____
     ____
     ____
     ____
-    for qt in query_tokens:
-        if qt not in set(vocab):
-            continue
-        df = doc_freq.get(qt, 0)
-        idf = ____  # Hint: math.log((n_docs-df+0.5)/(df+0.5)+1)
-        tf = doc_counts.get(qt, 0)
-        tf_norm = ____  # Hint: (tf*(k1+1))/(tf+k1*(1-b+b*dl/avg_dl))
-        score += idf * tf_norm
+    ____
+    ____
     return score
 
 
@@ -182,10 +195,10 @@ for rank, (idx, score) in enumerate(bm25_scores[:5]):
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
     """Cosine similarity: dot(a,b) / (||a|| * ||b||)."""
-    # TODO: dot product, norms, return dot/(na*nb); guard zero norms
-    dot = ____  # Hint: sum(x*y for x,y in zip(a,b))
-    na = ____  # Hint: math.sqrt(sum(x*x for x in a))
-    nb = ____  # Hint: math.sqrt(sum(y*y for y in b))
+    # TODO: compute dot product and both norms; guard against zero norms
+    dot = ____
+    na = ____
+    nb = ____
     if na == 0 or nb == 0:
         return 0.0
     return dot / (na * nb)
@@ -194,7 +207,8 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 query_bow = bow_vectorize(query, vocab)
 query_tfidf = tfidf_vectorize(query, vocab, idf_values)
 
-# TODO: rank corpus by cosine_similarity for both BoW and TF-IDF queries
+# TODO: rank corpus by cosine_similarity for BoW and TF-IDF queries respectively
+#       (list of (doc_idx, score) sorted descending)
 bow_ranked = ____
 tfidf_ranked = ____
 

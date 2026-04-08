@@ -31,6 +31,9 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+
+# ── Data Loading ──────────────────────────────────────────────────────
+
 loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_news_articles.parquet")
 
@@ -47,10 +50,12 @@ print(summary)
 
 def normalize_text(text: str) -> str:
     """Lowercase, strip punctuation, collapse whitespace."""
-    # TODO: three steps — lowercase, strip non-alphanum chars, collapse whitespace
-    ____
-    ____
-    ____
+    # TODO: Lowercase the text
+    text = ____
+    # TODO: Replace non-alphanumeric characters with spaces (regex r"[^a-z0-9\s]")
+    text = ____
+    # TODO: Collapse whitespace runs to single space and strip
+    text = ____
     return text
 
 
@@ -75,36 +80,45 @@ print("\n--- Word tokenization complete ---")
 
 def get_pair_freqs(vocab: dict[str, int]) -> Counter:
     """Count adjacent symbol pairs across the vocabulary."""
-    # TODO: for each word split into symbols; accumulate (sym[j], sym[j+1]) counts * freq
+    # TODO: iterate (word, freq); split word into symbols;
+    #       accumulate pairs[(sym[j], sym[j+1])] += freq
+    pairs = Counter()
     ____
     ____
     ____
-    ____
+    return pairs
 
 
 def merge_pair(pair: tuple[str, str], vocab: dict[str, int]) -> dict[str, int]:
     """Merge the most frequent pair everywhere in the vocabulary."""
-    # TODO: bigram=" ".join(pair); replacement="".join(pair); return rebuilt vocab
+    # TODO: bigram=" ".join(pair); replacement="".join(pair);
+    #       build new_vocab replacing bigram→replacement in every word
     ____
+    ____
+    ____
+    return new_vocab
 
 
 corpus_words: Counter = Counter()
-# TODO: populate corpus_words: for each word in sample_texts, add " ".join(list(w)) + " </w>"
+# TODO: populate corpus_words: for each word in sample_texts, add
+#       " ".join(list(w)) + " </w>"  (character-split with end-of-word marker)
 ____
 ____
 
 print(f"\nInitial BPE vocab: {len(corpus_words)} word forms")
 
 num_merges, merges_log, bpe_vocab = 10, [], dict(corpus_words)
-# TODO: loop num_merges steps: get best pair, merge vocab, log, print
 for step in range(num_merges):
     pairs = get_pair_freqs(bpe_vocab)
     if not pairs:
         break
-    best_pair = ____  # Hint: pairs.most_common(1)[0]
-    bpe_vocab = ____  # Hint: merge_pair(best_pair[0], bpe_vocab)
-    ____  # Hint: merges_log.append((best_pair[0], best_pair[1]))
-    ____  # Hint: print(f"  Merge {step+1}: {best_pair[0]} (freq={best_pair[1]})")
+    # TODO: best_pair = most common pair
+    best_pair = ____
+    # TODO: merge it into bpe_vocab
+    bpe_vocab = ____
+    # TODO: log the merge
+    ____
+    print(f"  Merge {step+1}: {best_pair[0]} (freq={best_pair[1]})")
 
 print(f"\nAfter {len(merges_log)} merges: {len(bpe_vocab)} word forms")
 
@@ -116,8 +130,10 @@ print(f"\nAfter {len(merges_log)} merges: {len(bpe_vocab)} word forms")
 
 def simple_stem(word: str) -> str:
     """Porter-like suffix stripping (simplified)."""
-    # TODO: define suffixes list (ing, tion, ment, ness, able, ible, ed, ly, er, es, s)
-    # TODO: for each suffix: if word.endswith(suffix) and len(word)-len(suffix) >= 3, strip it
+    # TODO: define suffixes list — ing, tion, ment, ness, able, ible, ed, ly, er, es, s
+    suffixes = ____
+    # TODO: for each suffix, if word.endswith(suffix) and len(word)-len(suffix) >= 3,
+    #       return word with suffix stripped
     ____
     ____
     ____
@@ -145,7 +161,7 @@ print("\nStemming: fast, rule-based | Lemmatization: dictionary-based, valid wor
 
 def extract_ngrams(tokens: list[str], n: int) -> list[tuple[str, ...]]:
     """Extract n-grams from a list of tokens."""
-    # TODO: sliding window of size n over tokens list
+    # TODO: sliding window of size n: tuple(tokens[i:i+n]) for i in range(len-n+1)
     return ____
 
 
@@ -154,9 +170,12 @@ all_tokens: list[str] = []
 ____
 
 for n in [1, 2, 3]:
-    # TODO: extract n-grams, get top 10, print label and counts
-    ____
-    ____
+    # TODO: extract n-grams, get top 10 via Counter.most_common
+    ngrams = ____
+    freq = ____
+    label = {1: "Unigrams", 2: "Bigrams", 3: "Trigrams"}[n]
+    print(f"\n--- Top 10 {label} ---")
+    # TODO: print each gram joined by space and its count
     ____
 
 
@@ -171,13 +190,17 @@ def preprocess_corpus(
     max_vocab: int = 5000,
 ) -> pl.DataFrame:
     """End-to-end: normalize → tokenize → token_count → vocabulary."""
-    # TODO: build normalized, tokenized, result DataFrames; build vocab Counter
+    # TODO: Step 1 — add "normalized" column via normalize_text
+    # TODO: Step 2 — add "tokens_str" column = " ".join(word_tokenize(t))
+    # TODO: Step 3 — add "token_count" via split() + list.len()
+    # TODO: Step 4 — build vocab Counter.most_common(max_vocab) from all tokens
     ____
     ____
-    ____
+    result = ____
     all_words: list[str] = []
     ____
     vocab = ____
+
     print(
         f"\nPipeline: {result.height} docs, avg {result['token_count'].mean():.1f} tokens, vocab={len(vocab)}"
     )

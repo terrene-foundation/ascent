@@ -37,6 +37,7 @@ print(f"Shape: {econ.shape}")
 print(f"Columns: {econ.columns}")
 print(econ.head(8))
 
+# Extract GDP growth as our primary variable of interest
 gdp_growth = econ["gdp_growth_pct"].drop_nulls().to_numpy().astype(np.float64)
 inflation = econ["inflation_cpi_pct"].drop_nulls().to_numpy().astype(np.float64)
 unemployment = econ["unemployment_rate_pct"].drop_nulls().to_numpy().astype(np.float64)
@@ -48,11 +49,15 @@ print(f"Sample mean: {gdp_growth.mean():.3f}%")
 print(f"Sample std:  {gdp_growth.std():.3f}%")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 1: Understanding the data — model selection
-# ════════════════════════════════════════════════════════════════════════
-# Normality test (Shapiro-Wilk)
-shapiro_stat, shapiro_p = stats.shapiro(gdp_growth)
+# ══════════════════════════════════════════════════════════════════════
+# Before fitting, we must choose a likelihood model.
+# Normal distribution is the natural choice for GDP growth (symmetric,
+# unbounded), but we should verify this assumption.
+
+# TODO: Run a Shapiro-Wilk normality test on gdp_growth
+shapiro_stat, shapiro_p = ____  # Hint: stats.shapiro(gdp_growth)
 print(f"\n=== Normality Check (Shapiro-Wilk) ===")
 print(f"Test statistic: {shapiro_stat:.4f}")
 print(f"p-value: {shapiro_p:.4f}")
@@ -61,18 +66,18 @@ if shapiro_p > 0.05:
 else:
     print("Normality rejected — consider heavier-tailed distributions (t, skew-Normal)")
 
+# Skewness and kurtosis
 skew = stats.skew(gdp_growth)
 kurt = stats.kurtosis(gdp_growth)
 print(f"Skewness: {skew:.3f} (|skew|>1 suggests non-Normal)")
 print(f"Excess kurtosis: {kurt:.3f} (>0 → heavier tails than Normal)")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 2: MLE via log-likelihood optimization
-# ════════════════════════════════════════════════════════════════════════
-# For X ~ N(μ, σ²):
+# ══════════════════════════════════════════════════════════════════════
+# For X ~ N(μ, σ²), the log-likelihood is:
 #   ℓ(μ, σ | x) = -n/2 * log(2π) - n * log(σ) - Σ(xᵢ - μ)² / (2σ²)
-# Reparameterise: use log_sigma to enforce sigma > 0.
 
 
 def neg_log_likelihood_normal(params: np.ndarray, x: np.ndarray) -> float:
@@ -81,25 +86,18 @@ def neg_log_likelihood_normal(params: np.ndarray, x: np.ndarray) -> float:
     sigma = np.exp(log_sigma)  # Reparameterize to enforce sigma > 0
     if sigma <= 0:
         return np.inf
-    # TODO: Return the negative sum of log-pdf values
+    # TODO: Return the negative sum of the log-density under N(mu, sigma)
     return ____  # Hint: -np.sum(stats.norm.logpdf(x, loc=mu, scale=sigma))
 
 
 # Analytical MLE (reference)
 mle_mu_analytic = gdp_growth.mean()
-mle_sigma_analytic = gdp_growth.std(ddof=0)
+mle_sigma_analytic = gdp_growth.std(ddof=0)  # MLE uses biased estimator
 
-# TODO: Set initial parameter guess [mean, log(std)]
-x0 = ____  # Hint: np.array([gdp_growth.mean(), np.log(gdp_growth.std())])
-
-# TODO: Call scipy minimize with L-BFGS-B on neg_log_likelihood_normal
-result_mle = minimize(
-    ____,  # Hint: neg_log_likelihood_normal
-    x0,
-    args=(gdp_growth,),
-    method="L-BFGS-B",
-    options={"maxiter": 1000, "ftol": 1e-12},
-)
+# Numerical MLE via L-BFGS-B
+x0 = np.array([gdp_growth.mean(), np.log(gdp_growth.std())])
+# TODO: Minimize the negative log-likelihood using L-BFGS-B
+result_mle = ____  # Hint: minimize(neg_log_likelihood_normal, x0, args=(gdp_growth,), method="L-BFGS-B", options={"maxiter": 1000, "ftol": 1e-12})
 
 mle_mu_numeric = result_mle.x[0]
 mle_sigma_numeric = np.exp(result_mle.x[1])
@@ -110,6 +108,8 @@ print(f"Numerical MLE:   μ = {mle_mu_numeric:.4f}%, σ = {mle_sigma_numeric:.4f
 print(f"Optimizer converged: {result_mle.success} (message: {result_mle.message})")
 print(f"Log-likelihood at MLE: {-result_mle.fun:.4f}")
 
+# Standard errors via observed Fisher information
+# For Normal: Var(μ̂) = σ²/n, Var(σ̂²) = 2σ⁴/n
 mle_mu_se = mle_sigma_numeric / np.sqrt(n_gdp)
 mle_sigma_se = mle_sigma_numeric / np.sqrt(2 * n_gdp)
 
@@ -117,10 +117,11 @@ print(f"\nStandard errors (asymptotic):")
 print(f"  SE(μ̂) = {mle_mu_se:.4f}%")
 print(f"  SE(σ̂) = {mle_sigma_se:.4f}%")
 
+# 95% Wald confidence intervals
 mle_mu_ci = (mle_mu_numeric - 1.96 * mle_mu_se, mle_mu_numeric + 1.96 * mle_mu_se)
 print(f"\n95% CI for μ: [{mle_mu_ci[0]:.3f}%, {mle_mu_ci[1]:.3f}%]")
 
-# Profile likelihood interval
+# Likelihood ratio interval (profile likelihood — more accurate for small n)
 lr_threshold = stats.chi2.ppf(0.95, df=1) / 2
 profile_loglik = lambda mu: -neg_log_likelihood_normal(
     [mu, np.log(mle_sigma_numeric)], gdp_growth
@@ -136,14 +137,16 @@ lr_ci = (mu_grid[lr_ci_mask][0], mu_grid[lr_ci_mask][-1])
 print(f"Profile LR 95% CI for μ: [{lr_ci[0]:.3f}%, {lr_ci[1]:.3f}%]")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 3: MAP estimation — MLE with a prior
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # MAP = argmax p(θ | x) = argmax [ℓ(θ | x) + log p(θ)]
-# Prior: μ ~ N(μ₀=3.5%, σ₀=1.5%)
+#
+# Prior belief: Singapore GDP growth is positive but moderate.
 
-mu_prior_mean = 3.5  # % — prior belief on Singapore growth
-mu_prior_std = 1.5  # % — prior uncertainty
+# TODO: Set the prior hyperparameters for Singapore GDP growth
+mu_prior_mean = ____  # Hint: 3.5 (typical growth %)
+mu_prior_std = ____  # Hint: 1.5 (moderate prior uncertainty)
 
 
 def neg_map_objective(params: np.ndarray, x: np.ndarray) -> float:
@@ -154,21 +157,15 @@ def neg_map_objective(params: np.ndarray, x: np.ndarray) -> float:
         return np.inf
     # Negative log-likelihood
     nll = -np.sum(stats.norm.logpdf(x, loc=mu, scale=sigma))
-    # TODO: Compute the negative log-prior for mu (Normal prior)
+    # TODO: Compute the negative log-prior for mu under N(mu_prior_mean, mu_prior_std)
     neg_log_prior = (
         ____  # Hint: -stats.norm.logpdf(mu, loc=mu_prior_mean, scale=mu_prior_std)
     )
     return nll + neg_log_prior
 
 
-# TODO: Run scipy minimize with neg_map_objective
-result_map = minimize(
-    ____,  # Hint: neg_map_objective
-    x0,
-    args=(gdp_growth,),
-    method="L-BFGS-B",
-    options={"maxiter": 1000, "ftol": 1e-12},
-)
+# TODO: Minimize the MAP objective with L-BFGS-B
+result_map = ____  # Hint: minimize(neg_map_objective, x0, args=(gdp_growth,), method="L-BFGS-B", options={"maxiter": 1000, "ftol": 1e-12})
 
 map_mu = result_map.x[0]
 map_sigma = np.exp(result_map.x[1])
@@ -188,7 +185,7 @@ print(
     f"  → With n={n_gdp}, data {'dominates' if n_gdp > 20 else 'is balanced with'} the prior"
 )
 
-# Small-n effect demonstration
+# Demonstrate stronger effect with small n
 rng = np.random.default_rng(seed=42)
 for n_small in [5, 10, 20]:
     small_sample = rng.choice(gdp_growth, size=n_small, replace=False)
@@ -212,16 +209,17 @@ for n_small in [5, 10, 20]:
     )
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 4: MLE failure cases — diagnostics and remedies
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 print(f"\n=== MLE Failure Case 1: Small n ===")
 small_n = 3
 samples_3 = gdp_growth[:small_n]
 mle_mu_3 = samples_3.mean()
-mle_sigma_3 = samples_3.std(ddof=0)
-unbiased_sigma_3 = samples_3.std(ddof=1)
+# TODO: Compute MLE sigma (biased, ddof=0) and unbiased sigma (ddof=1)
+mle_sigma_3 = ____  # Hint: samples_3.std(ddof=0)
+unbiased_sigma_3 = ____  # Hint: samples_3.std(ddof=1)
 print(f"n=3 sample: {samples_3}")
 print(f"MLE σ (ddof=0): {mle_sigma_3:.4f}% (biased)")
 print(f"Unbiased σ (ddof=1): {unbiased_sigma_3:.4f}%")
@@ -229,14 +227,17 @@ print(f"Bias = {mle_sigma_3 - gdp_growth.std():.4f}%")
 print(f"Remedy: Use MAP (Bayesian shrinkage) or unbiased estimator for small n")
 
 print(f"\n=== MLE Failure Case 2: Multimodal Data ===")
+# Create a synthetic bimodal dataset (pre/post-COVID economic regimes)
 rng = np.random.default_rng(seed=99)
 pre_covid = rng.normal(loc=4.0, scale=1.2, size=30)
 covid_shock = rng.normal(loc=-5.0, scale=3.0, size=10)
 bimodal_data = np.concatenate([pre_covid, covid_shock])
 
+# MLE of a single Normal to bimodal data
 bimodal_mle_mu = bimodal_data.mean()
 bimodal_mle_sigma = bimodal_data.std(ddof=0)
 
+# Bimodality coefficient (>0.555 suggests bimodality)
 bimodality_coeff = (stats.skew(bimodal_data) ** 2 + 1) / (
     stats.kurtosis(bimodal_data, fisher=True)
     + 3
@@ -256,15 +257,18 @@ print(f"\n=== MLE Failure Case 3: Misspecified likelihood ===")
 rng_t = np.random.default_rng(seed=77)
 shock_data = rng_t.standard_t(df=3, size=100) * 2.0 + 2.5
 
+# Fit Normal MLE
 normal_mle_mu = shock_data.mean()
 normal_mle_sigma = shock_data.std(ddof=0)
 
 
+# Fit t-distribution MLE
 def neg_ll_t(params: np.ndarray, x: np.ndarray) -> float:
     df, mu, scale = params
     if df <= 0 or scale <= 0:
         return np.inf
-    return -np.sum(stats.t.logpdf(x, df=df, loc=mu, scale=scale))
+    # TODO: Return negative sum of log-pdf under Student-t
+    return ____  # Hint: -np.sum(stats.t.logpdf(x, df=df, loc=mu, scale=scale))
 
 
 result_t = minimize(
@@ -275,6 +279,7 @@ result_t = minimize(
 )
 t_df, t_mu, t_scale = result_t.x
 
+# Compare 99th percentile (tail risk)
 normal_99 = stats.norm.ppf(0.99, loc=normal_mle_mu, scale=normal_mle_sigma)
 t_99 = stats.t.ppf(0.99, df=t_df, loc=t_mu, scale=t_scale)
 actual_99 = np.percentile(shock_data, 99)
@@ -288,10 +293,12 @@ print(f"Empirical 99th pct:  {actual_99:.2f}%")
 print(f"t-distribution df = {t_df:.1f} (lower → heavier tails)")
 print(f"Remedy: Likelihood ratio test to select between Normal and t")
 
+# AIC comparison: Normal vs t (t has one extra parameter)
 ll_normal = np.sum(stats.norm.logpdf(shock_data, normal_mle_mu, normal_mle_sigma))
 ll_t = -result_t.fun
-aic_normal = 2 * 2 - 2 * ll_normal
-aic_t = 2 * 3 - 2 * ll_t
+# TODO: Compute AIC = 2k - 2*ll for Normal (k=2) and t-dist (k=3)
+aic_normal = ____  # Hint: 2 * 2 - 2 * ll_normal
+aic_t = ____  # Hint: 2 * 3 - 2 * ll_t
 print(f"AIC (Normal): {aic_normal:.2f}")
 print(f"AIC (t-dist): {aic_t:.2f}")
 print(
@@ -299,28 +306,30 @@ print(
 )
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 5: Visualise with ModelVisualizer
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
 
-# Profile log-likelihood plot
+# -- Plot 1: Profile log-likelihood for GDP growth mean --
 ll_values = np.array(
     [
         -neg_log_likelihood_normal([mu, np.log(mle_sigma_numeric)], gdp_growth)
         for mu in mu_grid
     ]
 )
+map_ll_values = np.array(
+    [-neg_map_objective([mu, np.log(map_sigma)], gdp_growth) for mu in mu_grid]
+)
 
 ll_profile = {"Profile log-likelihood": ll_values.tolist()}
-# TODO: Call viz.training_history to plot the profile log-likelihood
-fig_ll = ____  # Hint: viz.training_history(ll_profile, x_label="mu (GDP growth %)")
+fig_ll = viz.training_history(ll_profile, x_label="mu (GDP growth %)")
 fig_ll.update_layout(title="Profile Log-Likelihood: GDP Growth Rate")
 fig_ll.write_html("ex2_profile_loglikelihood.html")
 print("\nSaved: ex2_profile_loglikelihood.html")
 
-# MLE vs MAP comparison plot
+# -- Plot 2: MLE vs MAP — effect of sample size --
 sample_sizes = [3, 5, 10, 15, 20, 30, 50, n_gdp]
 mle_estimates = []
 map_estimates = []
@@ -358,13 +367,14 @@ comparison_metrics = {
     "MAP": {"mu_estimate": map_estimates[-1], "converges_to_truth": map_mu},
     "Prior": {"mu_estimate": mu_prior_mean, "converges_to_truth": mu_prior_mean},
 }
-# TODO: Call viz.metric_comparison with comparison_metrics
-fig_compare = ____  # Hint: viz.metric_comparison(comparison_metrics)
+fig_compare = viz.metric_comparison(comparison_metrics)
 fig_compare.update_layout(title="MLE vs MAP Estimation: GDP Growth Rate")
 fig_compare.write_html("ex2_mle_vs_map.html")
 print("Saved: ex2_mle_vs_map.html")
 
-# AIC comparison
+# -- Plot 3: AIC comparison across distribution families --
+distribution_fits = {}
+# Student-t on full GDP data
 r_t_full = minimize(
     neg_ll_t,
     [5.0, gdp_growth.mean(), gdp_growth.std()],
@@ -375,7 +385,6 @@ t_df_full, t_mu_full, t_scale_full = r_t_full.x
 ll_t_full = -r_t_full.fun
 ll_norm_full = -result_mle.fun
 
-distribution_fits = {}
 distribution_fits["Normal"] = {
     "AIC": 2 * 2 - 2 * ll_norm_full,
     "log_likelihood": ll_norm_full,

@@ -43,6 +43,7 @@ print(f"Shape: {ab_data.shape}")
 print(f"Columns: {ab_data.columns}")
 print(ab_data.head(5))
 
+# Separate groups
 control = ab_data.filter(pl.col("group") == "control")
 treatment = ab_data.filter(pl.col("group") == "treatment")
 
@@ -55,9 +56,9 @@ print(f"Treatment: n = {n_treatment:,}")
 print(f"Total:     n = {n_total:,}")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 1: Sanity checks — Sample Ratio Mismatch (SRM)
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # SRM test: if the experiment was 50/50, do observed counts match?
 # Uses χ² goodness-of-fit test.
 
@@ -68,7 +69,7 @@ expected_treatment = n_total * (1 - expected_ratio)
 observed = np.array([n_control, n_treatment])
 expected = np.array([expected_control, expected_treatment])
 
-# TODO: Run the chi-square goodness-of-fit test for SRM
+# TODO: Run a chi-square goodness-of-fit test on observed vs expected counts
 chi2_stat, srm_p_value = ____  # Hint: stats.chisquare(observed, f_exp=expected)
 
 print(f"\n=== Sample Ratio Mismatch Check ===")
@@ -83,25 +84,25 @@ else:
     print("✓ No SRM detected — sample split is consistent with 50/50")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 2: Power analysis — minimum detectable effect (MDE)
-# ════════════════════════════════════════════════════════════════════════
-# MDE ≈ (z_{α/2} + z_β) * √(p(1-p)(1/n₁ + 1/n₂))
+# ══════════════════════════════════════════════════════════════════════
+# For proportions: MDE ≈ (z_{α/2} + z_β) * √(p(1-p)(1/n₁ + 1/n₂))
 
+# Baseline conversion rate (control group)
 p_control = control["converted"].mean()
 print(f"\n=== Power Analysis ===")
 print(f"Baseline conversion rate: {p_control:.4f} ({p_control:.2%})")
 
 alpha = 0.05
 power_target = 0.80
-# TODO: Compute the z-score at alpha/2 (two-tailed critical value)
+# TODO: Compute critical z-values for two-tailed alpha and for the power target
 z_alpha_half = ____  # Hint: stats.norm.ppf(1 - alpha / 2)
-# TODO: Compute the z-score at the target power level
 z_beta = ____  # Hint: stats.norm.ppf(power_target)
 
 # MDE for two-proportion z-test
 pooled_se = np.sqrt(p_control * (1 - p_control) * (1 / n_control + 1 / n_treatment))
-# TODO: Compute the minimum detectable effect
+# TODO: Compute Minimum Detectable Effect
 mde = ____  # Hint: (z_alpha_half + z_beta) * pooled_se
 
 print(f"α = {alpha}, Power = {power_target:.0%}")
@@ -109,6 +110,7 @@ print(f"z_{{α/2}} = {z_alpha_half:.3f}, z_β = {z_beta:.3f}")
 print(f"Minimum Detectable Effect (MDE): {mde:.6f} ({mde:.4%} absolute)")
 print(f"Relative MDE: {mde / p_control:.2%} of baseline")
 
+# Power curve: what power do we achieve at different effect sizes?
 effect_sizes = np.linspace(0, mde * 3, 100)
 powers = []
 for delta in effect_sizes:
@@ -124,23 +126,21 @@ for es_mult in [0.5, 1.0, 1.5, 2.0]:
     print(f"  Effect = {effect_sizes[idx]:.4%}: Power = {powers[idx]:.1%}")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 3: Primary test — conversion rate (two-proportion z-test)
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 p_treatment = treatment["converted"].mean()
 p_pooled = ab_data["converted"].mean()
 
-# TODO: Compute the pooled standard error for the difference in proportions
-se_diff = (
-    ____  # Hint: np.sqrt(p_pooled * (1 - p_pooled) * (1 / n_control + 1 / n_treatment))
-)
-# TODO: Compute the z-statistic
+# Two-proportion z-test
+se_diff = np.sqrt(p_pooled * (1 - p_pooled) * (1 / n_control + 1 / n_treatment))
+# TODO: Compute the z-statistic = (p_treatment - p_control) / se_diff
 z_stat = ____  # Hint: (p_treatment - p_control) / se_diff
 # TODO: Compute the two-tailed p-value
 p_value_conversion = ____  # Hint: 2 * (1 - stats.norm.cdf(abs(z_stat)))
 
-# Cohen's h for proportions
+# Effect size (Cohen's h for proportions)
 cohens_h = 2 * (np.arcsin(np.sqrt(p_treatment)) - np.arcsin(np.sqrt(p_control)))
 
 print(f"\n=== Primary Metric: Conversion Rate ===")
@@ -158,12 +158,14 @@ print(
 )
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 4: Multiple metrics — conversion, revenue, average order value
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
+# Testing multiple metrics simultaneously inflates Type I error.
 
 metrics_results = {}
 
+# Metric 1: Conversion rate (already computed)
 metrics_results["conversion_rate"] = {
     "control": p_control,
     "treatment": p_treatment,
@@ -172,10 +174,11 @@ metrics_results["conversion_rate"] = {
     "test": "two-proportion z-test",
 }
 
+# Metric 2: Revenue per user (includes zeros for non-converters)
 rev_control = control["revenue"].to_numpy().astype(np.float64)
 rev_treatment = treatment["revenue"].to_numpy().astype(np.float64)
 
-# TODO: Run Mann-Whitney U test on revenue (revenue is right-skewed)
+# TODO: Run Mann-Whitney U test (revenue is heavily right-skewed)
 u_stat, p_value_revenue = (
     ____  # Hint: stats.mannwhitneyu(rev_treatment, rev_control, alternative="two-sided")
 )
@@ -188,6 +191,7 @@ metrics_results["revenue_per_user"] = {
     "test": "Mann-Whitney U",
 }
 
+# Metric 3: Average order value (only among converters)
 aov_control = (
     control.filter(pl.col("converted") == 1)["revenue"].to_numpy().astype(np.float64)
 )
@@ -195,7 +199,7 @@ aov_treatment = (
     treatment.filter(pl.col("converted") == 1)["revenue"].to_numpy().astype(np.float64)
 )
 
-# TODO: Run Welch's t-test on AOV among converters only
+# TODO: Run Welch's t-test (unequal variances) for AOV
 t_stat, p_value_aov = (
     ____  # Hint: stats.ttest_ind(aov_treatment, aov_control, equal_var=False)
 )
@@ -208,6 +212,7 @@ metrics_results["avg_order_value"] = {
     "test": "Welch's t-test",
 }
 
+# Metric 4: Pages viewed (engagement proxy)
 if "pages_viewed" in ab_data.columns:
     pages_control = control["pages_viewed"].to_numpy().astype(np.float64)
     pages_treatment = treatment["pages_viewed"].to_numpy().astype(np.float64)
@@ -236,23 +241,25 @@ for name, r in metrics_results.items():
         f"{r['p_value']:>10.6f} {r['test']:<20} {sig}"
     )
 
+# Family-wise error rate without correction
 m = len(metrics_results)
 fwer = 1 - (1 - alpha) ** m
 print(f"\nNumber of tests (m): {m}")
 print(f"Family-wise error rate (uncorrected): {fwer:.4f} ({fwer:.1%})")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 5: Multiple testing corrections
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 p_values = np.array([r["p_value"] for r in metrics_results.values()])
 metric_names = list(metrics_results.keys())
 
-# Bonferroni correction: α_adj = α/m
-# TODO: Compute the Bonferroni-adjusted significance threshold
+# --- Bonferroni correction ---
+# Most conservative: α_adj = α/m
+# TODO: Compute Bonferroni-adjusted alpha and the significance mask
 bonferroni_alpha = ____  # Hint: alpha / m
-bonferroni_significant = p_values < bonferroni_alpha
+bonferroni_significant = ____  # Hint: p_values < bonferroni_alpha
 
 print(f"\n=== Bonferroni Correction (FWER control) ===")
 print(f"Adjusted α = {alpha}/{m} = {bonferroni_alpha:.4f}")
@@ -260,22 +267,24 @@ for i, name in enumerate(metric_names):
     sig = "SIGNIFICANT" if bonferroni_significant[i] else "not significant"
     print(f"  {name}: p={p_values[i]:.6f} → {sig}")
 
-# Benjamini-Hochberg (BH-FDR) correction
-# Sort p-values, find largest k where p(k) ≤ (k/m)α
+# --- Benjamini-Hochberg (BH-FDR) correction ---
+# Less conservative: controls False Discovery Rate
 sorted_indices = np.argsort(p_values)
 sorted_p = p_values[sorted_indices]
-# TODO: Compute the BH thresholds: (k+1)/m * alpha for each rank k
-bh_thresholds = np.array([____ for k in range(m)])  # Hint: (k + 1) / m * alpha
+bh_thresholds = np.array([(k + 1) / m * alpha for k in range(m)])
 
+# Find the largest k where p(k) ≤ threshold
 bh_significant_mask = np.zeros(m, dtype=bool)
 max_k = -1
 for k in range(m):
     if sorted_p[k] <= bh_thresholds[k]:
         max_k = k
 
+# All tests with rank ≤ max_k are significant
 if max_k >= 0:
     bh_significant_mask[sorted_indices[: max_k + 1]] = True
 
+# Also compute adjusted p-values (q-values)
 q_values = np.zeros(m)
 sorted_q = np.zeros(m)
 sorted_q[m - 1] = sorted_p[m - 1]
@@ -289,6 +298,7 @@ for i, name in enumerate(metric_names):
     sig = "SIGNIFICANT" if bh_significant_mask[i] else "not significant"
     print(f"  {name}: p={p_values[i]:.6f}, q={q_values[i]:.6f} → {sig}")
 
+# Summary comparison
 print(f"\n=== Correction Comparison ===")
 print(f"{'Metric':<20} {'Raw p':>10} {'Bonferroni':>12} {'BH-FDR':>12}")
 print("─" * 60)
@@ -298,32 +308,30 @@ for i, name in enumerate(metric_names):
     print(f"{name:<20} {p_values[i]:>10.6f} {bonf:>12} {bh:>12}")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 6: Permutation test for conversion rate
-# ════════════════════════════════════════════════════════════════════════
-# Algorithm:
-#   1. Pool all observations
-#   2. Randomly assign to "control" and "treatment" (preserving sizes)
-#   3. Compute test statistic on permuted data
-#   4. Repeat 10K times → null distribution
-#   5. p-value = proportion of permuted statistics ≥ observed
+# ══════════════════════════════════════════════════════════════════════
+# Distribution-free alternative to parametric z-test.
 
 rng = np.random.default_rng(seed=42)
 n_permutations = 10_000
 
+# Observed test statistic (difference in conversion rates)
 observed_diff = p_treatment - p_control
+
+# Pool all conversion labels
 all_converted = ab_data["converted"].to_numpy()
 
-# TODO: Implement the permutation loop
+# Permutation loop
 perm_diffs = np.zeros(n_permutations)
 for i in range(n_permutations):
-    # TODO: Shuffle all_converted, compute difference in means between the two halves
+    # TODO: Shuffle the pooled labels and compute the treatment-control difference
     perm = ____  # Hint: rng.permutation(all_converted)
-    perm_control_rate = ____  # Hint: perm[:n_control].mean()
-    perm_treatment_rate = ____  # Hint: perm[n_control:].mean()
+    perm_control_rate = perm[:n_control].mean()
+    perm_treatment_rate = perm[n_control:].mean()
     perm_diffs[i] = perm_treatment_rate - perm_control_rate
 
-# TODO: Compute the two-tailed permutation p-value
+# TODO: Two-tailed p-value = fraction of permutation stats >= |observed|
 perm_p_value = ____  # Hint: np.mean(np.abs(perm_diffs) >= np.abs(observed_diff))
 
 print(f"\n=== Permutation Test (conversion rate) ===")
@@ -335,12 +343,13 @@ print(
 )
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # Visualise results with ModelVisualizer
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 viz = ModelVisualizer()
 
+# Compare all metrics across groups
 comparison_data = {
     "Control": {name: r["control"] for name, r in metrics_results.items()},
     "Treatment": {name: r["treatment"] for name, r in metrics_results.items()},
@@ -350,6 +359,7 @@ fig_comparison.update_layout(title="A/B Test: Control vs Treatment Across Metric
 fig_comparison.write_html("ex3_ab_test_comparison.html")
 print(f"\nSaved: ex3_ab_test_comparison.html")
 
+# Power curve
 power_metrics = {
     "Power": powers,
 }

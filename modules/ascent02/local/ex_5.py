@@ -17,9 +17,9 @@
 #   6. Log experiment analysis to ExperimentTracker
 #
 # THEORY (CUPED):
-#   Y_adj = Y - theta(X - E[X])  where theta = Cov(Y,X)/Var(X)
-#   Var(Y_adj) = Var(Y)(1 - rho^2)  where rho = Cor(Y,X)
-#   If rho=0.5, CI width reduces by 1 - sqrt(1-0.25) = 13.4%
+#   Y_adj = Y - θ(X - E[X])  where θ = Cov(Y,X)/Var(X)
+#   Var(Y_adj) = Var(Y)(1 - ρ²)  where ρ = Cor(Y,X)
+#   → If ρ=0.5, CI width reduces by 1 - √(1-0.25) = 13.4%
 # ════════════════════════════════════════════════════════════════════════
 """
 from __future__ import annotations
@@ -65,10 +65,9 @@ print(f"\nControl: {n_c:,} | Treatment: {n_t:,}")
 
 expected = np.array([n_c + n_t] * 2) / 2
 observed = np.array([n_c, n_t])
-
-# TODO: Run chi-square goodness-of-fit test for SRM detection
+# TODO: Run chi-square test on observed vs expected group sizes
 _, srm_p = ____  # Hint: stats.chisquare(observed, f_exp=expected)
-print(f"\nSRM check: p={srm_p:.6f} — {'OK' if srm_p > 0.01 else 'SRM DETECTED'}")
+print(f"\nSRM check: p={srm_p:.6f} — {'✓ OK' if srm_p > 0.01 else '⚠ SRM DETECTED'}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -81,15 +80,11 @@ y_t = treatment["revenue"].to_numpy().astype(np.float64)
 
 mean_c, mean_t = y_c.mean(), y_t.mean()
 lift = mean_t - mean_c
-
-# TODO: Compute the naive standard error using pooled per-group variances
+# TODO: Compute the standard error of the difference of means
 se_naive = ____  # Hint: np.sqrt(y_c.var(ddof=1) / n_c + y_t.var(ddof=1) / n_t)
-
 ci_naive = (lift - 1.96 * se_naive, lift + 1.96 * se_naive)
-
-# TODO: Compute z-statistic then two-sided p-value for the naive test
-z_naive = ____  # Hint: lift / se_naive
-p_naive = ____  # Hint: 2 * (1 - stats.norm.cdf(abs(z_naive)))
+z_naive = lift / se_naive
+p_naive = 2 * (1 - stats.norm.cdf(abs(z_naive)))
 
 print(f"\n=== Standard Analysis (no CUPED) ===")
 print(f"Control mean: ${mean_c:.2f}")
@@ -104,12 +99,9 @@ print(f"p-value: {p_naive:.6f}")
 # TASK 3: CUPED variance reduction
 # ══════════════════════════════════════════════════════════════════════
 # CUPED (Controlled-experiment Using Pre-Experiment Data)
-# Key insight: subtract a correlated pre-experiment covariate to reduce variance
-#
-# Y_adj = Y - theta * (X - E[X])
-# where X = pre-experiment metric (e.g., revenue in prior period)
-# theta = Cov(Y, X) / Var(X) = optimal coefficient
-# Var(Y_adj) = Var(Y) * (1 - rho^2)
+# Y_adj = Y - θ * (X - E[X])
+# θ = Cov(Y, X) / Var(X) = optimal coefficient
+# Var(Y_adj) = Var(Y) * (1 - ρ²)
 
 # Pre-experiment covariate: revenue in the 30 days before experiment
 x_c = control["pre_revenue"].to_numpy().astype(np.float64)
@@ -119,14 +111,15 @@ x_t = treatment["pre_revenue"].to_numpy().astype(np.float64)
 x_all = np.concatenate([x_c, x_t])
 y_all = np.concatenate([y_c, y_t])
 
-# TODO: Compute theta = Cov(Y, X) / Var(X) using the combined arrays
+# TODO: Compute theta = Cov(Y, X) / Var(X)
 theta = ____  # Hint: np.cov(y_all, x_all)[0, 1] / np.var(x_all, ddof=1)
 
-# TODO: Compute the Pearson correlation between pre and post metrics
+# TODO: Compute the correlation between pre and post metrics
 rho = ____  # Hint: np.corrcoef(y_all, x_all)[0, 1]
 
-# TODO: Apply the CUPED adjustment: Y_adj = Y - theta * (X - E[X])
+# Adjusted values
 x_mean = x_all.mean()
+# TODO: Apply CUPED adjustment Y_adj = Y - theta * (X - x_mean) for each group
 y_c_adj = ____  # Hint: y_c - theta * (x_c - x_mean)
 y_t_adj = ____  # Hint: y_t - theta * (x_t - x_mean)
 
@@ -134,21 +127,18 @@ y_t_adj = ____  # Hint: y_t - theta * (x_t - x_mean)
 mean_c_adj = y_c_adj.mean()
 mean_t_adj = y_t_adj.mean()
 lift_adj = mean_t_adj - mean_c_adj
-
-# TODO: Compute the CUPED standard error using the adjusted arrays
-se_cuped = ____  # Hint: np.sqrt(y_c_adj.var(ddof=1) / n_c + y_t_adj.var(ddof=1) / n_t)
-
+se_cuped = np.sqrt(y_c_adj.var(ddof=1) / n_c + y_t_adj.var(ddof=1) / n_t)
 ci_cuped = (lift_adj - 1.96 * se_cuped, lift_adj + 1.96 * se_cuped)
 z_cuped = lift_adj / se_cuped
 p_cuped = 2 * (1 - stats.norm.cdf(abs(z_cuped)))
 
-# TODO: Compute actual variance reduction: 1 - (se_cuped^2 / se_naive^2)
-var_reduction = ____  # Hint: 1 - se_cuped**2 / se_naive**2
+# Variance reduction
+var_reduction = 1 - se_cuped**2 / se_naive**2
 ci_width_reduction = 1 - se_cuped / se_naive
 
 print(f"\n=== CUPED Analysis ===")
-print(f"Correlation (pre <-> post revenue): rho = {rho:.3f}")
-print(f"theta (optimal coefficient): {theta:.4f}")
+print(f"Correlation (pre ↔ post revenue): ρ = {rho:.3f}")
+print(f"θ (optimal coefficient): {theta:.4f}")
 print(f"Theoretical variance reduction: {rho**2:.1%}")
 print(f"Actual variance reduction: {var_reduction:.1%}")
 print(f"CI width reduction: {ci_width_reduction:.1%}")
@@ -167,22 +157,17 @@ print(f"p-value: {p_cuped:.6f}")
 #   - Credible interval for the lift
 
 # Use Normal approximation for posterior
-# Posterior for treatment mean: N(mean_t_adj, se_t^2)
-# Posterior for control mean:   N(mean_c_adj, se_c^2)
 se_c_post = y_c_adj.std(ddof=1) / np.sqrt(n_c)
 se_t_post = y_t_adj.std(ddof=1) / np.sqrt(n_t)
 
 # P(treatment > control) = P(lift > 0)
-# lift ~ N(lift_adj, se_c^2 + se_t^2)
 se_lift = np.sqrt(se_c_post**2 + se_t_post**2)
-
-# TODO: Compute P(treatment > control) using the Normal CDF
+# TODO: Probability that lift > 0 under Normal posterior
 prob_treatment_better = ____  # Hint: 1 - stats.norm.cdf(0, loc=lift_adj, scale=se_lift)
 
 # Expected loss: E[max(control - treatment, 0)]
-# For Normal: se_lift * phi(-lift_adj/se_lift) - lift_adj * Phi(-lift_adj/se_lift)
 z_ratio = -lift_adj / se_lift
-expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) + lift_adj * stats.norm.cdf(
+expected_loss_treatment = se_lift * stats.norm.pdf(z_ratio) - lift_adj * stats.norm.cdf(
     z_ratio
 )
 expected_loss_control = se_lift * stats.norm.pdf(-z_ratio) - lift_adj * stats.norm.cdf(
@@ -204,19 +189,18 @@ print(f"Expected loss (choose control):   ${expected_loss_control:.2f}/user")
 print(f"95% credible interval for lift: [${bayesian_ci[0]:.2f}, ${bayesian_ci[1]:.2f}]")
 print(f"\nDecision recommendation:")
 if prob_treatment_better > 0.95 and expected_loss_treatment < 0.50:
-    print("  -> SHIP: High confidence + low expected loss")
+    print("  → SHIP: High confidence + low expected loss")
 elif prob_treatment_better > 0.80:
-    print("  -> CONTINUE: Promising but need more data")
+    print("  → CONTINUE: Promising but need more data")
 else:
-    print("  -> HOLD: Insufficient evidence for treatment superiority")
+    print("  → HOLD: Insufficient evidence for treatment superiority")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 5: Sequential testing — always-valid p-values
 # ══════════════════════════════════════════════════════════════════════
 # Problem: peeking at results before full sample inflates Type I error.
-# Solution: always-valid p-values that maintain coverage at any stopping time.
-# Method: mixture sequential probability ratio test (mSPRT)
+# Solution: always-valid p-values via mixture sequential probability ratio test
 
 # Simulate sequential analysis (process data in daily batches)
 experiment_with_day = experiment.with_columns(
@@ -246,25 +230,20 @@ for i, day in enumerate(days):
     if len(c) < 100 or len(t) < 100:
         continue
 
-    # Standard z-test (WRONG for sequential — inflated alpha)
+    # Standard z-test (WRONG for sequential — inflated α)
     diff = t.mean() - c.mean()
     se = np.sqrt(c.var(ddof=1) / len(c) + t.var(ddof=1) / len(t))
     z = diff / se if se > 0 else 0
     p_fixed = 2 * (1 - stats.norm.cdf(abs(z)))
 
     # mSPRT always-valid p-value (simplified)
-    # Uses a mixture of likelihood ratios with a normal mixing distribution
     n_curr = len(c) + len(t)
-    # Variance of the mixing distribution (tuning parameter)
+    n_max = n_c + n_t
     tau_sq = se_naive**2  # Use naive SE as scale
     v_n = se**2  # Current variance of the test statistic
-
-    # TODO: Compute the mSPRT lambda statistic
-    # lambda_n = sqrt(v_n / (v_n + tau_sq)) * exp(tau_sq * z^2 / (2 * (v_n + tau_sq)))
+    # TODO: Compute the mSPRT mixture statistic lambda_n
     lambda_n = ____  # Hint: np.sqrt(v_n / (v_n + tau_sq)) * np.exp(tau_sq * z**2 / (2 * (v_n + tau_sq)))
-
-    # TODO: Convert lambda_n to an always-valid p-value: min(1/lambda_n, 1.0)
-    p_sequential = ____  # Hint: min(1.0, 1.0 / lambda_n) if lambda_n > 0 else 1.0
+    p_sequential = min(1.0, 1.0 / lambda_n) if lambda_n > 0 else 1.0
 
     sequential_results.append(
         {
@@ -278,7 +257,7 @@ for i, day in enumerate(days):
 
 print(f"\n=== Sequential Testing ===")
 print(f"{'Day':>4} {'n':>8} {'Lift':>10} {'p (fixed)':>12} {'p (mSPRT)':>12}")
-print("-" * 52)
+print("─" * 52)
 for r in sequential_results[:: max(1, len(sequential_results) // 10)]:
     print(
         f"{r['day']:>4} {r['n']:>8,} ${r['lift']:>8.2f} {r['p_fixed']:>12.6f} {r['p_sequential']:>12.6f}"
@@ -289,7 +268,7 @@ early_sig = sum(1 for r in sequential_results if r["p_fixed"] < 0.05)
 early_sig_seq = sum(1 for r in sequential_results if r["p_sequential"] < 0.05)
 print(f"\nDays with p < 0.05 (fixed):      {early_sig}/{len(sequential_results)}")
 print(f"Days with p < 0.05 (sequential): {early_sig_seq}/{len(sequential_results)}")
-print("-> Fixed p-values cross significance more often (inflated Type I error)")
+print("→ Fixed p-values cross significance more often (inflated Type I error)")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -298,38 +277,16 @@ print("-> Fixed p-values cross significance more often (inflated Type I error)")
 
 
 async def log_ab_analysis():
-    # TODO: Create a ConnectionManager for the shared SQLite database
-    conn = ____  # Hint: ConnectionManager("sqlite:///ascent02_experiments.db")
+    conn = ConnectionManager("sqlite:///ascent02_experiments.db")
     await conn.initialize()
+    tracker = ExperimentTracker(conn)
 
-    # TODO: Create an ExperimentTracker using conn and initialize it
-    tracker = ____  # Hint: ExperimentTracker(conn)
-    await tracker.initialize()
-
-    experiments = await tracker.list_experiments()
-    # Find the M2 experiment or create new
-    exp_id = None
-    for exp in experiments:
-        if exp.get("name") == "ascent02_healthcare_features":
-            exp_id = exp["id"]
-            break
-    if not exp_id:
-        exp_id = await tracker.create_experiment(
-            name="ascent02_ab_test_analysis",
-            description="A/B test analysis with CUPED and Bayesian methods",
-            tags=["ascent02", "ab-test", "cuped", "bayesian"],
-        )
-
-    # TODO: Open a tracker run using the async context manager
-    async with ____ as run:  # Hint: tracker.run(exp_id, run_name="ecommerce_ab_cuped_bayesian")
+    async with tracker.run(
+        "ascent02_ab_test_analysis", run_name="ecommerce_ab_cuped_bayesian"
+    ) as run:
+        # TODO: Log the CUPED parameters dictionary
         await run.log_params(
-            {
-                "method": "CUPED + Bayesian",
-                "pre_covariate": "pre_revenue",
-                "cuped_theta": str(float(theta)),
-                "cuped_rho": str(float(rho)),
-                "sequential_method": "mSPRT",
-            }
+            ____  # Hint: {"method": "CUPED + Bayesian", "pre_covariate": "pre_revenue", "cuped_theta": str(float(theta)), "cuped_rho": str(float(rho)), "sequential_method": "mSPRT"}
         )
         await run.log_metrics(
             {
@@ -365,5 +322,5 @@ fig.write_html("ex5_cuped_comparison.html")
 print("Saved: ex5_cuped_comparison.html")
 
 print(
-    "\nExercise 5 complete — A/B testing with CUPED + Bayesian + sequential testing"
+    "\n✓ Exercise 5 complete — A/B testing with CUPED + Bayesian + sequential testing"
 )

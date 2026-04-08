@@ -50,22 +50,23 @@ print(f"Sample mean: ${prices.mean():,.0f}")
 print(f"Sample std:  ${prices.std():,.0f}")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 1: Maximum Likelihood Estimation (MLE)
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # For X ~ N(μ, σ²): MLE gives μ̂ = x̄, σ̂² = (1/n)Σ(xᵢ - x̄)²
 # MLE is asymptotically efficient (achieves Cramér-Rao lower bound)
 
 n = len(prices)
 mle_mean = prices.mean()
 # TODO: Compute MLE variance using ddof=0 (MLE uses the biased estimator)
-mle_var = ____  # Hint: prices.var(ddof=?)
+mle_var = ____  # Hint: prices.var(ddof=0)
 mle_std = np.sqrt(mle_var)
 
 # Fisher information for Normal: I(μ) = n/σ² → Var(μ̂) ≥ σ²/n
 # TODO: Compute Fisher information = n / mle_var
 fisher_info = ____  # Hint: n / mle_var
-cramer_rao_bound = 1 / fisher_info
+# TODO: Cramér-Rao lower bound is the reciprocal of Fisher information
+cramer_rao_bound = ____  # Hint: 1 / fisher_info
 mle_se = np.sqrt(cramer_rao_bound)
 
 print(f"\n=== MLE Estimates ===")
@@ -76,9 +77,9 @@ print(f"Cramér-Rao lower bound: Var(μ̂) ≥ {cramer_rao_bound:.2f}")
 print(f"MLE standard error: ${mle_se:,.2f}")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 2: Specify conjugate priors
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # Prior belief: Singapore 4-room HDB prices centre around $500K
 # with moderate uncertainty (σ₀ = $100K)
 #
@@ -87,9 +88,9 @@ print(f"MLE standard error: ${mle_se:,.2f}")
 #
 # We treat σ² as known (plug in MLE estimate) for analytical tractability.
 
-# TODO: Set the prior mean and prior std hyperparameters
-mu_0 = ____  # Hint: prior mean in dollars (e.g. 500_000.0)
-sigma_0 = ____  # Hint: prior std in dollars (e.g. 100_000.0)
+# TODO: Set the prior hyperparameters for a moderately informative prior
+mu_0 = ____  # Hint: 500_000.0 (prior mean in dollars)
+sigma_0 = ____  # Hint: 100_000.0 (prior std in dollars)
 
 # Known variance (plug-in from MLE)
 sigma_known = mle_std
@@ -99,9 +100,9 @@ print(f"Prior: μ ~ N(μ₀={mu_0:,.0f}, σ₀={sigma_0:,.0f})")
 print(f"Likelihood: X|μ ~ N(μ, σ²) with σ={sigma_known:,.0f} (plug-in)")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 3: Compute posterior analytically
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # Posterior: μ|x ~ N(μₙ, σₙ²)
 #   precision_0 = 1/σ₀²     (prior precision)
 #   precision_data = n/σ²    (data precision)
@@ -135,15 +136,15 @@ print(
 )
 
 # 95% credible interval
-# TODO: Compute 95% credible interval bounds using mu_n ± 1.96 * sigma_n
+# TODO: Compute 95% credible interval bounds (use ±1.96 * sigma_n)
 ci_95_lower = ____  # Hint: mu_n - 1.96 * sigma_n
 ci_95_upper = ____  # Hint: mu_n + 1.96 * sigma_n
 print(f"\n95% Bayesian credible interval: [${ci_95_lower:,.2f}, ${ci_95_upper:,.2f}]")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 4: Bootstrap confidence intervals for comparison
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # Non-parametric bootstrap: resample with replacement, compute statistic
 # BCa (bias-corrected accelerated) is the gold standard.
 
@@ -165,14 +166,8 @@ boot_ci_lower = ____  # Hint: np.percentile(bootstrap_means, 2.5)
 boot_ci_upper = ____  # Hint: np.percentile(bootstrap_means, 97.5)
 
 # BCa confidence interval using scipy
-bca_result = stats.bootstrap(
-    (prices,),
-    statistic=np.mean,
-    n_resamples=n_bootstrap,
-    confidence_level=0.95,
-    method="BCa",
-    random_state=42,
-)
+# TODO: Call stats.bootstrap with method="BCa" and confidence_level=0.95
+bca_result = ____  # Hint: stats.bootstrap((prices,), statistic=np.mean, n_resamples=n_bootstrap, confidence_level=0.95, method="BCa", random_state=42)
 bca_ci_lower = bca_result.confidence_interval.low
 bca_ci_upper = bca_result.confidence_interval.high
 
@@ -193,9 +188,9 @@ print(f"because the standard error of the mean is ${mle_se:,.2f}.")
 print(f"The Bayesian posterior is almost identical to the MLE — data dominates.")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 5: Visualise with ModelVisualizer
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 
 # TODO: Instantiate the ModelVisualizer
 viz = ____  # Hint: ModelVisualizer()
@@ -241,9 +236,9 @@ fig_convergence.write_html("ex1_bootstrap_convergence.html")
 print("Saved: ex1_bootstrap_convergence.html")
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # TASK 5b: Bayesian estimation across flat types
-# ════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════
 # Apply the same Normal-Normal conjugate to each flat type
 
 flat_types = ["2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE"]
@@ -262,10 +257,12 @@ for ft in flat_types:
     xbar = p.mean()
     s = p.std()
 
-    prec_prior = 1.0 / sigma_0**2
-    prec_data = n_ft / s**2
+    # TODO: Compute per-flat-type prior and data precisions (same prior for all)
+    prec_prior = ____  # Hint: 1.0 / sigma_0**2
+    prec_data = ____  # Hint: n_ft / s**2
     prec_post = prec_prior + prec_data
-    mu_post = (mu_0 * prec_prior + n_ft * xbar / s**2) / prec_post
+    # TODO: Compute the posterior mean (precision-weighted) for this flat type
+    mu_post = ____  # Hint: (mu_0 * prec_prior + n_ft * xbar / s**2) / prec_post
     sigma_post = np.sqrt(1.0 / prec_post)
 
     results_by_type[ft] = {

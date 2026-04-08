@@ -33,6 +33,9 @@ from shared.kailash_helpers import setup_environment
 
 setup_environment()
 
+
+# ── Data Loading ──────────────────────────────────────────────────────
+
 loader = ASCENTDataLoader()
 df = loader.load("ascent08", "sg_product_reviews.parquet")
 
@@ -52,15 +55,20 @@ vocab = ["<pad>", "<unk>"] + [w for w, c in word_counts.most_common(2000) if c >
 word_to_idx = {w: i for i, w in enumerate(vocab)}
 vocab_size = len(vocab)
 embed_dim = 32
+
+# Random embeddings for demonstration
 embeddings = [
     [random.gauss(0, 0.1) for _ in range(embed_dim)] for _ in range(vocab_size)
 ]
-print(f"Vocabulary: {vocab_size}, embed_dim: {embed_dim}")
+
+print(f"Vocabulary: {vocab_size}, embedding dim: {embed_dim}")
 
 
 def text_to_embeddings(text: str, max_len: int = 20) -> list[list[float]]:
+    """Convert text to a sequence of embedding vectors."""
     tokens = tokenize(text)[:max_len]
-    return [embeddings[word_to_idx.get(t, 1)] for t in tokens]
+    indices = [word_to_idx.get(t, 1) for t in tokens]
+    return [embeddings[idx] for idx in indices]
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -69,10 +77,14 @@ def text_to_embeddings(text: str, max_len: int = 20) -> list[list[float]]:
 
 
 def softmax(scores: list[float]) -> list[float]:
-    max_s = max(scores) if scores else 0
-    exps = [math.exp(s - max_s) for s in scores]
-    total = sum(exps)
-    return [e / total for e in exps]
+    """Numerically stable softmax."""
+    # TODO: subtract max for numerical stability
+    max_s = ____
+    # TODO: exponentiate shifted scores
+    exps = ____
+    # TODO: normalise by sum
+    total = ____
+    return ____
 
 
 def scaled_dot_product_attention(
@@ -80,23 +92,23 @@ def scaled_dot_product_attention(
     K: list[list[float]],
     V: list[list[float]],
 ) -> tuple[list[list[float]], list[list[float]]]:
-    """Attention(Q,K,V) = softmax(QK^T/sqrt(d_k))V. Returns (output, weights)."""
-    # TODO: implement full attention
-    #   scale = sqrt(d_k)
-    #   scores[i][j] = dot(Q[i],K[j]) / scale
-    #   weights = softmax per query row
-    #   output[i] = weighted sum of V rows
+    """Attention(Q, K, V) = softmax(Q K^T / sqrt(d_k)) V.
+
+    Returns (output, attention_weights).
+    """
     d_k = len(Q[0])
-    scale = ____  # Hint: math.sqrt(d_k)
-    scores = [
-        [sum(Q[i][d] * K[j][d] for d in range(d_k)) / scale for j in range(len(K))]
-        for i in range(len(Q))
-    ]
-    weights = ____  # Hint: [softmax(row) for row in scores]
-    output = [
-        [sum(weights[i][j] * V[j][d] for j in range(len(V))) for d in range(len(V[0]))]
-        for i in range(len(Q))
-    ]
+    # TODO: scale = sqrt(d_k)
+    scale = ____
+
+    # TODO: scores[i][j] = dot(Q[i], K[j]) / scale — build the seq_len_q x seq_len_k score matrix
+    scores = ____
+
+    # TODO: row-wise softmax over keys → attention weights
+    weights = ____
+
+    # TODO: output[i] = sum_j weights[i][j] * V[j] — weighted sum of values
+    output = ____
+
     return output, weights
 
 
@@ -106,12 +118,15 @@ sample_tokens = tokenize(sample_text)[:10]
 
 output, attn_weights = scaled_dot_product_attention(sample_emb, sample_emb, sample_emb)
 
-print(f"\n--- Self-Attention on: {sample_tokens} ---")
-print(f"Output: {len(output)}×{len(output[0])}")
-print(f"First token attention:")
+print(f"\n--- Scaled Dot-Product Attention ---")
+print(f"Input sequence: {sample_tokens}")
+print(f"Q/K/V dim: {len(sample_emb)}x{embed_dim}")
+print(f"Output shape: {len(output)}x{len(output[0])}")
+print(f"\nAttention weights (first token attends to):")
 for j, w in enumerate(attn_weights[0]):
-    tok = sample_tokens[j] if j < len(sample_tokens) else "?"
-    print(f"  {tok:<15} {w:.3f} {'#' * int(w * 40)}")
+    token = sample_tokens[j] if j < len(sample_tokens) else "?"
+    bar = "#" * int(w * 40)
+    print(f"  {token:<15} {w:.3f} {bar}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -120,97 +135,130 @@ for j, w in enumerate(attn_weights[0]):
 
 
 def linear_projection(X: list[list[float]], W: list[list[float]]) -> list[list[float]]:
-    d_out = len(W[0])
-    return [
-        [sum(x[k] * W[k][j] for k in range(len(x))) for j in range(d_out)] for x in X
-    ]
+    """Project X (seq_len x d_in) with W (d_in x d_out)."""
+    # TODO: for each row x in X, compute [sum_k x[k]*W[k][j] for j in range(d_out)]
+    return ____
 
 
 class MultiHeadAttention:
-    """h parallel attention heads → concatenate → project."""
+    """Multi-head attention: parallel attention heads, then concatenate + project."""
 
     def __init__(self, d_model: int, n_heads: int):
         self.n_heads = n_heads
         self.d_k = d_model // n_heads
         self.d_model = d_model
+
         scale = 1.0 / math.sqrt(self.d_k)
-        # TODO: W_q, W_k, W_v each n_heads×d_model×d_k; W_o d_model×d_model
+        # TODO: per-head W_q, W_k, W_v — each a list of (d_model x d_k) Gaussian matrices
         self.W_q = ____
         self.W_k = ____
         self.W_v = ____
+        # TODO: output projection W_o of shape (d_model x d_model)
         self.W_o = ____
 
-    def forward(self, X: list[list[float]]) -> tuple[list[list[float]], list]:
-        """Project per head, attend, concatenate, project output."""
-        all_head_outputs, all_head_weights = [], []
+    def forward(
+        self, X: list[list[float]]
+    ) -> tuple[list[list[float]], list[list[list[float]]]]:
+        """Multi-head self-attention. Returns (output, all_head_weights)."""
+        all_head_outputs = []
+        all_head_weights = []
+
+        # TODO: for each head h: project into Q_h, K_h, V_h via linear_projection
+        # TODO: run scaled_dot_product_attention and append results
         for h in range(self.n_heads):
-            # TODO: project X to Q_h, K_h, V_h; run scaled_dot_product_attention
-            Q_h = ____  # Hint: linear_projection(X, self.W_q[h])
-            K_h = ____  # Hint: linear_projection(X, self.W_k[h])
-            V_h = ____  # Hint: linear_projection(X, self.W_v[h])
-            head_out, head_wts = ____  # Hint: scaled_dot_product_attention(Q_h,K_h,V_h)
-            all_head_outputs.append(head_out)
-            all_head_weights.append(head_wts)
-        # TODO: concatenate heads; apply W_o
-        seq_len = len(X)
-        concat = []
-        for i in range(seq_len):
-            row: list[float] = []
-            for h in range(self.n_heads):
-                ____  # Hint: row.extend(all_head_outputs[h][i])
-            concat.append(row)
-        output = ____  # Hint: linear_projection(concat, self.W_o)
+            ____
+            ____
+            ____
+            ____
+
+        # TODO: concatenate heads at each position — concat[i] = [head0[i] ++ head1[i] ++ ...]
+        concat = ____
+
+        # TODO: apply output projection W_o via linear_projection
+        output = ____
         return output, all_head_weights
 
 
 n_heads = 4
 mha = MultiHeadAttention(d_model=embed_dim, n_heads=n_heads)
 mha_output, head_weights = mha.forward(sample_emb)
-print(f"\n--- Multi-Head Attention ({n_heads} heads, d_k={embed_dim//n_heads}) ---")
-print(f"Output: {len(mha_output)}×{len(mha_output[0])}")
+
+print(f"\n--- Multi-Head Attention ({n_heads} heads) ---")
+print(f"Input: {len(sample_emb)}x{embed_dim}")
+print(f"Per-head dim: {embed_dim // n_heads}")
+print(f"Output: {len(mha_output)}x{len(mha_output[0])}")
+
 for h in range(n_heads):
-    top_j = sorted(
+    top_attn = sorted(
         range(len(head_weights[h][0])),
         key=lambda j: head_weights[h][0][j],
         reverse=True,
     )[:3]
-    print(
-        f"  Head {h}: token[0] attends to {[sample_tokens[j] if j < len(sample_tokens) else '?' for j in top_j]}"
-    )
+    top_tokens = [sample_tokens[j] if j < len(sample_tokens) else "?" for j in top_attn]
+    print(f"  Head {h}: token[0] attends most to {top_tokens}")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: Visualize attention weights
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Instantiate ModelVisualizer
-viz = ____  # Hint: ModelVisualizer()
-print(
-    f"\n=== Each head specializes: syntactic / semantic / positional / co-reference ==="
-)
+# TODO: instantiate ModelVisualizer
+viz = ____
+
+print(f"\n=== Attention visualization generated ===")
+print(f"Each head learns different linguistic relationships:")
+print(f"  Head 0: may capture syntactic dependencies")
+print(f"  Head 1: may capture semantic similarity")
+print(f"  Head 2: may capture positional patterns")
+print(f"  Head 3: may capture entity co-reference")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: Attention solves the context bottleneck
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n--- Context Bottleneck ---")
-print(f"RNN: compresses to h_T (fixed) — early tokens forgotten")
-print(f"Attention: O(1) path length — every position directly attends to all others")
+print(f"\n--- Context Bottleneck Problem ---")
+print(f"RNN/LSTM: entire sequence compressed into fixed-size vector h_T")
+print(f"  Long sequences → early tokens are 'forgotten'")
+print(f"  Bottleneck: all information must pass through hidden state")
+print(f"\nAttention: each output position can directly attend to ALL inputs")
+print(f"  No bottleneck — O(1) path from any input to any output")
+print(f"  Trade-off: O(n^2) memory for attention matrix")
+
 if len(sample_tokens) >= 5:
-    print(f"  '{sample_tokens[0]}' → '{sample_tokens[-1]}': {attn_weights[0][-1]:.4f}")
-    print(f"  '{sample_tokens[-1]}' → '{sample_tokens[0]}': {attn_weights[-1][0]:.4f}")
-    print(f"  Direct connection regardless of distance!")
+    first_to_last = attn_weights[0][-1]
+    last_to_first = attn_weights[-1][0]
+    print(
+        f"\n  Attention from '{sample_tokens[0]}' to '{sample_tokens[-1]}': {first_to_last:.4f}"
+    )
+    print(
+        f"  Attention from '{sample_tokens[-1]}' to '{sample_tokens[0]}': {last_to_first:.4f}"
+    )
+    print(f"  → Direct connection regardless of distance!")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 5: Compare attention vs LSTM on long sequences
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"\n--- Scaling ---")
-print(f"{'Seq len':<10} {'LSTM path':<13} {'Attn path':<12} {'Attn memory'}")
+print(f"\n--- Attention vs LSTM: Long Sequence Scaling ---")
+print(
+    f"{'Seq Length':<12} {'LSTM path':<15} {'Attention path':<15} {'Attention memory'}"
+)
+print("-" * 60)
 for seq_len in [10, 50, 100, 500, 1000]:
-    print(f"  {seq_len:<10} {seq_len:<13} {1:<12} {seq_len*seq_len:,}")
-print(f"\nLSTM O(n) path, O(n) mem — Attention O(1) path, O(n²) mem")
+    # TODO: LSTM path length = seq_len (sequential)
+    lstm_path = ____
+    # TODO: attention path = 1 (direct)
+    attn_path = ____
+    # TODO: attention memory ~ seq_len**2
+    attn_memory = ____
+    print(f"  {seq_len:<12} {lstm_path:<15} {attn_path:<15} {attn_memory:,}")
 
-print("\n✓ Exercise 5 complete — scaled dot-product + multi-head attention")
+print(f"\nLSTM: O(n) path length, O(n) memory — gradients vanish over long paths")
+print(f"Attention: O(1) path length, O(n^2) memory — constant gradient path")
+print(f"Transformers combine attention's O(1) paths with parallelism (no recurrence)")
+
+print(
+    "\n✓ Exercise 5 complete — scaled dot-product + multi-head attention, visualization"
+)

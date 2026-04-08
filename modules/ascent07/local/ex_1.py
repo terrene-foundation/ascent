@@ -47,15 +47,16 @@ print(df.head(5))
 x_raw = df["floor_area_sqm"].to_list()
 y_raw = df["resale_price"].to_list()
 
-# TODO: Compute mean and std for x_raw and y_raw, then z-normalise both.
-# x_mean = mean of x_raw; x_std = sqrt(mean of squared deviations from mean)
-# x_norm = [(xi - x_mean) / x_std for xi in x_raw]; same for y.
-____
-____
-____
-____
-____
-____
+# TODO: Compute x_mean as sum(x_raw)/len(x_raw).
+x_mean = ____
+# TODO: Compute x_std as sqrt(mean squared deviation from x_mean).
+x_std = ____
+# TODO: Compute y_mean and y_std the same way.
+y_mean = ____
+y_std = ____
+# TODO: Z-normalise using list comprehensions: (xi - mean) / std.
+x_norm = ____
+y_norm = ____
 n = len(x_norm)
 
 print(f"Feature: floor_area_sqm (mean={x_mean:.1f}, std={x_std:.1f}), Samples: {n}")
@@ -72,7 +73,7 @@ b = 0.0
 def forward(x_i: float, w: float, b: float) -> float:
     """Single neuron forward pass: y = wx + b."""
     # TODO: Return w * x_i + b.
-    ____
+    return ____
 
 
 y_hat_test = forward(x_norm[0], w, b)
@@ -87,7 +88,7 @@ print(f"Prediction: {y_hat_test:.4f} (expected ~0 with zero weights)")
 def mse_loss(y_true: list[float], y_pred: list[float]) -> float:
     """Mean Squared Error: L = (1/n) * sum((y - y_hat)^2)."""
     # TODO: Return sum of squared differences divided by len(y_true).
-    ____
+    return ____
 
 
 predictions = [forward(xi, w, b) for xi in x_norm]
@@ -106,13 +107,18 @@ epochs = 50
 history: dict[str, list] = {"epoch": [], "loss": [], "w": [], "b": []}
 
 for epoch in range(epochs):
-    # TODO: Forward pass → mse_loss → gradients dw/db → update w/b → append to history.
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: Forward pass over x_norm using forward(xi, w, b).
+    y_pred = ____
+    # TODO: Compute loss via mse_loss.
+    loss = ____
+    # TODO: Compute gradient dw = (2/n)*sum((yp-yt)*xi).
+    dw = ____
+    # TODO: Compute gradient db = (2/n)*sum(yp-yt).
+    db = ____
+    # TODO: Update parameters w and b with learning_rate.
+    w = ____
+    b = ____
+    # TODO: Append epoch, loss, w, b to history lists.
     ____
 
 print(f"Final: w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
@@ -126,13 +132,16 @@ ModelVisualizer().training_history({"loss": history["loss"]})
 # OLS closed-form: w = cov(x,y)/var(x),  b = mean(y) - w*mean(x)
 norm_df = pl.DataFrame({"x": x_norm, "y": y_norm})
 
-# TODO: Compute cov_xy via polars select; var_x via pl.col("x").var().
-# Derive w_ols = cov_xy/var_x and b_ols. Compute ols_loss and print comparison.
-____
-____
-____
-____
-____
+# TODO: Compute cov_xy = mean((x - mean(x)) * (y - mean(y))) via polars select/.item().
+cov_xy = ____
+# TODO: Compute var_x = pl.col("x").var() via polars select/.item().
+var_x = ____
+# TODO: w_ols = cov_xy / var_x.
+w_ols = ____
+# TODO: b_ols = mean(y_norm) - w_ols * mean(x_norm).
+b_ols = ____
+# TODO: ols_loss via mse_loss on predictions w_ols*xi + b_ols.
+ols_loss = ____
 
 print(f"GD:  w={w:.4f}, b={b:.4f}, loss={history['loss'][-1]:.6f}")
 print(f"OLS: w={w_ols:.4f}, b={b_ols:.4f}, loss={ols_loss:.6f}")

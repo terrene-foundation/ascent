@@ -19,7 +19,6 @@
 from __future__ import annotations
 
 import asyncio
-import math
 import pickle
 import time
 
@@ -49,54 +48,57 @@ data = loader.load("ascent07", "fashion_mnist_sample.parquet")
 pixel_cols = [c for c in data.columns if c != "label"]
 n_samples = data.height
 
-normalized = data.with_columns([(pl.col(c) / 255.0).alias(c) for c in pixel_cols])
+# TODO: Normalize pixels to [0, 1] using with_columns and pl.col(c)/255.0 for each pixel column.
+normalized = ____
 
-n_train = int(n_samples * 0.8)
-train_data = normalized[:n_train]
-test_data = normalized[n_train:]
+# TODO: Train/test split 80/20 via slicing.
+n_train = ____
+train_data = ____
+test_data = ____
 
 print(f"=== Fashion-MNIST Pipeline ===")
 print(f"Total: {n_samples}, Train: {n_train}, Test: {n_samples - n_train}")
 print(f"Features: {len(pixel_cols)} pixels (28×28 flattened)")
-print(f"Classes: 10 (T-shirt, Trouser, Pullover, Dress, Coat,")
-print(f"          Sandal, Shirt, Sneaker, Bag, Ankle boot)")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Train CNN via TrainingPipeline
 # ══════════════════════════════════════════════════════════════════════
 
+# Note: In production you would use TrainingPipeline(feature_store, registry).
+# Here we demonstrate the pipeline concept with a nearest-centroid classifier.
 from collections import Counter
+import math
 
 print(f"\n=== Training (Nearest-Centroid Classifier) ===")
 start_time = time.time()
 
-# TODO: Train nearest-centroid classifier on train_data.
-# 1. Accumulate per-class pixel sums (class_sums) and counts (class_counts).
-# 2. Compute centroids = {label: [mean pixel values]}.
-# 3. Evaluate on test_data: for each sample find nearest centroid (min L2 squared distance).
-# 4. Compute test_accuracy = correct / len(test_labels).
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+class_sums: dict[int, list[float]] = {}
+class_counts: dict[int, int] = {}
+# TODO: Iterate train_data, accumulating sums of pixel vectors per class and counts per class.
+for i in range(train_data.height):
+    ____
+
+# TODO: Compute centroids[label] = class_sums[label] / class_counts[label].
+centroids = ____
 
 train_time = time.time() - start_time
-print(f"Training time: {train_time:.1f}s")
-print(f"Classes: {len(centroids)}")
+print(f"Training time: {train_time:.1f}s, classes: {len(centroids)}")
+
+# TODO: Predict on test set via nearest centroid (minimum squared distance).
+test_labels = test_data["label"].to_list()
+pred_labels = []
+for i in range(test_data.height):
+    row = list(test_data.select(pixel_cols).row(i))
+    best_label = ____
+    pred_labels.append(best_label)
+
+# TODO: Compute test_accuracy.
+correct = ____
+test_accuracy = ____
 print(f"Test accuracy: {test_accuracy:.4f}")
 
 viz = ModelVisualizer()
-print(f"Model trained and evaluated.")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -105,25 +107,23 @@ print(f"Model trained and evaluated.")
 
 
 async def register_model():
-    # TODO: conn = ConnectionManager("sqlite:///capstone_models.db"); await conn.initialize().
-    # registry = ModelRegistry(conn).
-    # version = await registry.register_model(name="fashion_mnist_cnn",
-    #   artifact=pickle.dumps(centroids), metrics=[MetricSpec(...) for each metric]).
-    # await registry.promote_model(name="fashion_mnist_cnn",
-    #   version=version.version, target_stage="production").
-    # Print registered name/version/metrics; return (registry, version).
+    # TODO: Create ConnectionManager("sqlite:///capstone_models.db") and initialize.
+    conn = ____
     ____
+
+    # TODO: Build ModelRegistry and call register_model with name, pickled centroids, metrics list.
+    registry = ____
+
+    version = ____
+
+    # TODO: Promote to production stage via registry.promote_model.
     ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+
+    print(f"\n=== ModelRegistry ===")
+    print(f"Registered: fashion_mnist_cnn v{version.version} (production)")
+    print(f"Metrics: accuracy={test_accuracy:.4f}, train_time={train_time:.1f}s")
+
+    return registry, version
 
 
 registry, model_version = asyncio.run(register_model())
@@ -135,17 +135,14 @@ registry, model_version = asyncio.run(register_model())
 
 
 async def export_onnx():
-    bridge = OnnxBridge()
+    # TODO: Instantiate OnnxBridge.
+    bridge = ____
 
     print(f"\n=== ONNX Export ===")
-    print(
-        f"OnnxBridge.export(model, input_shape, output_path) converts to ONNX format."
-    )
+    print(f"OnnxBridge.export(model, input_shape, output_path) → .onnx file.")
     print(
         f"OnnxBridge.validate(path, test_data, expected) verifies output consistency."
     )
-    print(f"ONNX is platform-agnostic: deploy to mobile, edge, browser, or server.")
-    print(f"Skipping actual export (centroid model is not a neural network).")
 
     return bridge, "fashion_mnist_cnn.onnx"
 
@@ -157,15 +154,31 @@ bridge, onnx_path = asyncio.run(export_onnx())
 # TASK 5: Deploy via InferenceServer
 # ══════════════════════════════════════════════════════════════════════
 
-print(f"InferenceServer(model_path=..., port=8090) serves ONNX models over HTTP.")
 
-# TODO: Define class_names list (10 Fashion-MNIST labels in order).
-# Then for each of the first 3 test samples, find nearest centroid and print true vs predicted.
-____
+print(f"\n=== InferenceServer Deployment ===")
+print(f"InferenceServer(model_path=..., port=8090) serves ONNX over HTTP.")
+
+class_names = [
+    "T-shirt",
+    "Trouser",
+    "Pullover",
+    "Dress",
+    "Coat",
+    "Sandal",
+    "Shirt",
+    "Sneaker",
+    "Bag",
+    "Ankle boot",
+]
+
 for i in range(3):
-    ____
-    ____
-    ____
+    sample = list(test_data.select(pixel_cols).row(i))
+    # TODO: Predict best_label via nearest-centroid over sample.
+    best_label = ____
+    true_label = int(test_data["label"][i])
+    print(
+        f"  Sample {i+1}: true={class_names[true_label]}, pred={class_names[best_label]}"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -174,18 +187,21 @@ for i in range(3):
 
 print(f"\n=== Inference Speed Comparison ===")
 
-# TODO: Benchmark centroid inference. Extract n_test=100 samples, time nearest-centroid loop.
 n_test = min(100, test_data.height)
-____
-____
-____
-____
-____
+test_samples = [list(test_data.select(pixel_cols).row(i)) for i in range(n_test)]
+
+# TODO: Time n_test nearest-centroid predictions; compute original_time.
+start = time.time()
+for sample in test_samples:
+    ____
+original_time = time.time() - start
 
 print(
-    f"Centroid model: {n_test} predictions in {original_time:.3f}s "
-    f"({original_time/n_test*1000:.1f}ms/prediction)"
+    f"Centroid model: {n_test} preds in {original_time:.3f}s ({original_time/n_test*1000:.1f}ms/pred)"
 )
-print(f"ONNX model: typically 2-5x faster due to graph optimizations")
+print(f"ONNX typically 2-5x faster due to graph optimizations.")
+
+print(f"\n=== Full Pipeline Summary ===")
+print(f"Data → Training → ModelRegistry → OnnxBridge → InferenceServer")
 
 print("\n✓ Exercise 8 complete — end-to-end DL pipeline with Kailash")
