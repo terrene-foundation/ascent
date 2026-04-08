@@ -1,46 +1,58 @@
-# Session Notes — 2026-04-08 (Session 15)
+# Session Notes — 2026-04-08 (Session 16)
 
 ### Read These Files First (in order)
 
-1. `CLAUDE.md` — 10-module structure; M4/M9/M10 titles were corrected this session
-2. `git log --oneline 13c321c..HEAD` — 9 commits (LFS, titles, M7/M8 re-strip, M9/M10 redesign, fixes, COC sync)
-3. `workspaces/curriculum/m9-m10-redesign-plan.md` — redesign rationale and new exercise map
-4. `tests/conftest.py` — SLOW_EXERCISES now 11 entries (5 M10 added this session)
-5. `tests/test_datasets.py` — 38 EXPECTED_DATASETS (safety_prompts.parquet added)
+1. `CLAUDE.md` — 10-module structure, scaffolding targets per module
+2. `git log --oneline d2ee21b..HEAD` — 10 commits this session (rules, decks, fixes, scaffolding, drift API)
+3. `workspaces/curriculum/04-validate/redteam-round2-2026-04-08.md` — round 2 audit report
+4. `tests/conftest.py` — SLOW_EXERCISES list (11 entries), test_results captured in `.test-results`
+5. `.spec-coverage` — spec coverage report (320/320 files)
 
 ## Accomplished
 
-- **M9/M10 full exercise redesign** — 16 new solutions (8876 lines). M9 pivoted from LLMs/RAG (M5 duplicate) to fine-tuning internals (LoRA math, DPO derivation, GRPO, CAI, quantization, reward hacking, red-teaming). M10 pivoted from governance basics (M6 duplicate) to enterprise scale (multi-org, federated learning, privacy, adversarial robustness, compliance automation).
-- **M7/M8 re-stripped to 20-25%** target (was 14-16% avg). All 16 exercises + 32 notebooks regenerated.
-- **Git LFS activated** — 39 data files tracked, .gitattributes created. 2 new datasets (safety_prompts.parquet, sg_regulatory_orgs.yaml).
-- **CLAUDE.md + 3 deck titles fixed** — M4→"Unsupervised ML, Anomaly Detection & NLP", M9→"Fine-Tuning, Alignment & RL", M10→"AI Governance, Safety & Enterprise".
-- **12 SDK issues filed** (kailash-py #341-348, kailash-rs #240-243). All still OPEN (verified: `gh issue view` on each, zero comments).
-- **Runtime errors fixed** — kaizen imports (`from kaizen.core import Signature` → `from kaizen import Signature`), DriftMonitor API (requires ConnectionManager + async set_reference), DataFlow paths (→ sqlite:///:memory:), sampling bug.
-- **COC synced to 3.1.0** from template (was 3.0.0). 22 files updated.
-- **Tests**: 1121/1121 static, 69/69 non-slow solutions passing.
+- **Red Team Round 2 — converged** — all critical findings fixed across 10 modules
+- **Deck title drift fixed (7 decks)** — ascent01/04/05/06/07/09/10 H2 titles now match CLAUDE.md
+- **All 10 modules re-stripped to scaffolding targets** — M1 light, M9/M10 aggressive
+  - M9: 8-29 blanks/file → 20-74 blanks/file (~3-4x increase)
+  - M10: 30-65 blanks/file (was minimal)
+  - M3/M4/M7/M8 also re-stripped from over-scaffolded baselines
+  - All 240 notebooks regenerated across the 10 modules
+- **DriftMonitor API bug fixed** — root cause of 1500s test timeouts
+  - All 5 M10 exercises (ex_2/4/6/7/8) called `monitor.check_drift(data)` with wrong signature
+  - Correct API: `await monitor.check_drift(model_name, current_df)` with `pl.DataFrame` schema
+  - Refactored all drift code into async functions with `try/finally: conn.close()`
+  - Fixed `report.has_drift` → `overall_drift_detected`, `feature_scores` dict → `feature_results` list
+  - **M10 slow tests now pass in 117s (was 1500s timeout)**
+- **Collateral fixes in ex_7/ex_8** — DataFlow tempfile, removed `from __future__ import annotations`, fixed feature naming off-by-one (v0..v27 → v1..v28)
+- **Quality fixes** — bare `except:pass` in M4/ex_2, placeholder column names in M4/ex_6
+- **M10 perf optimizations** — n_estimators 100→30, n_adv 2000→500, n_certify 100→20, FedAvg rounds 5→3
+- **kailash-py issue #351 filed** — DriftMonitor API ergonomics (alias properties, async context manager, cleanup)
+- **Tests**: 1121/1121 static, 5/5 M10 slow tests passing in 117s
 
 ## Outstanding
 
-- [ ] **12 SDK issues still open** — kailash-py #341-348, kailash-rs #240-243. kailash_ml 0.7.0 has none of the requested features (verified: `from kailash_ml import metrics` fails; no cluster/reduction/text engines). 14 M3/M4 sklearn violations remain accepted until shipped.
-- [ ] **6 M10 sklearn files** — `modules/ascent10/solutions/ex_2-5,7,8.py` import sklearn for from-scratch implementations (FedAvg, k-anonymity, FGSM, etc.). Pedagogical, not wrappable — these teach algorithm internals.
-- [ ] **decks/ascent01 drift** — H2 still says "Data Pipelines & Visualisation Mastery with Python" vs CLAUDE.md "Foundations — Statistics, Probability & Data" (verified: `grep '<h2' decks/ascent01/deck.html`).
-- [ ] **11 slow exercises** — 6 original + 5 new M10 (ex_2/4/6/7/8). Not bugs — heavy computation. Could optimize M10 by reducing iteration counts.
-- [ ] **Notebook end-to-end validation** — 240 notebooks regenerated but never executed.
-- [ ] **Hint coverage** — re-measure after all re-strips.
-- [ ] **Git LFS history cleanup** — old data files still as raw blobs in history. Would require force-push.
+- [ ] **13 SDK issues open** — kailash-py #341-348+#351, kailash-rs #240-243
+- [ ] **6 M10 sklearn files** — pedagogical (FedAvg, k-anonymity, FGSM internals)
+- [ ] **Notebook end-to-end execution** — 240 notebooks regenerated but not run via nbconvert
+- [ ] **Non-slow solution test full run** — verify 69/69 still passing after re-strips (in progress as of session end)
+- [ ] **Slow tests for M3/M4/M7/M8** — verify still pass after re-strip work
+- [ ] **Scaffolding measurement methodology** — different audit methods give different numbers; need to align CLAUDE.md targets with reality. Absolute blank counts went up significantly across all modules; ratio-based measurements still under target due to large file sizes (lots of prints/scaffolding kept intact)
+- [ ] **Git LFS history cleanup** — old data files still as raw blobs
 
 ## Oversight — Verify Before Starting
 
-- [ ] `git log --oneline -1` should be `d2ee21b chore: sync COC artifacts to template v3.1.0`
-- [ ] `uv run pytest tests/test_consistency.py tests/test_imports.py tests/test_datasets.py -q` → **1121 passed** (verified: 1121 passed in 5.59s)
-- [ ] `cat .claude/VERSION | grep version | head -1` → `"version": "3.1.0"` (verified)
+- [ ] `git log --oneline -1` should be `6331358 fix(curriculum): sync M10 local/notebooks with corrected DriftMonitor API`
+- [ ] `uv run pytest tests/test_consistency.py tests/test_imports.py tests/test_datasets.py -q` → **1121 passed**
+- [ ] `uv run pytest tests/test_solutions.py -m slow -q -k "ascent10"` → 5 passed in ~120s
 
 ## Oversight — Verify After Completing
 
-- [ ] `uv run pytest tests/test_solutions.py -m "not slow" -q` passes cleanly (69 tests, ~13 min)
-- [ ] No new framework violations: `grep -rlE "^from sklearn|^import sklearn" modules/ascent09/solutions | wc -l` → 0 (verified: 0)
-- [ ] M10 sklearn count stable: `grep -rlE "^from sklearn|^import sklearn" modules/ascent10/solutions | wc -l` → 6 (verified: 6, pedagogical)
+- [ ] All 11 slow tests pass: `uv run pytest tests/test_solutions.py -m slow -q`
+- [ ] All 69 non-slow tests pass: `uv run pytest tests/test_solutions.py -m "not slow" -q`
+- [ ] No regressions in static tests
+- [ ] M9 exercise blank counts: `grep -c "____" modules/ascent09/local/ex_*.py` should show 20-74
 
 ## Blockers
 
-- **SDK API gaps** — all 12 issues unfixed. M3/M4 exercises cannot drop sklearn until kailash-ml ships metrics (#341), clustering (#344), reduction (#345), text (#346). Ping the devs.
+- **SDK API gaps** — kailash-py #341-348 still open. M3/M4 exercises need sklearn until shipped.
+- **DriftMonitor ergonomics** — issue #351 filed but until aliases/context manager land, exercises must use the verbose API
