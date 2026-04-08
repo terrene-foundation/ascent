@@ -186,15 +186,15 @@ def on_drift_detected(drift_report, pipeline_artefacts: dict) -> dict:
 # TODO: on_drift_detected on the drifted result and print the new audit verdict.
 stable_data = ____
 stable_report = ____
-print(f"Week 1 (stable): drift={stable_report.has_drift}")
-if not stable_report.has_drift:
+print(f"Week 1 (stable): drift={stable_report.overall_drift_detected}")
+if not stable_report.overall_drift_detected:
     print(f"  No compliance audit triggered.\n")
 
 drifted_data = ____
 drift_report = ____
-print(f"Week 2 (drift): drift={drift_report.has_drift}")
+print(f"Week 2 (drift): drift={drift_report.overall_drift_detected}")
 
-if drift_report.has_drift:
+if drift_report.overall_drift_detected:
     print(f"  Drift detected -> triggering compliance audit...\n")
     drift_audit = ____
     print(f"  Audit Status: {drift_audit['overall_status']}")
