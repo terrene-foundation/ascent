@@ -54,6 +54,9 @@ setup_environment()
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 
+# Subsample for fast end-to-end execution; full dataset would take 5+ min
+credit = credit.sample(n=20000, seed=42) if len(credit) > 20000 else credit
+
 pipeline = PreprocessingPipeline()
 result = pipeline.setup(
     credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
@@ -78,7 +81,7 @@ feature_names = col_info["feature_columns"]
 
 # Best hyperparameters from Exercise 5 (Bayesian optimization)
 model = lgb.LGBMClassifier(
-    n_estimators=500,
+    n_estimators=150,
     learning_rate=0.05,
     max_depth=7,
     num_leaves=63,
@@ -94,7 +97,7 @@ model = lgb.LGBMClassifier(
 model.fit(X_train, y_train)
 
 # Calibrate
-calibrated_model = CalibratedClassifierCV(model, method="isotonic", cv=5)
+calibrated_model = CalibratedClassifierCV(model, method="isotonic", cv=3)
 calibrated_model.fit(X_train, y_train)
 
 y_proba = calibrated_model.predict_proba(X_test)[:, 1]
@@ -230,20 +233,20 @@ print(f"Ambiguous rate: {1 - singleton_rate:.1%} (both classes possible)")
 complexities = [
     (
         "Simple (depth=3)",
-        lgb.LGBMClassifier(max_depth=3, n_estimators=100, verbose=-1, random_state=42),
+        lgb.LGBMClassifier(max_depth=3, n_estimators=50, verbose=-1, random_state=42),
     ),
     (
         "Medium (depth=6)",
-        lgb.LGBMClassifier(max_depth=6, n_estimators=300, verbose=-1, random_state=42),
+        lgb.LGBMClassifier(max_depth=6, n_estimators=100, verbose=-1, random_state=42),
     ),
     (
         "Complex (depth=10)",
-        lgb.LGBMClassifier(max_depth=10, n_estimators=500, verbose=-1, random_state=42),
+        lgb.LGBMClassifier(max_depth=10, n_estimators=150, verbose=-1, random_state=42),
     ),
     (
         "Very Complex (depth=-1)",
         lgb.LGBMClassifier(
-            max_depth=-1, n_estimators=1000, num_leaves=255, verbose=-1, random_state=42
+            max_depth=-1, n_estimators=200, num_leaves=255, verbose=-1, random_state=42
         ),
     ),
 ]
@@ -253,7 +256,7 @@ print(f"{'Model':<25} {'CV Mean':>10} {'CV Std':>10} {'Train':>10} {'Gap':>10}")
 print("─" * 70)
 
 for name, m in complexities:
-    cv_scores = cross_val_score(m, X_train, y_train, cv=5, scoring="average_precision")
+    cv_scores = cross_val_score(m, X_train, y_train, cv=3, scoring="average_precision")
     m.fit(X_train, y_train)
     train_score = average_precision_score(y_train, m.predict_proba(X_train)[:, 1])
     gap = train_score - cv_scores.mean()
@@ -278,10 +281,7 @@ async def persist_final():
     await conn.initialize()
 
     registry = ModelRegistry(conn)
-    await registry.initialize()
-
     tracker = ExperimentTracker(conn)
-    await tracker.initialize()
 
     # Register calibrated model (serialize to bytes)
     import pickle
