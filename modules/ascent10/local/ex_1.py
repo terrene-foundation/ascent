@@ -50,139 +50,35 @@ setup_environment()
 # TASK 1: Define two PACT organisations — MAS and DBS Bank
 # ══════════════════════════════════════════════════════════════════════
 
-# --- MAS (Monetary Authority of Singapore) ---
-mas_yaml = """
-org_id: mas_singapore
-name: "Monetary Authority of Singapore"
+# TODO: Write a YAML org definition for MAS (regulator).
+# TODO: Include departments (ai_supervision, model_risk), teams,
+# TODO: roles (chief_ai_officer, lead_inspector, ai_inspector,
+# TODO: model_reviewer), and clearances at top_secret/secret/confidential.
+mas_yaml = ____
 
-departments:
-  - id: ai_supervision
-    name: "AI & Technology Supervision"
-  - id: model_risk
-    name: "Model Risk Division"
+# TODO: Write a YAML org definition for DBS Bank.
+# TODO: Include bank_ceo, compliance_officer, ml_lead, credit_agent (agent: true),
+# TODO: compliance_agent (agent: true). Grant clearances on customer_data,
+# TODO: model_internals, model_cards, audit_trails compartments.
+bank_yaml = ____
 
-teams:
-  - id: inspection_team
-    name: "On-Site Inspection"
-  - id: review_team
-    name: "Model Review"
+# TODO: Write each YAML to a temp file, load_org_yaml, then compile_org.
+mas_file = ____
+bank_file = ____
 
-roles:
-  - id: chief_ai_officer
-    name: "Chief AI Officer"
-    is_primary_for_unit: ai_supervision
+mas_loaded = ____
+bank_loaded = ____
 
-  - id: lead_inspector
-    name: "Lead Inspector"
-    reports_to: chief_ai_officer
-    agent: false
+mas_compiled = ____
+bank_compiled = ____
 
-  - id: ai_inspector
-    name: "AI Inspector"
-    reports_to: lead_inspector
-    agent: false
+# TODO: Build role_id -> address lookup dicts for both orgs by walking
+# TODO: compiled.nodes and selecting nodes with a non-vacant role_definition.
+mas_roles = ____
+____
 
-  - id: model_reviewer
-    name: "Model Risk Reviewer"
-    is_primary_for_unit: model_risk
-    agent: false
-
-clearances:
-  - role: chief_ai_officer
-    level: top_secret
-    compartments: [regulatory_data, model_cards, audit_trails, inspection_reports]
-  - role: lead_inspector
-    level: secret
-    compartments: [regulatory_data, model_cards, audit_trails]
-  - role: ai_inspector
-    level: confidential
-    compartments: [model_cards, audit_trails]
-  - role: model_reviewer
-    level: secret
-    compartments: [model_cards, audit_trails, inspection_reports]
-"""
-
-# --- DBS Bank ---
-bank_yaml = """
-org_id: dbs_bank
-name: "DBS Bank"
-
-departments:
-  - id: ai_centre
-    name: "AI Centre of Excellence"
-  - id: compliance
-    name: "Compliance"
-
-teams:
-  - id: ml_ops
-    name: "ML Operations"
-  - id: compliance_ai
-    name: "AI Compliance"
-
-roles:
-  - id: bank_ceo
-    name: "Chief Executive Officer"
-    is_primary_for_unit: ai_centre
-
-  - id: compliance_officer
-    name: "Chief Compliance Officer"
-    reports_to: bank_ceo
-
-  - id: ml_lead
-    name: "ML Engineering Lead"
-    reports_to: bank_ceo
-    agent: false
-
-  - id: credit_agent
-    name: "Credit Underwriting Agent"
-    reports_to: ml_lead
-    agent: true
-
-  - id: compliance_agent
-    name: "Compliance Monitoring Agent"
-    reports_to: compliance_officer
-    agent: true
-
-clearances:
-  - role: bank_ceo
-    level: top_secret
-    compartments: [customer_data, model_internals, audit_trails, production_logs]
-  - role: compliance_officer
-    level: secret
-    compartments: [audit_trails, model_cards, production_logs, regulatory_data]
-  - role: ml_lead
-    level: secret
-    compartments: [customer_data, model_internals, model_cards]
-  - role: credit_agent
-    level: confidential
-    compartments: [customer_data, model_cards]
-  - role: compliance_agent
-    level: confidential
-    compartments: [audit_trails, model_cards]
-"""
-
-# Compile both organisations
-mas_file = Path(tempfile.mktemp(suffix=".yaml"))
-mas_file.write_text(mas_yaml)
-bank_file = Path(tempfile.mktemp(suffix=".yaml"))
-bank_file.write_text(bank_yaml)
-
-mas_loaded = load_org_yaml(str(mas_file))
-bank_loaded = load_org_yaml(str(bank_file))
-
-mas_compiled = compile_org(mas_loaded.org_definition)
-bank_compiled = compile_org(bank_loaded.org_definition)
-
-# Build role_id -> address lookups
-mas_roles = {}
-for addr, node in mas_compiled.nodes.items():
-    if node.role_definition is not None and not node.is_vacant:
-        mas_roles[node.node_id] = addr
-
-bank_roles = {}
-for addr, node in bank_compiled.nodes.items():
-    if node.role_definition is not None and not node.is_vacant:
-        bank_roles[node.node_id] = addr
+bank_roles = ____
+____
 
 print("=== Organisation 1: MAS ===")
 print(f"Org ID: {mas_compiled.org_id}")
@@ -196,32 +92,18 @@ print(f"Nodes: {len(bank_compiled.nodes)}")
 for role_id, addr in bank_roles.items():
     print(f"  {role_id:<25} -> {addr}")
 
-# TODO: Create two GovernanceEngines (mas_engine, bank_engine) from loaded org definitions
-# Hint: GovernanceEngine(loaded.org_definition)
+# TODO: Create a GovernanceEngine for each org from its loaded org_definition.
 mas_engine = ____
 bank_engine = ____
 
-# TODO: Build level_map dict (string -> ConfidentialityLevel) and grant clearances to both orgs
-# Hint: for cs in loaded.clearances: if cs.role_id in roles: RoleClearance(role_address, max_clearance,
-#         compartments=frozenset(cs.compartments), granted_by_role_address="system_init")
-#       then engine.grant_clearance(addr, clearance) for each role in both mas and bank
+# TODO: Map yaml clearance level strings to ConfidentialityLevel enum values.
+level_map = ____
+
+# TODO: For every clearance in each loaded org, build a RoleClearance
+# TODO: (role_address, max_clearance, frozenset(compartments), granted_by_role_address)
+# TODO: and call engine.grant_clearance(addr, clearance).
 ____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+
 ____
 
 print(f"\nGovernance engines created and clearances granted.")
@@ -231,11 +113,10 @@ print(f"\nGovernance engines created and clearances granted.")
 # TASK 2: KSP bridge — cross-org data sharing rules
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Define ksp_bridge dict with bridge_id, source_org, target_org,
-#   permitted_compartments (model_cards, audit_trails),
-#   restricted_compartments (customer_data, model_internals),
-#   conditions (requires_notice=True, notice_period_days=5, max_duration_days=30,
-#               requires_bank_ceo_approval=True)
+# TODO: Define a Knowledge Sharing Policy (KSP) bridge as a dict with
+# TODO: bridge_id, source_org, target_org, permitted_compartments
+# TODO: (model_cards, audit_trails), restricted_compartments
+# TODO: (customer_data, model_internals), and conditions (notice + approval).
 ksp_bridge = ____
 
 print(f"\n=== KSP Bridge ===")
@@ -246,10 +127,6 @@ print(f"Restricted compartments: {ksp_bridge['restricted_compartments']}")
 print(f"Conditions: {ksp_bridge['conditions']}")
 
 
-# TODO: Implement check_cross_org_access
-# Hint: 1) get requester clearance via engine.get_context(addr).effective_clearance_level
-#        2) check item compartments against bridge permitted/restricted sets
-#        3) compare requester clearance value vs item classification value
 def check_cross_org_access(
     requester_org_engine: GovernanceEngine,
     requester_addr: str,
@@ -257,17 +134,13 @@ def check_cross_org_access(
     bridge: dict,
 ) -> dict:
     """Check if a cross-org access request is permitted under KSP bridge rules."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: Get the requester's GovernanceContext via engine.get_context()
+    # TODO: Pull effective_clearance_level from the context
+    # TODO: Build sets from bridge permitted/restricted compartments
+    # TODO: If item compartments intersect restricted -> deny with reason
+    # TODO: If item compartments are not subset of permitted -> deny
+    # TODO: If requester clearance value < item classification value -> deny
+    # TODO: Otherwise return {"allowed": True, "reason": ...}
     ____
 
 
@@ -275,29 +148,20 @@ def check_cross_org_access(
 # TASK 3: Regulatory inspection — MAS inspector accesses bank data
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Define bank_items list of 4 KnowledgeItems:
-#   credit_model_card (CONFIDENTIAL, model_cards), governance_audit_log (SECRET, audit_trails),
-#   customer_loan_records (SECRET, customer_data), model_weights_v3 (TOP_SECRET, model_internals)
-# Then test ai_inspector and lead_inspector access to each item via check_cross_org_access
-# and print ALLOW/DENY results for both inspectors
+# TODO: Build 4 KnowledgeItems for the bank (credit_model_card,
+# TODO: governance_audit_log, customer_loan_records, model_weights_v3)
+# TODO: at varying classifications and compartments.
 bank_items = ____
 
 print(f"\n=== Regulatory Inspection Simulation ===")
 print(f"MAS inspector requesting access to DBS Bank resources:\n")
 
-# TODO: Loop over bank_items, call check_cross_org_access for mas_roles["ai_inspector"]
-# then for mas_roles["lead_inspector"], print ALLOW/DENY + reason
+# TODO: For each bank item, call check_cross_org_access using mas_engine
+# TODO: and the ai_inspector address. Print ALLOW/DENY + reason.
 ____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+
+print(f"\nLead Inspector (SECRET clearance) requesting same resources:")
+# TODO: Re-run for the lead_inspector role; print ALLOW/DENY per item.
 ____
 
 
@@ -305,60 +169,34 @@ ____
 # TASK 4: Delegation chaining — CEO -> compliance -> agent
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create CEO->compliance envelope using RoleEnvelope + ConstraintEnvelopeConfig
-# Hint: RoleEnvelope(id=..., defining_role_address=bank_roles["bank_ceo"],
-#         target_role_address=bank_roles["compliance_officer"],
-#         envelope=ConstraintEnvelopeConfig(operational=OperationalConstraintConfig(allowed_actions=[...])))
-ceo_to_compliance_env = RoleEnvelope(
-    id=f"env-{uuid.uuid4().hex[:8]}",
-    defining_role_address=____,
-    target_role_address=____,
-    envelope=ConstraintEnvelopeConfig(
-        id="compliance-envelope",
-        operational=OperationalConstraintConfig(
-            allowed_actions=____,
-        ),
-        temporal=TemporalConstraintConfig(),
-        data_access=DataAccessConstraintConfig(),
-        communication=CommunicationConstraintConfig(),
-    ),
-)
-bank_engine.set_role_envelope(ceo_to_compliance_env)
+# TODO: Build a RoleEnvelope where bank_ceo defines an envelope for
+# TODO: compliance_officer with operational allowed_actions for review,
+# TODO: report generation, regulatory checks, delegation. Use empty
+# TODO: TemporalConstraintConfig / DataAccessConstraintConfig / CommunicationConstraintConfig.
+ceo_to_compliance_env = ____
+# TODO: Apply the envelope via bank_engine.set_role_envelope(...)
+____
 
-# TODO: Create compliance->agent envelope (tighter — fewer actions than ceo_to_compliance)
-# Hint: same pattern; allowed_actions should be a subset of compliance officer's actions
-compliance_to_agent_env = RoleEnvelope(
-    id=f"env-{uuid.uuid4().hex[:8]}",
-    defining_role_address=bank_roles["compliance_officer"],
-    target_role_address=bank_roles["compliance_agent"],
-    envelope=ConstraintEnvelopeConfig(
-        id="compliance-agent-envelope",
-        operational=OperationalConstraintConfig(
-            allowed_actions=____,
-        ),
-        temporal=TemporalConstraintConfig(),
-        data_access=DataAccessConstraintConfig(),
-        communication=CommunicationConstraintConfig(),
-    ),
-)
-bank_engine.set_role_envelope(compliance_to_agent_env)
+# TODO: Build a tighter envelope where compliance_officer defines actions
+# TODO: for compliance_agent (read-only review_audit_trail, check_regulatory_status).
+compliance_to_agent_env = ____
+____
 
 print(f"\n=== Delegation Chain ===")
 print(f"CEO -> Compliance Officer -> Compliance Agent")
 print(f"\nMonotonic tightening in action:")
 
+# TODO: Iterate ["bank_ceo", "compliance_officer", "compliance_agent"],
+# TODO: get_context for each, print clearance + sorted allowed_actions.
 chain_roles = ["bank_ceo", "compliance_officer", "compliance_agent"]
-for role_id in chain_roles:
-    ctx = bank_engine.get_context(bank_roles[role_id])
-    actions = sorted(ctx.allowed_actions) if ctx.allowed_actions else "(no envelope)"
-    print(f"  {role_id:<25} clearance={str(ctx.effective_clearance_level):<15}")
-    print(f"    actions={actions}")
+____
 
 print(f"\nDelegation audit trail:")
 print(f"  CEO granted envelope to compliance_officer")
 print(f"  compliance_officer granted envelope to compliance_agent")
 print(f"  Each step is logged in GovernanceEngine audit store")
-integrity = bank_engine.verify_audit_integrity()
+# TODO: Verify audit trail integrity and print VALID/BROKEN.
+integrity = ____
 print(f"  Audit integrity: {'VALID' if integrity else 'BROKEN'}")
 
 
@@ -366,46 +204,31 @@ print(f"  Audit integrity: {'VALID' if integrity else 'BROKEN'}")
 # TASK 5: Breach simulation — agent exceeds clearance
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create a RoleEnvelope for credit_agent with allowed_actions=["predict_default","query_application"]
-# Then call bank_engine.set_role_envelope(credit_agent_env)
-# Hint: defining_role_address=bank_roles["ml_lead"], target_role_address=bank_roles["credit_agent"]
+# TODO: Build an envelope for credit_agent with allowed_actions limited to
+# TODO: predict_default and query_application; defining role is ml_lead.
 credit_agent_env = ____
-bank_engine.set_role_envelope(credit_agent_env)
+____
 
-# TODO: Create PactGovernedAgent for the credit_agent
-# Hint: PactGovernedAgent(engine=bank_engine, role_address=bank_roles["credit_agent"])
+# TODO: Wrap credit_agent as a PactGovernedAgent.
 governed_credit = ____
 
 print(f"\n=== Breach Simulation ===")
 print(f"Credit Agent envelope: {sorted(governed_credit.context.allowed_actions)}")
 print(f"Credit Agent clearance: {governed_credit.context.effective_clearance_level}")
 
-breach_tests = [
-    ("predict_default", "Permitted action — within envelope"),
-    ("query_application", "Permitted action — within envelope"),
-    ("export_customer_data", "BREACH — not in envelope"),
-    ("modify_model_weights", "BREACH — not in envelope"),
-    ("escalate_clearance", "BREACH — not in envelope"),
-    ("access_audit_logs", "BREACH — not in envelope"),
-]
+# TODO: Build a list of (action, description) for permitted + breach actions.
+breach_tests = ____
 
 print(f"\nAction verification:")
-for action, description in breach_tests:
-    verdict = bank_engine.verify_action(bank_roles["credit_agent"], action)
-    status = "ALLOW" if verdict.level == "auto_approved" else "BLOCK"
-    print(f"  {action:<30} {status:<6} ({description})")
+# TODO: For each action, call bank_engine.verify_action(credit_agent_addr, action),
+# TODO: classify ALLOW if verdict.level == "auto_approved" else BLOCK, print row.
+____
 
-classified_item = KnowledgeItem(
-    item_id="production_model_weights",
-    classification=ConfidentialityLevel.TOP_SECRET,
-    owning_unit_address=bank_roles.get("ml_lead", "R1"),
-    compartments=frozenset(["model_internals"]),
-)
+# TODO: Build a TOP_SECRET KnowledgeItem (production_model_weights, model_internals).
+classified_item = ____
 
-# TODO: Use bank_engine.check_access to verify credit_agent cannot access TOP_SECRET item
-# Hint: check_access(role_address, knowledge_item, TrustPosture.SUPERVISED)
+# TODO: Use bank_engine.check_access with TrustPosture.SUPERVISED to attempt access.
 access_result = ____
-
 print(f"\nClassified access attempt (TOP_SECRET model weights):")
 print(f"  Agent clearance: {governed_credit.context.effective_clearance_level}")
 print(f"  Item classification: {classified_item.classification}")
@@ -413,19 +236,22 @@ print(f"  Decision: {'ALLOW' if access_result.allowed else 'DENY'}")
 print(f"  Reason: {access_result.reason}")
 
 print(f"\nFrozen context verification:")
+# TODO: Try to mutate governed_credit.context.role_address to prove the
+# TODO: dataclass is frozen; catch (AttributeError, TypeError).
 try:
-    governed_credit.context.role_address = "escalated_role"
+    ____
     print("  ERROR: Should have raised FrozenInstanceError!")
 except (AttributeError, TypeError) as e:
     print(f"  Self-modification blocked: {type(e).__name__}")
     print(f"  Agents cannot escalate their own privileges")
 
-integrity = bank_engine.verify_audit_integrity()
+# TODO: Verify final audit integrity.
+integrity = ____
 print(f"\nFinal audit integrity: {'VALID' if integrity else 'BROKEN'}")
 print(f"All breach attempts logged in audit trail")
 
-# Clean up
-mas_file.unlink()
-bank_file.unlink()
+# TODO: Clean up the temporary YAML files.
+____
+____
 
 print("\n--- Exercise 1 complete: multi-org governance with KSP bridges ---")

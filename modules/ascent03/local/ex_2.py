@@ -47,17 +47,13 @@ print(f"=== Singapore Credit Data ===")
 print(f"Shape: {credit.shape}")
 print(f"Default rate: {credit['default'].mean():.2%}")
 
-# Preprocess with PreprocessingPipeline
-pipeline = PreprocessingPipeline()
-result = pipeline.setup(
-    data=credit,
-    target="default",
-    train_size=0.8,
-    seed=42,
-    normalize=False,  # Tree models don't need normalisation
-    categorical_encoding="ordinal",
-    imputation_strategy="median",
-)
+# TODO: Instantiate PreprocessingPipeline (no args)
+pipeline = ____  # Hint: PreprocessingPipeline()
+
+# TODO: Call pipeline.setup with data=credit, target="default", train_size=0.8,
+#       seed=42, normalize=False (trees don't need it),
+#       categorical_encoding="ordinal", imputation_strategy="median"
+result = ____
 
 print(f"\nTask type: {result.task_type}")
 print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
@@ -83,20 +79,27 @@ print(f"Features: {len(feature_names)}")
 # TASK 1: Train all three boosting algorithms with defaults
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Define models dict with XGBoost, LightGBM, CatBoost classifiers.
-#       Each uses n_estimators=500 (or iterations=500 for CatBoost),
-#       learning_rate=0.1, max_depth=6, early_stopping_rounds=50.
-models = {
-    "XGBoost": ____,  # Hint: xgb.XGBClassifier(n_estimators=500, learning_rate=0.1, max_depth=6, eval_metric="logloss", early_stopping_rounds=50, random_state=42, verbosity=0)
-    "LightGBM": ____,  # Hint: lgb.LGBMClassifier(n_estimators=500, learning_rate=0.1, max_depth=6, num_leaves=31, early_stopping_round=50, random_state=42, verbose=-1)
-    "CatBoost": ____,  # Hint: cb.CatBoostClassifier(iterations=500, learning_rate=0.1, depth=6, early_stopping_rounds=50, random_seed=42, verbose=0)
-}
+# TODO: Build a dict of three models keyed by name:
+#   "XGBoost": xgb.XGBClassifier(n_estimators=500, learning_rate=0.1, max_depth=6,
+#                                eval_metric="logloss", random_state=42, verbosity=0)
+#   "LightGBM": lgb.LGBMClassifier(n_estimators=500, learning_rate=0.1, max_depth=6,
+#                                  num_leaves=31, random_state=42, verbose=-1)
+#   "CatBoost": cb.CatBoostClassifier(iterations=500, learning_rate=0.1, depth=6,
+#                                     early_stopping_rounds=50, random_seed=42, verbose=0)
+models = ____
 
 results = {}
 for name, model in models.items():
     print(f"\nTraining {name}...")
 
-    if name == "CatBoost":
+    if name == "XGBoost":
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_test, y_test)],
+            verbose=False,
+        )
+    elif name == "CatBoost":
         model.fit(X_train, y_train, eval_set=(X_test, y_test))
     else:
         model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
@@ -104,18 +107,23 @@ for name, model in models.items():
     y_pred = model.predict(X_test)
     y_proba = model.predict_proba(X_test)[:, 1]
 
+    # TODO: Compute roc_auc_score(y_test, y_proba)
+    auc_roc = ____
+    # TODO: Compute average_precision_score(y_test, y_proba)
+    auc_pr = ____
+    # TODO: Compute log_loss(y_test, y_proba)
+    ll = ____
+    # TODO: Compute brier_score_loss(y_test, y_proba)
+    brier = ____
+
     results[name] = {
         "model": model,
         "y_pred": y_pred,
         "y_proba": y_proba,
-        # TODO: Compute roc_auc_score
-        "auc_roc": ____,  # Hint: roc_auc_score(y_test, y_proba)
-        # TODO: Compute average_precision_score (AUC-PR)
-        "auc_pr": ____,  # Hint: average_precision_score(y_test, y_proba)
-        # TODO: Compute log_loss
-        "log_loss": ____,  # Hint: log_loss(y_test, y_proba)
-        # TODO: Compute brier_score_loss
-        "brier": ____,  # Hint: brier_score_loss(y_test, y_proba)
+        "auc_roc": auc_roc,
+        "auc_pr": auc_pr,
+        "log_loss": ll,
+        "brier": brier,
     }
 
     print(f"  AUC-ROC: {results[name]['auc_roc']:.4f}")
@@ -133,8 +141,9 @@ viz = ModelVisualizer()
 # Learning curves showing bias-variance trade-off
 print("\n=== Learning Curves ===")
 for name, r in results.items():
-    # TODO: Generate a learning curve figure using viz.learning_curve
-    fig = ____  # Hint: viz.learning_curve(r["model"], X_train, y_train, cv=5, train_sizes=[0.1, 0.25, 0.5, 0.75, 1.0])
+    # TODO: Use viz.learning_curve(r["model"], X_train, y_train, cv=5,
+    #       train_sizes=[0.1, 0.25, 0.5, 0.75, 1.0])
+    fig = ____
     fig.update_layout(title=f"Learning Curve: {name}")
     fig.write_html(f"ex1_learning_curve_{name.lower()}.html")
     print(f"  Saved: ex1_learning_curve_{name.lower()}.html")
@@ -144,19 +153,22 @@ for name, r in results.items():
 # TASK 3: Hyperparameter sensitivity (learning rate)
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Define learning rates to sweep across
-learning_rates = ____  # Hint: [0.01, 0.05, 0.1, 0.2, 0.5]
+learning_rates = [0.01, 0.05, 0.1, 0.2, 0.5]
 lr_results = {name: {} for name in ["XGBoost", "LightGBM"]}
 
 for lr in learning_rates:
-    # TODO: Create XGBClassifier with this learning_rate (same other params as Task 1)
-    xgb_model = ____  # Hint: xgb.XGBClassifier(n_estimators=500, learning_rate=lr, max_depth=6, eval_metric="logloss", early_stopping_rounds=50, random_state=42, verbosity=0)
-    xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
+    # XGBoost
+    # TODO: Build xgb.XGBClassifier with n_estimators=500, learning_rate=lr,
+    #       max_depth=6, eval_metric="logloss", random_state=42, verbosity=0
+    xgb_model = ____
+    xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
     y_proba = xgb_model.predict_proba(X_test)[:, 1]
     lr_results["XGBoost"][lr] = roc_auc_score(y_test, y_proba)
 
-    # TODO: Create LGBMClassifier with this learning_rate (same other params as Task 1)
-    lgb_model = ____  # Hint: lgb.LGBMClassifier(n_estimators=500, learning_rate=lr, max_depth=6, early_stopping_round=50, random_state=42, verbose=-1)
+    # LightGBM
+    # TODO: Build lgb.LGBMClassifier with n_estimators=500, learning_rate=lr,
+    #       max_depth=6, random_state=42, verbose=-1
+    lgb_model = ____
     lgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)])
     y_proba = lgb_model.predict_proba(X_test)[:, 1]
     lr_results["LightGBM"][lr] = roc_auc_score(y_test, y_proba)
@@ -185,7 +197,8 @@ for name, r in results.items():
         f"{r['log_loss']:>10.4f} {r['brier']:>10.4f}"
     )
 
-# TODO: Select the best model by AUC-PR using max() with a key function
+# Best model
+# TODO: Select the model with highest AUC-PR
 best_model = ____  # Hint: max(results.items(), key=lambda x: x[1]["auc_pr"])
 print(f"\nBest by AUC-PR: {best_model[0]}")
 
@@ -195,8 +208,8 @@ print(f"\nBest by AUC-PR: {best_model[0]}")
 # ══════════════════════════════════════════════════════════════════════
 
 for name, r in results.items():
-    # TODO: Generate calibration curve using viz.calibration_curve
-    fig = ____  # Hint: viz.calibration_curve(y_test, r["y_proba"])
+    # TODO: Use viz.calibration_curve(y_test, r["y_proba"])
+    fig = ____
     fig.update_layout(title=f"Calibration: {name}")
     fig.write_html(f"ex1_calibration_{name.lower()}.html")
 
@@ -219,14 +232,15 @@ metric_comparison = {
     for name, r in results.items()
 }
 
-# TODO: Generate a metric comparison figure using viz.metric_comparison
-fig = ____  # Hint: viz.metric_comparison(metric_comparison)
+# TODO: Build viz.metric_comparison(metric_comparison)
+fig = ____
 fig.update_layout(title="Gradient Boosting Comparison: Singapore Credit Scoring")
 fig.write_html("ex1_model_comparison.html")
 print("Saved: ex1_model_comparison.html")
 
-# TODO: Generate feature importance figure for the best model using viz.feature_importance
-fig_fi = ____  # Hint: viz.feature_importance(best_model[1]["model"], feature_names, top_n=15)
+# Feature importance for best model
+# TODO: Use viz.feature_importance(best_model[1]["model"], feature_names, top_n=15)
+fig_fi = ____
 fig_fi.update_layout(title=f"Feature Importance: {best_model[0]}")
 fig_fi.write_html("ex1_feature_importance.html")
 print("Saved: ex1_feature_importance.html")

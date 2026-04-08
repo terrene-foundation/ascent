@@ -42,23 +42,21 @@ print("=== Credit Card Fraud Dataset ===")
 print(f"Shape: {fraud_data.shape}")
 print(f"Fraud rate: {fraud_data['is_fraud'].mean():.4%}")
 
-feature_cols = [c for c in fraud_data.columns if c.startswith("v")]
-X = fraud_data.select(feature_cols + ["amount"]).to_numpy()
-y = fraud_data["is_fraud"].to_numpy()
+# TODO: Build feature matrix from V-features + amount; target = is_fraud.
+feature_cols = ____
+X = ____
+y = ____
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+# TODO: Stratified 80/20 split (random_state=42).
+X_train, X_test, y_train, y_test = ____
 
-# TODO: Train baseline GradientBoostingClassifier (n_estimators=100, max_depth=4),
-#        compute baseline accuracy and AUC, and print results
-# Hint: baseline_model = GradientBoostingClassifier(...); baseline_model.fit(X_train, y_train)
-#        baseline_acc = accuracy_score(...); baseline_auc = roc_auc_score(...)
+# TODO: Train baseline GradientBoostingClassifier (n_estimators=100, max_depth=4).
+baseline_model = ____
 ____
-____
-____
-____
-____
+
+baseline_acc = ____
+baseline_auc = ____
+print(f"\nBaseline model: accuracy={baseline_acc:.4f}, AUC={baseline_auc:.4f}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -70,40 +68,30 @@ print(f"=== FGSM (Fast Gradient Sign Method) ===")
 print(f"{'=' * 70}")
 
 
-# TODO: Implement compute_numerical_gradient
-# Hint: for each feature i: X_plus[:,i] += delta, X_minus[:,i] -= delta
-#        compute loss = -log(p(true_class)), gradient = (loss_plus - loss_minus) / (2*delta)
 def compute_numerical_gradient(
     model: GradientBoostingClassifier,
     X_sample: np.ndarray,
     y_sample: np.ndarray,
     delta: float = 1e-5,
 ) -> np.ndarray:
-    """Compute gradient of loss w.r.t. input features using finite differences."""
-    ____
-    ____
-    ____
-    ____
+    """Approximate gradient of NLL loss w.r.t. inputs via finite differences."""
+    # TODO: For each feature column, build X_plus and X_minus perturbed by +/- delta.
+    # TODO: Get predict_proba for both, compute NLL of true class (clip to 1e-10).
+    # TODO: Gradient[j, i] = (loss_plus - loss_minus) / (2 * delta).
     ____
 
 
-# TODO: Implement fgsm_attack
-# Hint: gradients = compute_numerical_gradient(model, X_samples, y_samples)
-#        return X_samples + epsilon * np.sign(gradients)
 def fgsm_attack(
     model: GradientBoostingClassifier,
     X_samples: np.ndarray,
     y_samples: np.ndarray,
     epsilon: float,
 ) -> np.ndarray:
-    """FGSM: x_adv = x + epsilon * sign(grad_x L(x, y))"""
-    ____
+    """FGSM: x_adv = x + epsilon * sign(grad_x L(x, y))."""
+    # TODO: Use compute_numerical_gradient + epsilon * sign() perturbation.
     ____
 
 
-# TODO: Implement attack_success_rate
-# Hint: correct_mask = (clean_preds == y_true); flipped = adv_preds[correct_mask] != y_true[correct_mask]
-#        return flipped / correct_mask.sum()
 def attack_success_rate(
     model: GradientBoostingClassifier,
     X_clean: np.ndarray,
@@ -111,29 +99,22 @@ def attack_success_rate(
     y_true: np.ndarray,
 ) -> float:
     """ASR: fraction of correctly-classified samples that flip after attack."""
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: Restrict to samples that were correct before attack, then count flips.
     ____
 
 
+# TODO: Use a 500-sample subset of the test set for the attack experiments.
 n_attack = 500
-X_attack = X_test[:n_attack]
-y_attack = y_test[:n_attack]
+X_attack = ____
+y_attack = ____
 
 print(f"\nFGSM attack on {n_attack} test samples:")
 print(f"{'Epsilon':<12} {'ASR':>8} {'Adv Accuracy':>14} {'Clean Accuracy':>16}")
 print("-" * 55)
 
+# TODO: Sweep epsilons in [0.01, 0.05, 0.1, 0.3, 0.5]; record ASR + adv accuracy.
 epsilons = [0.01, 0.05, 0.1, 0.3, 0.5]
-# TODO: For each epsilon, run fgsm_attack, compute asr and adv_acc, collect in fgsm_results
 fgsm_results = []
-____
-____
-____
-____
 ____
 
 
@@ -146,10 +127,6 @@ print(f"=== PGD (Projected Gradient Descent) ===")
 print(f"{'=' * 70}")
 
 
-# TODO: Implement pgd_attack
-# Hint: 1) random init within epsilon-ball: X_adv = X_samples + rng.uniform(-eps, eps, shape)
-#        2) for n_steps: grad = compute_numerical_gradient; X_adv += step_size * sign(grad)
-#        3) project back: perturbation = np.clip(X_adv - X_samples, -epsilon, epsilon)
 def pgd_attack(
     model: GradientBoostingClassifier,
     X_samples: np.ndarray,
@@ -159,10 +136,8 @@ def pgd_attack(
     n_steps: int,
 ) -> np.ndarray:
     """PGD: iterative FGSM with projection back into epsilon-ball."""
-    ____
-    ____
-    ____
-    ____
+    # TODO: Random init within +/- epsilon of X_samples.
+    # TODO: For n_steps: gradient sign step, then clip perturbation to [-eps, eps].
     ____
 
 
@@ -170,14 +145,9 @@ print(f"\nPGD attack (10 steps, step_size=epsilon/4):")
 print(f"{'Epsilon':<12} {'PGD ASR':>10} {'FGSM ASR':>10} {'Difference':>12}")
 print("-" * 50)
 
-# TODO: For each eps in epsilons, run pgd_attack (step_size=eps/4, n_steps=10),
-#        compute pgd_asr and fgsm_asr from fgsm_results[i], print comparison row
+# TODO: For each epsilon, run pgd_attack(step_size=eps/4, n_steps=10),
+# TODO: compare PGD ASR vs FGSM ASR, append to pgd_results, print row.
 pgd_results = []
-____
-____
-____
-____
-____
 ____
 
 print(f"\nPGD is strictly stronger than FGSM (iterative refinement).")
@@ -192,25 +162,34 @@ print(f"\n{'=' * 70}")
 print(f"=== Adversarial Training ===")
 print(f"{'=' * 70}")
 
+# TODO: Generate FGSM examples from a 2000-sample subset of train data
+# TODO: at adv_epsilon=0.1.
 adv_epsilon = 0.1
-X_train_subset = X_train[:2000]
-y_train_subset = y_train[:2000]
+X_train_subset = ____
+y_train_subset = ____
 
-# TODO: Generate adversarial examples from training data, augment, train robust model
-# Hint: X_adv_train = fgsm_attack(baseline_model, X_train_subset, y_train_subset, adv_epsilon)
-#        X_augmented = np.vstack([X_train, X_adv_train])
-#        y_augmented = np.concatenate([y_train, y_train_subset])
 X_adv_train = ____
+
+# TODO: Augment training set: vstack X_train + X_adv_train; concat labels.
 X_augmented = ____
 y_augmented = ____
 
-# TODO: Train robust_model on X_augmented/y_augmented, evaluate clean accuracy + AUC
-# Then loop over epsilons: for each, compute baseline_asr (fgsm on baseline),
-# robust_asr (fgsm on robust_model), print reduction table
+# TODO: Train robust_model on the augmented set.
+robust_model = ____
 ____
-____
-____
-____
+
+robust_clean_acc = ____
+robust_clean_auc = ____
+
+print(f"\nAdversarial training (augmented with FGSM at eps={adv_epsilon}):")
+print(f"  Clean accuracy:  {robust_clean_acc:.4f} (baseline: {baseline_acc:.4f})")
+print(f"  Clean AUC:       {robust_clean_auc:.4f} (baseline: {baseline_auc:.4f})")
+
+print(f"\nRobust model vs attacks:")
+print(f"{'Epsilon':<12} {'Baseline ASR':>14} {'Robust ASR':>12} {'Reduction':>12}")
+print("-" * 55)
+
+# TODO: For each epsilon, FGSM-attack baseline + robust models and compute ASR.
 ____
 
 print(f"\nAdversarial training reduces ASR at moderate epsilon values.")
@@ -225,19 +204,30 @@ print(f"\n{'=' * 70}")
 print(f"=== Data Poisoning Attack & Detection ===")
 print(f"{'=' * 70}")
 
-# TODO: Inject poison: flip 5% of y_train labels, train poisoned_model, compute poisoned accuracy
-# Hint: poison_indices = rng.choice(len(y_train), n_poison, replace=False)
-#        y_poisoned[poison_indices] = 1 - y_poisoned[poison_indices]
-____
-____
-____
-____
+# TODO: Flip labels on a random 5% of training data.
+rng = np.random.default_rng(42)
+n_poison = ____
+poison_indices = ____
+
+X_poisoned = ____
+y_poisoned = ____
 ____
 
+# TODO: Train a fresh GBM on the poisoned data and report accuracy delta.
+poisoned_model = ____
+____
 
-# TODO: Implement estimate_influence
-# Hint: for each candidate, compute model.predict_proba on that training point;
-#        influence = -log(confidence for true class) — low confidence = suspicious
+poisoned_acc = ____
+poisoned_auc = ____
+
+print(
+    f"\nPoisoning: flipped {n_poison} labels ({n_poison/len(y_train):.1%} of training data)"
+)
+print(f"  Clean model accuracy:    {baseline_acc:.4f}")
+print(f"  Poisoned model accuracy: {poisoned_acc:.4f}")
+print(f"  Accuracy drop:           {baseline_acc - poisoned_acc:.4f}")
+
+
 def estimate_influence(
     model: GradientBoostingClassifier,
     X_train: np.ndarray,
@@ -246,23 +236,33 @@ def estimate_influence(
     y_test: np.ndarray,
     candidate_indices: np.ndarray,
 ) -> np.ndarray:
-    """Approximate influence function: flag mislabelled training points."""
-    ____
-    ____
-    ____
-    ____
+    """Approximate influence: low confidence on own label = suspicious."""
+    # TODO: For each candidate idx, compute the model's predicted probability of
+    # TODO: y_train[idx]. Influence = -log(clip(confidence, 1e-10, 1.0)).
     ____
 
 
 print(f"\nInfluence-based poison detection:")
-# TODO: Run estimate_influence, flag top 10% (percentile 90), compute precision and recall
-# Hint: threshold = np.percentile(influences, 90); flagged = candidate_indices[influences > threshold]
-#        precision = true_positives / len(flagged_set); recall = true_positives / len(poison_set)
-____
-____
-____
-____
-____
+candidate_indices = np.arange(min(2000, len(y_poisoned)))
+# TODO: Compute influences and flag the top 10% as suspicious.
+influences = ____
+
+threshold = ____
+flagged = ____
+
+# TODO: Compute precision and recall vs the actual poison_indices set.
+poison_set = ____
+flagged_set = ____
+
+true_positives = ____
+precision = ____
+recall = ____
+
+print(f"  Flagged as suspicious: {len(flagged)} samples")
+print(f"  True positives: {true_positives}")
+print(f"  Detection precision: {precision:.4f}")
+print(f"  Detection recall: {recall:.4f}")
+print(f"  (Random baseline precision: {len(poison_set)/len(candidate_indices):.4f})")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -274,9 +274,6 @@ print(f"=== Certified Robustness (Randomised Smoothing) ===")
 print(f"{'=' * 70}")
 
 
-# TODO: Implement randomised_smoothing_predict
-# Hint: noise = rng.normal(0, sigma, (n_samples, x.shape[0])); X_noisy = x.reshape(1,-1) + noise
-#        majority_class = classes[argmax(counts)]; confidence = counts.max() / n_samples
 def randomised_smoothing_predict(
     model: GradientBoostingClassifier,
     x: np.ndarray,
@@ -284,30 +281,20 @@ def randomised_smoothing_predict(
     n_samples: int,
     rng: np.random.Generator,
 ) -> tuple[int, float]:
-    """Predict with randomised smoothing. Returns (predicted_class, confidence)."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    """Predict with randomised smoothing — majority vote over noisy samples."""
+    # TODO: Sample n_samples Gaussian perturbations of x at scale sigma.
+    # TODO: Predict, take majority class, compute confidence = max_count / n_samples.
     ____
 
 
-# TODO: Implement certify_radius
-# Hint: from scipy.stats import norm; if confidence <= 0.5 return 0.0
-#        p_lower = confidence - delta; radius = sigma * norm.ppf(p_lower)
 def certify_radius(
     confidence: float,
     sigma: float,
     delta: float = 0.05,
 ) -> float:
-    """Compute certified L2 radius for randomised smoothing."""
-    ____
-    ____
-    ____
-    ____
-    ____
+    """Certified L2 radius: R = sigma * Phi^{-1}(p_lower)."""
+    # TODO: Use scipy.stats.norm.ppf on a confidence lower bound.
+    # TODO: Return 0.0 if confidence <= 0.5 or p_lower <= 0.5.
     ____
 
 
@@ -323,15 +310,8 @@ rng = np.random.default_rng(42)
 print(f"{'Sigma':<8} {'Avg Radius':>12} {'Certified %':>13} {'Smooth Acc':>12}")
 print("-" * 50)
 
-# TODO: For each sigma in sigma_values, run randomised_smoothing_predict on n_certify samples,
-#        compute certify_radius per sample, collect avg_radius, certified_pct (radius > 0),
-#        smooth_acc (correct / n_certify), and print a row per sigma
-# Hint: randomised_smoothing_predict(model, X_test[i], sigma, n_samples, rng) -> (pred_class, conf)
-#        certify_radius(conf, sigma) -> float radius; print row with sigma, avg_radius, certified_pct, smooth_acc
-____
-____
-____
-____
+# TODO: For each sigma, certify n_certify test points: collect radii,
+# TODO: certified percentage (radius > 0), and smoothed accuracy.
 ____
 
 print(f"\nInterpretation:")

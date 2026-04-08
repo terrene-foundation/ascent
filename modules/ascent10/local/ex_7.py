@@ -59,98 +59,36 @@ setup_environment()
 
 print("=== Model Governance Registry ===\n")
 
-db = DataFlow("sqlite:///:memory:")
+# TODO: Instantiate DataFlow against an in-memory SQLite database.
+db = ____
 
 
-# TODO: Define GovernedModel @db.model with fields:
-#   id (primary_key), model_id, model_name, version, training_data_hash,
-#   adapter_history (JSON), clearance_requirement, drift_psi_latest (default 0.0),
-#   drift_check_count (default 0), compliance_status (default "PENDING"),
-#   retirement_status (default "ACTIVE"), registered_at, last_audit_at (default "")
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+@db.model
+class GovernedModel:
+    """Registry entry for a governed ML model."""
+
+    # TODO: Declare fields: id (int PK), model_id, model_name, version,
+    # TODO: training_data_hash, adapter_history, clearance_requirement,
+    # TODO: drift_psi_latest=0.0, drift_check_count=0, compliance_status="PENDING",
+    # TODO: retirement_status="ACTIVE", registered_at="", last_audit_at="".
+    ____
 
 
-# TODO: Define GovernanceEvent @db.model with fields:
-#   id (primary_key), event_type, model_id, actor, details (JSON), timestamp
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+@db.model
+class GovernanceEvent:
+    """Audit log entry for governance actions."""
+
+    # TODO: id (int PK), event_type, model_id, actor, details (json), timestamp.
+    ____
 
 
-# TODO: Implement setup_registry() async function
-# Hint: 1) await db.initialize()  (db is defined above as DataFlow instance)
-#        2) for each model in models_to_register: await db.express.create("GovernedModel", data)
-#        3) models = await db.express.list("GovernedModel", {}), print table, return (dataflow, models)
 async def setup_registry():
     """Initialise DataFlow and create governance tables."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: await db.initialize().
+    # TODO: Build a list of 3 sample models (fraud_detector_v1, fraud_detector_v2,
+    # TODO: icu_predictor_v1) with hash values, clearance requirements, statuses.
+    # TODO: For each, await db.express.create("GovernedModel", model_data).
+    # TODO: List all rows and print a header + summary table.
     ____
 
 
@@ -165,64 +103,24 @@ print(f"\n{'=' * 70}")
 print(f"=== Governance Policy Engine ===")
 print(f"{'=' * 70}\n")
 
-# TODO: Define GOVERNANCE_POLICIES list of 5 dicts, each with:
-#   policy_id, name, description, check (lambda m: ...), severity ("BLOCKING" or "WARNING")
-#   Policies: POL-001 compliance_status=="COMPLIANT" (BLOCKING),
-#             POL-002 drift_psi_latest < 0.25 (BLOCKING),
-#             POL-003 bool(training_data_hash) (BLOCKING),
-#             POL-004 retirement_status != "RETIRED" (BLOCKING),
-#             POL-005 bool(last_audit_at) (WARNING)
+
+# TODO: Define GOVERNANCE_POLICIES as a list of dicts with keys policy_id,
+# TODO: name, description, check (lambda m -> bool), severity (BLOCKING/WARNING).
+# TODO: Cover compliance status, drift threshold, training data provenance,
+# TODO: retirement status, audit recency.
 GOVERNANCE_POLICIES = ____
 
 
-# TODO: Implement apply_policies(model_metadata: dict) -> dict
-# Hint: for each policy in GOVERNANCE_POLICIES: run policy["check"](model_metadata)
-#        mark PASS/FAIL; add to blocking_violations if BLOCKING and failed
-#        set overall = "APPROVED" | "APPROVED_WITH_WARNINGS" | "BLOCKED"
 def apply_policies(model_metadata: dict) -> dict:
-    """Apply all governance policies to a model and produce a structured verdict."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    """Apply all governance policies and produce a structured verdict."""
+    # TODO: Walk every policy. Append PASS/FAIL records.
+    # TODO: For BLOCKING fails set overall=BLOCKED + record violation.
+    # TODO: For WARNING fails set APPROVED_WITH_WARNINGS unless already BLOCKED.
     ____
 
 
-for model_data in registered_models:
-    verdict = apply_policies(model_data)
-    print(f"Model: {verdict['model_id']}")
-    print(f"  Overall: {verdict['overall']}")
-    for p in verdict["policies"]:
-        marker = "PASS" if p["status"] == "PASS" else "FAIL"
-        print(f"  [{marker}] {p['policy_id']}: {p['name']} ({p['severity']})")
-    if verdict["blocking_violations"]:
-        print(f"  BLOCKED by: {verdict['blocking_violations']}")
-    if verdict["warnings"]:
-        print(f"  Warnings: {verdict['warnings']}")
-    print()
+# TODO: For each registered model run apply_policies and print verdict block.
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -237,117 +135,36 @@ rng = np.random.default_rng(42)
 reference_data = rng.normal(0, 1, (1000, 10))
 feature_names = [f"v{i}" for i in range(10)]
 
-monitor = DriftMonitor(
-    reference_data=reference_data,
-    feature_names=feature_names,
-    psi_threshold=0.25,
-)
+# TODO: Instantiate DriftMonitor with reference_data, feature_names, psi_threshold=0.25.
+monitor = ____
 
-retire_org_yaml = """
-org_id: model_lifecycle
-name: "Model Lifecycle Management"
+# TODO: Define a YAML org with ops_lead and model_agent (agent: true);
+# TODO: clearances at secret/confidential on relevant compartments.
+retire_org_yaml = ____
 
-departments:
-  - id: ml_ops
-    name: "ML Operations"
+# TODO: Write to temp, load, compile, build GovernanceEngine.
+retire_file = ____
+____
+retire_loaded = ____
+retire_engine = ____
+retire_compiled = ____
 
-roles:
-  - id: ops_lead
-    name: "ML Operations Lead"
-    is_primary_for_unit: ml_ops
+retire_roles = ____
+____
 
-  - id: model_agent
-    name: "Model Serving Agent"
-    reports_to: ops_lead
-    agent: true
+level_map = ____
 
-clearances:
-  - role: ops_lead
-    level: secret
-    compartments: [model_weights, production_logs, drift_metrics]
-  - role: model_agent
-    level: confidential
-    compartments: [model_weights, production_logs]
-"""
-
-retire_file = Path(tempfile.mktemp(suffix=".yaml"))
-retire_file.write_text(retire_org_yaml)
-retire_loaded = load_org_yaml(str(retire_file))
-retire_engine = GovernanceEngine(retire_loaded.org_definition)
-retire_compiled = compile_org(retire_loaded.org_definition)
-
-retire_roles = {}
-for addr, node in retire_compiled.nodes.items():
-    if node.role_definition is not None and not node.is_vacant:
-        retire_roles[node.node_id] = addr
-
-level_map = {
-    "confidential": ConfidentialityLevel.CONFIDENTIAL,
-    "secret": ConfidentialityLevel.SECRET,
-    "restricted": ConfidentialityLevel.RESTRICTED,
-}
-
-for cs in retire_loaded.clearances:
-    if cs.role_id in retire_roles:
-        clearance = RoleClearance(
-            role_address=retire_roles[cs.role_id],
-            max_clearance=level_map[cs.level],
-            compartments=frozenset(cs.compartments),
-            granted_by_role_address="system_init",
-        )
-        retire_engine.grant_clearance(retire_roles[cs.role_id], clearance)
+# TODO: Grant clearances for ops_lead and model_agent.
+____
 
 
-# TODO: Implement simulate_retirement_automation()
-# Hint: 1) check_drift on stable, mild-drift, persistent-drift data
-#        2) if two consecutive drift alerts: downgrade clearance to RESTRICTED via RoleClearance
-#        3) await db.express.update("GovernedModel", id, {retirement_status, drift_psi_latest, compliance_status})
-#        4) await db.express.create("GovernanceEvent", {event_type:"RETIREMENT", ...})
-#        5) get_context(model_agent), apply_policies(updated_model), print verdict
 async def simulate_retirement_automation():
-    """Simulate: PSI > 0.25 on two consecutive checks -> downgrade + retire."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    """Simulate consecutive drift -> clearance downgrade + retirement event."""
+    # TODO: Run check_drift on stable, mildly drifted, then heavily drifted batches.
+    # TODO: If both later checks have_drift, downgrade model_agent to RESTRICTED
+    # TODO: clearance, await db.express.update("GovernedModel", id, {...}),
+    # TODO: log a GovernanceEvent of event_type=RETIREMENT, fetch the updated
+    # TODO: model, and re-apply policies. Print every step.
     ____
 
 
@@ -363,90 +180,53 @@ print(f"\n{'=' * 70}")
 print(f"=== Multi-Tenancy Isolation ===")
 print(f"{'=' * 70}\n")
 
-org_a_yaml = """
-org_id: bank_alpha
-name: "Bank Alpha"
-departments:
-  - id: ml_team
-    name: "ML Team"
-roles:
-  - id: alpha_agent
-    name: "Alpha ML Agent"
-    is_primary_for_unit: ml_team
-    agent: true
-clearances:
-  - role: alpha_agent
-    level: confidential
-    compartments: [alpha_models, alpha_logs]
-"""
+# TODO: Define two isolated YAML orgs (bank_alpha + bank_beta) each with
+# TODO: a single agent role and tenant-specific compartments.
+org_a_yaml = ____
 
-org_b_yaml = """
-org_id: bank_beta
-name: "Bank Beta"
-departments:
-  - id: ml_team
-    name: "ML Team"
-roles:
-  - id: beta_agent
-    name: "Beta ML Agent"
-    is_primary_for_unit: ml_team
-    agent: true
-clearances:
-  - role: beta_agent
-    level: confidential
-    compartments: [beta_models, beta_logs]
-"""
+org_b_yaml = ____
 
-file_a = Path(tempfile.mktemp(suffix=".yaml"))
-file_a.write_text(org_a_yaml)
-file_b = Path(tempfile.mktemp(suffix=".yaml"))
-file_b.write_text(org_b_yaml)
+# TODO: For each, write to temp file, load_org_yaml, compile_org, build engine.
+file_a = ____
+____
+file_b = ____
+____
 
-loaded_a = load_org_yaml(str(file_a))
-loaded_b = load_org_yaml(str(file_b))
+loaded_a = ____
+loaded_b = ____
 
-# TODO: Create separate GovernanceEngines (engine_a, engine_b), compile both orgs,
-#   build role address dicts (roles_a, roles_b), grant CONFIDENTIAL clearances to both
-#   Then create alpha_model and beta_model KnowledgeItems (CONFIDENTIAL, their own compartments)
-#   Test: engine_a.check_access(roles_a["alpha_agent"], alpha_model, TrustPosture.SUPERVISED)
-#   Test: engine_b.check_access(roles_b["beta_agent"], beta_model, TrustPosture.SUPERVISED)
-#   Print ALLOW/DENY + reason for each
+engine_a = ____
+engine_b = ____
+
+compiled_a = ____
+compiled_b = ____
+
+roles_a = ____
 ____
+
+roles_b = ____
 ____
+
+# TODO: Grant CONFIDENTIAL clearances to each org's agent on its own compartments.
 ____
+
 ____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+
+# TODO: Build KnowledgeItems (alpha_fraud_model, beta_fraud_model) and
+# TODO: confirm each agent can only access its own org's resource.
+from pact.governance import KnowledgeItem
+
+alpha_model = ____
+
+beta_model = ____
 
 print(f"Bank Alpha agent accessing Alpha model:")
-# (result_a printed from your code above)
+result_a = ____
+print(f"  {'ALLOW' if result_a.allowed else 'DENY'}: {result_a.reason}")
 
 print(f"\nBank Beta agent accessing Beta model:")
-# (result_b printed from your code above)
+result_b = ____
+print(f"  {'ALLOW' if result_b.allowed else 'DENY'}: {result_b.reason}")
 
 print(f"\nIsolation guarantee:")
 print(f"  Separate GovernanceEngines per organisation")
@@ -454,13 +234,14 @@ print(f"  Bank Alpha roles do not exist in Bank Beta's engine (and vice versa)")
 print(f"  Shared InferenceServer routes requests through org-specific governance")
 print(f"  Audit trails are per-org (no cross-tenant log leakage)")
 
-integrity_a = engine_a.verify_audit_integrity()
-integrity_b = engine_b.verify_audit_integrity()
+# TODO: Verify and report each engine's audit integrity, then unlink temp files.
+integrity_a = ____
+integrity_b = ____
 print(f"\n  Bank Alpha audit integrity: {'VALID' if integrity_a else 'BROKEN'}")
 print(f"  Bank Beta audit integrity: {'VALID' if integrity_b else 'BROKEN'}")
 
-file_a.unlink()
-file_b.unlink()
+____
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -474,27 +255,28 @@ print(f"{'=' * 70}\n")
 loader = ASCENTDataLoader()
 fraud_data = loader.load("ascent04", "credit_card_fraud.parquet")
 
-feature_cols = [c for c in fraud_data.columns if c.startswith("v")]
-X = fraud_data.select(feature_cols + ["amount"]).to_numpy()
-y = fraud_data["is_fraud"].to_numpy()
+# TODO: Build feature matrix + target as in earlier exercises and stratified split.
+feature_cols = ____
+X = ____
+y = ____
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+X_train, X_test, y_train, y_test = ____
 
-incident_model = GradientBoostingClassifier(
-    n_estimators=100, max_depth=4, random_state=42
-)
-incident_model.fit(X_train, y_train)
+# TODO: Train an incident_model = GradientBoostingClassifier (n_estimators=30, max_depth=4).
+incident_model = ____
+____
 
-amount_test = X_test[:, -1]
-high_value_mask = amount_test > np.percentile(amount_test, 75)
-low_value_mask = amount_test <= np.percentile(amount_test, 25)
+# TODO: Identify high_value (>75th pct) and low_value (<=25th pct) masks
+# TODO: on the test set's amount column. Compute positive prediction rates
+# TODO: for each segment and the gap.
+amount_test = ____
+high_value_mask = ____
+low_value_mask = ____
 
-y_pred = incident_model.predict(X_test)
-high_value_fpr = (y_pred[high_value_mask] == 1).mean()
-low_value_fpr = (y_pred[low_value_mask] == 1).mean()
-fpr_gap = abs(high_value_fpr - low_value_fpr)
+y_pred = ____
+high_value_fpr = ____
+low_value_fpr = ____
+fpr_gap = ____
 
 print(f"Incident: Biased fraud prediction rates detected")
 print(f"  High-value transaction FPR: {high_value_fpr:.4f}")
@@ -502,51 +284,20 @@ print(f"  Low-value transaction FPR: {low_value_fpr:.4f}")
 print(f"  FPR gap: {fpr_gap:.4f} ({'ALERT' if fpr_gap > 0.05 else 'OK'})")
 
 if fpr_gap > 0.02:
-    # TODO: Print full incident response chain: ALERT -> AUDIT -> ROOT CAUSE -> REMEDIATION -> D/T/R
-    # Hint: 5-step chain: 1. DriftMonitor/bias alert, 2. ComplianceAuditAgent triggered,
-    #        3. Root cause analysis, 4. Remediation steps (retrain, fairness constraint, etc.),
-    #        5. D/T/R accountability (Delegator=ops_lead, Task=fraud_detection, Responsible=agent)
+    # TODO: Print the D/T/R incident response chain (alert -> audit -> root
+    # TODO: cause -> remediation -> accountability) using the values above.
     ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    print(f"     R (Responsible): Model Serving Agent executed predictions")
-    print(f"     Trace: all steps logged in GovernanceEngine audit trail")
 
-    # TODO: Log incident to GovernanceEvent table
-    # Hint: await db.express.create("GovernanceEvent", {event_type:"POLICY_VIOLATION",
-    #         model_id:"fraud_detector_v1", actor:"drift_monitor_system",
-    #         details: json.dumps({type, high_value_fpr, low_value_fpr, fpr_gap, remediation}),
-    #         timestamp: datetime.now().isoformat()})
+    # TODO: Define an async function log_incident() that writes a
+    # TODO: GovernanceEvent row with event_type=POLICY_VIOLATION and a
+    # TODO: details JSON containing the FPRs + remediation; asyncio.run it.
     async def log_incident():
-        ____
-        ____
-        ____
-        ____
-        ____
-        ____
-        ____
-        ____
-        ____
-        ____
-        ____
-        ____
         ____
 
     asyncio.run(log_incident())
 
-asyncio.run(dataflow.close())
+# TODO: Close the dataflow connection and remove the temporary db file.
+____
 
 db_path = Path("ascent10_governance.db")
 if db_path.exists():

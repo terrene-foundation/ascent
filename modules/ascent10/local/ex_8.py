@@ -75,10 +75,11 @@ print("=== CAPSTONE: Regulated AI System End-to-End ===")
 print(f"Fraud dataset: {fraud_data.shape}")
 print(f"Fraud rate: {fraud_data['is_fraud'].mean():.4%}\n")
 
-feature_cols = [c for c in fraud_data.columns if c.startswith("v")]
-X = fraud_data.select(feature_cols + ["amount"]).to_numpy()
-y = fraud_data["is_fraud"].to_numpy()
-feature_names = feature_cols + ["amount"]
+# TODO: Build the design matrix using V-features + amount; target = is_fraud.
+feature_cols = ____
+X = ____
+y = ____
+feature_names = ____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -89,87 +90,56 @@ print(f"{'=' * 70}")
 print(f"  TASK 1: Federated Learning with Differential Privacy")
 print(f"{'=' * 70}\n")
 
-sorted_indices = np.argsort(fraud_data["amount"].to_numpy())
-n = len(sorted_indices)
-n_per_client = n // 3
+# TODO: Sort indices by amount and partition into 3 non-IID clients
+# TODO: (bank_sg, bank_my, bank_id). For each client do an 80/20 split
+# TODO: and store X_train/y_train/X_test/y_test in client_data.
+sorted_indices = ____
+n = ____
+n_per_client = ____
 
-client_indices = {
-    "bank_sg": sorted_indices[:n_per_client],
-    "bank_my": sorted_indices[n_per_client : 2 * n_per_client],
-    "bank_id": sorted_indices[2 * n_per_client :],
-}
+client_indices = ____
 
-# TODO: Build client_data dict: for each (name, idx) in client_indices,
-#        train/test split with test_size=0.2, store X_train/y_train/X_test/y_test, print stats
-# Hint: client_data[name] = {"X_train": X_tr, "y_train": y_tr, "X_test": X_te, "y_test": y_te}
-____
-____
-____
-____
-____
+client_data = {}
 ____
 
-X_train_all, X_test_all, y_train_all, y_test_all = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+# TODO: Stratified 80/20 global split for evaluation.
+X_train_all, X_test_all, y_train_all, y_test_all = ____
 
 
-# TODO: Implement fedavg_dp_train using FederatedEnsemble
-# Hint: train local GradientBoostingClassifier per client per round (progressive n_estimators)
-#        create FederatedEnsemble that averages predict_proba with clip + Gaussian noise
-#        FederatedEnsemble needs: predict_proba (clip, average, add noise, renormalise) and predict
 def fedavg_dp_train(
     client_data: dict,
     n_rounds: int,
     clip_norm: float,
     sigma: float,
 ) -> GradientBoostingClassifier:
-    """Train a model using FedAvg with differential privacy."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    """Train a federated GBM ensemble with differential privacy."""
+    # TODO: For each round, train a GradientBoostingClassifier on each client.
+    # TODO: Wrap the resulting client models in a FederatedEnsemble class
+    # TODO: that averages predict_proba across clients with clipping + noise.
+    # TODO: Return the ensemble (must expose predict + predict_proba + classes_).
     ____
 
 
-fed_model = fedavg_dp_train(client_data, n_rounds=3, clip_norm=1.0, sigma=1.0)
+# TODO: Train fed_model = fedavg_dp_train(client_data, n_rounds=3,
+# TODO: clip_norm=1.0, sigma=1.0). Score on global test set.
+fed_model = ____
 
-# TODO: Evaluate fed_model on X_test_all (accuracy + AUC), train centralized baseline
-#        (GradientBoostingClassifier, n_estimators=100), evaluate both, print comparison
-# Hint: fed_acc = accuracy_score(y_test_all, fed_model.predict(X_test_all))
-#        print utility gap: abs(fed_acc - cent_acc), abs(fed_auc - cent_auc)
+fed_pred = ____
+fed_proba = ____
+fed_acc = ____
+fed_auc = ____
+
+# TODO: Train a centralised GradientBoostingClassifier baseline (n_estimators=100).
+centralized = ____
 ____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+cent_acc = ____
+cent_auc = ____
+
+print(f"\nFederated model (DP, sigma=1.0): accuracy={fed_acc:.4f}, AUC={fed_auc:.4f}")
+print(f"Centralized baseline:            accuracy={cent_acc:.4f}, AUC={cent_auc:.4f}")
+print(
+    f"Utility gap: accuracy={abs(fed_acc - cent_acc):.4f}, AUC={abs(fed_auc - cent_auc):.4f}"
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -180,45 +150,34 @@ print(f"\n{'=' * 70}")
 print(f"  TASK 2: Compliance Artefacts + Bias Audit")
 print(f"{'=' * 70}\n")
 
-# TODO: Define segments dict with 3 boolean masks (low_value, mid_value, high_value)
-#        based on amount_test percentiles (33rd and 66th)
-# Hint: amount_test = X_test_all[:, -1]; low=<33pct, mid=33-66pct, high=>66pct
-amount_test = X_test_all[:, -1]
-____
-____
-____
-____
+# TODO: Bucket the global test set by amount (low_value, mid_value, high_value)
+# TODO: into a segments dict (name -> mask).
+amount_test = ____
+segments = ____
 
 print(f"Bias audit (per amount segment):")
 print(f"{'Segment':<15} {'N':>6} {'Prec':>8} {'Recall':>8} {'F1':>8} {'Pos Rate':>10}")
 print("-" * 60)
 
-# TODO: Compute per-segment bias audit: for each segment, compute precision, recall, f1, pos_rate
-#        Collect pos_rates list; compute demographic parity gap; set bias_pass=True/False
+# TODO: For each segment compute precision/recall/f1/positive_rate via fed_pred
+# TODO: (skip groups with single class). Track positive rates for parity gap.
 bias_pass = True
 pos_rates = []
 ____
-____
-____
-____
-____
-____
-____
-____
-____
-____
 
-# TODO: Build model_card dict with model_name, version, type, intended_use, metrics, bias_audit, limitations
-# Hint: metrics = {accuracy: fed_acc, auc_roc: fed_auc, dp_epsilon_approx: 1.0}
-model_card = {
-    "model_name": "capstone_fraud_federated_dp",
-    "version": "1.0.0",
-    "type": ____,
-    "intended_use": ____,
-    "metrics": ____,
-    "bias_audit": ____,
-    "limitations": ____,
-}
+# TODO: Compute demographic parity gap = max(pos_rates) - min(pos_rates);
+# TODO: PASS if <= 0.05, else set bias_pass=False.
+if len(pos_rates) >= 2:
+    max_gap = ____
+    print(
+        f"\nDemographic parity gap: {max_gap:.4f} ({'PASS' if max_gap <= 0.05 else 'FAIL'})"
+    )
+    if max_gap > 0.05:
+        bias_pass = False
+
+# TODO: Build a model_card dict (name, version, type, intended_use, metrics,
+# TODO: bias_audit, limitations) summarising the federated DP model.
+model_card = ____
 
 print(f"\nModel card generated:")
 print(f"  Name: {model_card['model_name']} v{model_card['version']}")
@@ -236,76 +195,63 @@ print(f"\n{'=' * 70}")
 print(f"  TASK 3: Adversarial Training + Certified Robustness")
 print(f"{'=' * 70}\n")
 
-adv_model = GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42)
-adv_model.fit(X_train_all, y_train_all)
+# TODO: Train an adv_model = GradientBoostingClassifier (n_estimators=30, max_depth=4).
+adv_model = ____
+____
 
 
-# TODO: Implement fgsm_attack using numerical gradient approximation
-# Hint: for each feature i: finite difference df/dx_i = (loss(x+delta) - loss(x-delta))/(2*delta)
-#        loss = -log(p(true_class)); return X_samples + epsilon * sign(gradients)
 def fgsm_attack(model, X_samples, y_samples, epsilon, delta=1e-5):
     """FGSM via numerical gradient approximation."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: For each feature column, compute a finite-difference NLL gradient
+    # TODO: and return X_samples + epsilon * sign(gradient).
     ____
 
 
-n_adv = 2000
-X_adv = fgsm_attack(adv_model, X_train_all[:n_adv], y_train_all[:n_adv], epsilon=0.1)
+# TODO: Generate 500 adversarial training examples at epsilon=0.1.
+n_adv = 500
+X_adv = ____
 
-X_robust = np.vstack([X_train_all, X_adv])
-y_robust = np.concatenate([y_train_all, y_train_all[:n_adv]])
+# TODO: Build augmented training set (vstack X_train_all + X_adv) and labels.
+X_robust = ____
+y_robust = ____
 
-robust_model = GradientBoostingClassifier(
-    n_estimators=100, max_depth=4, random_state=42
-)
-robust_model.fit(X_robust, y_robust)
-
-# TODO: Evaluate robust_model (clean accuracy + AUC), run fgsm_attack on 500 test samples,
-#        compute ASR, and print comparison vs baseline
-# Hint: correct_mask = (clean_preds == y_test_all[:500]); asr = flipped / correct_mask.sum()
-____
-____
-____
-____
-____
-____
-____
+# TODO: Train robust_model = GradientBoostingClassifier on the augmented data.
+robust_model = ____
 ____
 
-# Certified robustness via randomised smoothing
+robust_acc = ____
+robust_auc = ____
+
+# TODO: Measure FGSM ASR (eps=0.1) on the robust model with the first 500 test points.
+X_adv_test = ____
+clean_preds = ____
+adv_preds = ____
+correct_mask = ____
+asr = ____
+
+print(f"Adversarial training results:")
+print(f"  Clean accuracy: {robust_acc:.4f} (baseline: {cent_acc:.4f})")
+print(f"  Clean AUC:      {robust_auc:.4f} (baseline: {cent_auc:.4f})")
+print(f"  FGSM ASR (eps=0.1): {asr:.4f}")
+
+# TODO: Certified robustness: for n_certify points, sample n_noise_samples
+# TODO: at sigma=0.25, take majority vote, compute confidence, derive
+# TODO: certified radius via norm.ppf, count those whose radius >= 0.1.
 rng_smooth = np.random.default_rng(42)
-n_certify = 100
+n_certify = 20
 n_noise_samples = 200
 sigma = 0.25
 target_radius = 0.1
 target_prob = 0.95
 
-# TODO: Run randomised smoothing certification loop over n_certify test samples
-#        For each: add n_noise_samples Gaussian perturbations (sigma), take majority vote,
-#        compute p_lower=confidence-0.05; if p_lower > 0.5, certified radius = sigma * norm.ppf(p_lower)
-#        Count how many samples certify at radius >= target_radius, print certified %
-# Hint: rng_smooth.normal(0, sigma, (n_noise_samples, X_test_all.shape[1]));
-#        certified_pct = certified_count / n_certify
+certified_count = ____
 ____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+
+certified_pct = certified_count / n_certify
+print(f"\nCertified robustness (R={target_radius}, sigma={sigma}):")
+print(f"  Certified: {certified_count}/{n_certify} ({certified_pct:.2%})")
+print(f"  Target: {target_prob:.0%}")
+print(f"  Status: {'PASS' if certified_pct >= target_prob else 'BELOW TARGET'}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -317,48 +263,16 @@ print(f"  TASK 4: Governance Registry + Compliance Policies")
 print(f"{'=' * 70}\n")
 
 
-# TODO: Implement register_in_governance()
-# Hint: 1) ConnectionManager("sqlite:///:memory:"), await conn.initialize()
-#        2) ModelRegistry(conn); pickle.dumps(robust_model) for artifact
-#        3) registry.register_model(name="capstone_fraud_regulated", artifact, metrics, signature)
-#        4) registry.promote_model(name, version, target_stage="production", reason=...)
-#        5) apply compliance policies: list of (policy_name, bool_check) tuples
-#        6) return conn, registry, model_version
 async def register_in_governance():
     """Register capstone model in ModelRegistry and apply compliance policies."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: ConnectionManager(":memory:"), initialise, build ModelRegistry.
+    # TODO: Pickle robust_model, hash a prefix as training_data_hash.
+    # TODO: Build a ModelSignature using FeatureSchema/FeatureField.
+    # TODO: Register the model with metrics (accuracy, auc, fgsm asr,
+    # TODO: certified pct, dp_sigma) and promote to production.
+    # TODO: Build model_metadata dict, define a 5-policy list (compliance,
+    # TODO: drift, provenance, retired, audit) and print PASS/FAIL per policy.
+    # TODO: Return (conn, registry, model_version).
     ____
 
 
@@ -373,78 +287,36 @@ print(f"\n{'=' * 70}")
 print(f"  TASK 5: Governed Deployment + Drift Monitoring")
 print(f"{'=' * 70}\n")
 
-capstone_org_yaml = """
-org_id: capstone_regulated
-name: "Capstone Regulated AI System"
+# TODO: Define a YAML org with fraud_ops_lead, fraud_agent (agent: true),
+# TODO: compliance_lead, audit_agent (agent: true). Grant clearances at
+# TODO: secret/confidential/top_secret on relevant compartments.
+capstone_org_yaml = ____
 
-departments:
-  - id: fraud_ops
-    name: "Fraud Operations"
-  - id: compliance
-    name: "Compliance"
+# TODO: Write to temp, load, compile, build GovernanceEngine.
+cap_file = ____
+____
+cap_loaded = ____
+cap_engine = ____
+cap_compiled = ____
 
-roles:
-  - id: fraud_ops_lead
-    name: "Fraud Operations Lead"
-    is_primary_for_unit: fraud_ops
-
-  - id: fraud_agent
-    name: "Fraud Detection Agent"
-    reports_to: fraud_ops_lead
-    agent: true
-
-  - id: compliance_lead
-    name: "Chief Compliance Officer"
-    is_primary_for_unit: compliance
-
-  - id: audit_agent
-    name: "Compliance Audit Agent"
-    reports_to: compliance_lead
-    agent: true
-
-clearances:
-  - role: fraud_ops_lead
-    level: secret
-    compartments: [transaction_data, model_predictions, model_weights, audit_logs]
-  - role: fraud_agent
-    level: confidential
-    compartments: [transaction_data, model_predictions]
-  - role: compliance_lead
-    level: top_secret
-    compartments: [transaction_data, model_predictions, model_weights, audit_logs]
-  - role: audit_agent
-    level: secret
-    compartments: [model_predictions, audit_logs]
-"""
-
-# TODO: Load capstone_org_yaml, compile, create GovernanceEngine, build cap_roles dict
-#        Build level_map (confidential/secret/top_secret) and grant clearances to all roles
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+cap_roles = ____
 ____
 
-# TODO: Create fraud_env (allowed_actions: predict_fraud, get_model_info, log_prediction)
-#        and audit_env (allowed_actions: run_audit, read_model_card, read_drift_status, generate_report)
-#        Then set both envelopes on cap_engine
+level_map = ____
+
+# TODO: Grant the four role clearances on cap_engine.
+____
+
+# TODO: Set envelope for fraud_agent: predict_fraud, get_model_info, log_prediction.
 fraud_env = ____
-cap_engine.set_role_envelope(fraud_env)
+____
 
+# TODO: Set envelope for audit_agent: run_audit, read_model_card,
+# TODO: read_drift_status, generate_report.
 audit_env = ____
-cap_engine.set_role_envelope(audit_env)
+____
 
-# TODO: Create PactGovernedAgent for fraud_agent and audit_agent
+# TODO: Wrap fraud_agent and audit_agent in PactGovernedAgent.
 governed_fraud = ____
 governed_audit = ____
 
@@ -454,34 +326,12 @@ print(f"Audit agent: clearance={governed_audit.context.effective_clearance_level
 print(f"  Actions: {sorted(governed_audit.context.allowed_actions)}")
 
 
-# TODO: Implement deploy_and_monitor()
-# Hint: 1) InferenceServer(registry, cache_size=5), await server.warm_cache(["capstone_fraud_regulated"])
-#        2) cap_engine.verify_action(cap_roles["fraud_agent"], "predict_fraud")
-#        3) await server.predict(model_name=..., features={...})
-#        4) DriftMonitor(conn, psi_threshold=0.2); await monitor.set_reference(model_name=, reference_data=, feature_columns=)
-#        5) monitor.check_drift(X_test_all[:500]); print drift status + max PSI feature
 async def deploy_and_monitor():
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: Build InferenceServer(registry, cache_size=5), warm cache,
+    # TODO: verify_action(predict_fraud), .predict on a test row,
+    # TODO: build a DriftMonitor(reference_data=X_train_all[:2000],
+    # TODO: psi_threshold=0.2), check_drift on first 500 test rows,
+    # TODO: report max-PSI feature. Return (server, monitor).
     ____
 
 
@@ -496,62 +346,66 @@ print(f"\n{'=' * 70}")
 print(f"  TASK 6: Compliance Audit — End-to-End Attestation")
 print(f"{'=' * 70}\n")
 
-audit_verdict = cap_engine.verify_action(cap_roles["audit_agent"], "run_audit")
+# TODO: Verify audit_agent governance check via cap_engine.verify_action.
+audit_verdict = ____
 print(f"Audit agent governance check: {audit_verdict.level}")
 
-# TODO: Build attestation dict with sections:
-#   - model: name, version, type, training_method
-#   - privacy: federated_learning, differential_privacy, dp_sigma, dp_epsilon_approx, n_clients
-#   - fairness: bias_audit_conducted, demographic_parity_gap, threshold, status
-#   - robustness: adversarial_training, fgsm_asr_eps01, certified_robustness (method, sigma, radius, %)
-#   - governance: pact_governed, org_id, clearances, audit_trail_integrity, frozen_context
-#   - compliance: EU AI Act, MAS TRM, PDPA, SG AI Verify (with article verdicts)
-#   - deployment: inference_server, nexus_endpoint, drift_monitoring, psi_threshold
-#   - overall_verdict: "COMPLIANT" (check for NON_COMPLIANT in compliance articles)
-attestation = {
-    "attestation_id": f"ATT-{uuid.uuid4().hex[:8]}",
-    "timestamp": datetime.now().isoformat(),
-    "system": "Capstone Regulated AI System",
-    "model": ____,
-    "privacy": ____,
-    "fairness": ____,
-    "robustness": ____,
-    "governance": ____,
-    "compliance": ____,
-    "deployment": ____,
-    "overall_verdict": "COMPLIANT",
-}
+# TODO: Build the attestation dict with attestation_id, timestamp, system,
+# TODO: model, privacy, fairness, robustness, governance, compliance
+# TODO: (EU AI Act, MAS TRM, PDPA, SG AI Verify), deployment, overall_verdict.
+attestation = ____
 
-# Check if any non-compliant items
-for reg, articles in attestation["compliance"].items():
-    for art, status in articles.items():
-        if "NON_COMPLIANT" in status:
-            attestation["overall_verdict"] = "NON_COMPLIANT"
-            break
+# TODO: Walk attestation['compliance'] and flip overall_verdict if any
+# TODO: article string contains 'NON_COMPLIANT'.
+____
 
 print(f"=== Machine-Readable JSON Attestation ===")
 print(json.dumps(attestation, indent=2, default=str))
 
-# TODO: Print human-readable audit report with 6 sections:
-#   1. MODEL IDENTITY: name, version, type, training_method from attestation['model']
-#   2. PRIVACY GUARANTEES: n_clients, dp_epsilon_approx from attestation['privacy']
-#   3. FAIRNESS ASSESSMENT: bias status, demographic_parity_gap from attestation['fairness']
-#   4. ROBUSTNESS CERTIFICATION: fgsm_asr_eps01, certified % from attestation['robustness']
-#   5. GOVERNANCE: audit_trail_integrity from attestation['governance']
-#   6. REGULATORY COMPLIANCE: per-regulation compliant/total counts from attestation['compliance']
-# Hint: loop attestation['compliance'].items() to count "COMPLIANT" (not "NON_COMPLIANT") articles
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+print(f"\n{'=' * 70}")
+print(f"  HUMAN-READABLE AUDIT REPORT")
+print(f"  Attestation: {attestation['attestation_id']}")
+print(f"  Date: {attestation['timestamp']}")
+print(f"{'=' * 70}")
+
+print(f"\n1. MODEL IDENTITY")
+print(f"   Name: {attestation['model']['name']} v{attestation['model']['version']}")
+print(f"   Type: {attestation['model']['type']}")
+print(f"   Training: {attestation['model']['training_method']}")
+
+print(f"\n2. PRIVACY GUARANTEES")
+print(f"   Federated learning: {attestation['privacy']['n_clients']} clients")
+print(
+    f"   Differential privacy: epsilon ~{attestation['privacy']['dp_epsilon_approx']}"
+)
+
+print(f"\n3. FAIRNESS ASSESSMENT")
+print(f"   Bias audit: {attestation['fairness']['status']}")
+print(
+    f"   Demographic parity gap: {attestation['fairness']['demographic_parity_gap']:.4f}"
+)
+
+print(f"\n4. ROBUSTNESS CERTIFICATION")
+print(f"   Adversarial training: YES")
+print(f"   FGSM ASR (eps=0.1): {attestation['robustness']['fgsm_asr_eps01']:.4f}")
+print(
+    f"   Certified at R={target_radius}: {attestation['robustness']['certified_robustness']['certified_percentage']:.2%}"
+)
+
+print(f"\n5. GOVERNANCE")
+print(f"   PACT governed: YES")
+print(
+    f"   Audit trail integrity: {'VALID' if attestation['governance']['audit_trail_integrity'] else 'BROKEN'}"
+)
+print(f"   Frozen context: YES")
+
+print(f"\n6. REGULATORY COMPLIANCE")
+for reg, articles in attestation["compliance"].items():
+    compliant_count = sum(
+        1 for s in articles.values() if "COMPLIANT" in s and "NON" not in s
+    )
+    total = len(articles)
+    print(f"   {reg}: {compliant_count}/{total} articles compliant")
 
 print(f"\n{'=' * 70}")
 print(f"  OVERALL VERDICT: {attestation['overall_verdict']}")
@@ -573,8 +427,9 @@ print(
 """
 )
 
-asyncio.run(conn.close())
-cap_file.unlink()
+# TODO: Close the connection, unlink temporary files, drop the capstone db.
+____
+____
 db_path = Path("ascent10_capstone.db")
 if db_path.exists():
     db_path.unlink()

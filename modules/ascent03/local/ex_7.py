@@ -20,7 +20,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import pickle
+import tempfile
 
+import lightgbm as lgb
 import numpy as np
 import polars as pl
 from kailash.db.connection import ConnectionManager
@@ -33,6 +37,14 @@ from kailash_ml.engines.hyperparameter_search import (
     ParamDistribution,
 )
 from kailash_ml.engines.model_registry import ModelRegistry
+from kailash_ml.engines.training_pipeline import TrainingPipeline, ModelSpec, EvalSpec
+from kailash_ml.types import (
+    FeatureSchema,
+    FeatureField,
+    MetricSpec,
+    ModelSignature,
+)
+from sklearn.metrics import roc_auc_score, average_precision_score
 
 from shared import ASCENTDataLoader
 from shared.kailash_helpers import setup_environment
@@ -50,112 +62,132 @@ result = pipeline.setup(
     credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
 )
 
+# Exclude entity ID and target from feature columns
+non_feature_cols = {"default", "customer_id"}
+feature_cols_train = [c for c in result.train_data.columns if c not in non_feature_cols]
+
 X_train, y_train, col_info = to_sklearn_input(
     result.train_data,
-    feature_columns=[c for c in result.train_data.columns if c != "default"],
+    feature_columns=feature_cols_train,
     target_column="default",
 )
 X_test, y_test, _ = to_sklearn_input(
     result.test_data,
-    feature_columns=[c for c in result.test_data.columns if c != "default"],
+    feature_columns=feature_cols_train,
     target_column="default",
 )
 feature_names = col_info["feature_columns"]
+
+# Cast string columns to Categorical so TrainingPipeline.train() can handle them
+string_cols = [
+    c
+    for c in credit.columns
+    if credit[c].dtype in (pl.Utf8, pl.String) and c != "customer_id"
+]
+credit = credit.with_columns([pl.col(c).cast(pl.Categorical) for c in string_cols])
+
+# Build FeatureSchema for the search API (exclude customer_id — it's an entity ID, not a feature)
+schema = FeatureSchema(
+    name="credit_scoring_features",
+    features=[FeatureField(name=f, dtype="float64") for f in feature_names],
+    entity_id_column="customer_id",
+)
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Define search space
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create a SearchSpace with ParamDistribution entries for each hyperparameter
-search_space = SearchSpace(
-    params=[
-        # TODO: n_estimators — int_uniform distribution, range 100 to 1000
-        ____,  # Hint: ParamDistribution(name="n_estimators", distribution="int_uniform", low=100, high=1000)
-        # TODO: learning_rate — log_uniform distribution, range 0.01 to 0.5
-        ____,  # Hint: ParamDistribution(name="learning_rate", distribution="log_uniform", low=0.01, high=0.5)
-        # TODO: max_depth — int_uniform distribution, range 3 to 10
-        ____,  # Hint: ParamDistribution(name="max_depth", distribution="int_uniform", low=3, high=10)
-        # TODO: num_leaves — int_uniform distribution, range 15 to 127
-        ____,  # Hint: ParamDistribution(name="num_leaves", distribution="int_uniform", low=15, high=127)
-        # TODO: min_child_samples — int_uniform distribution, range 5 to 100
-        ____,  # Hint: ParamDistribution(name="min_child_samples", distribution="int_uniform", low=5, high=100)
-        # TODO: subsample — uniform distribution, range 0.5 to 1.0
-        ____,  # Hint: ParamDistribution(name="subsample", distribution="uniform", low=0.5, high=1.0)
-        # TODO: colsample_bytree — uniform distribution, range 0.5 to 1.0
-        ____,  # Hint: ParamDistribution(name="colsample_bytree", distribution="uniform", low=0.5, high=1.0)
-        # TODO: reg_alpha — log_uniform distribution, range 1e-8 to 10.0
-        ____,  # Hint: ParamDistribution(name="reg_alpha", distribution="log_uniform", low=1e-8, high=10.0)
-        # TODO: reg_lambda — log_uniform distribution, range 1e-8 to 10.0
-        ____,  # Hint: ParamDistribution(name="reg_lambda", distribution="log_uniform", low=1e-8, high=10.0)
-    ]
-)
+# TODO: Build a SearchSpace with ParamDistribution entries for each
+#       hyperparameter. Required params and ranges:
+#         n_estimators       int_uniform   [100, 1000]
+#         learning_rate      log_uniform   [0.01, 0.5]
+#         max_depth          int_uniform   [3, 10]
+#         num_leaves         int_uniform   [15, 127]
+#         min_child_samples  int_uniform   [5, 100]
+#         subsample          uniform       [0.5, 1.0]
+#         colsample_bytree   uniform       [0.5, 1.0]
+#         reg_alpha          log_uniform   [1e-8, 10.0]
+#         reg_lambda         log_uniform   [1e-8, 10.0]
+search_space = ____
 
 print("=== Search Space ===")
 for p in search_space.params:
-    print(f"  {p.name}: {p.distribution} [{p.low}, {p.high}]")
+    print(f"  {p.name}: {p.type} [{p.low}, {p.high}]")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Run HyperparameterSearch
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create a SearchConfig specifying the model, metric, direction, and trial budget
-config = SearchConfig(
-    model_class=____,  # Hint: "lightgbm.LGBMClassifier"
-    metric=____,  # Hint: "average_precision"  (AUC-PR, better for imbalanced)
-    direction=____,  # Hint: "maximize"
-    n_trials=____,  # Hint: 50
-    cv_folds=____,  # Hint: 5
-    seed=42,
-    early_stopping_rounds=10,
-    timeout_seconds=300,
-)
+# TODO: Build SearchConfig with strategy="bayesian", metric_to_optimize="auc",
+#       direction="maximize", n_trials=20, early_stopping_patience=10,
+#       timeout_seconds=120
+config = ____
+
+# TODO: Build a base ModelSpec for lightgbm.LGBMClassifier with
+#       hyperparameters={"random_state": 42, "verbose": -1}, framework="sklearn"
+base_model_spec = ____
+
+# TODO: Build EvalSpec with metrics=["auc","f1","accuracy"],
+#       split_strategy="stratified_kfold", n_splits=5, test_size=0.2
+eval_spec = ____
 
 
 async def run_search():
-    # TODO: Create a HyperparameterSearch instance
-    search = ____  # Hint: HyperparameterSearch()
+    _db_path = os.path.join(tempfile.gettempdir(), "ascent03_models.db")
+    conn = ConnectionManager(f"sqlite:///{_db_path}")
+    await conn.initialize()
 
-    # TODO: Run the search with X_train, y_train, search_space, and config
-    search_result = await search.run(
-        X=____,  # Hint: X_train
-        y=____,  # Hint: y_train
-        search_space=____,  # Hint: search_space
-        config=____,  # Hint: config
-    )
+    # TODO: Create a ModelRegistry over conn
+    registry = ____
+
+    # TODO: Create a TrainingPipeline with feature_store=None and the registry
+    training_pipeline = ____
+
+    # TODO: Create the HyperparameterSearch wrapper around the training pipeline
+    search = ____
+
+    # TODO: Run the Bayesian search via search.search(...) with all the
+    #       data/schema/spec/config arguments and experiment_name="credit_default_bayesian"
+    search_result = await ____
 
     print(f"\n=== Search Results ===")
-    print(f"Best score (AUC-PR): {search_result.best_score:.4f}")
     print(f"Best params:")
     for k, v in search_result.best_params.items():
         print(f"  {k}: {v}")
-    print(f"Total trials: {search_result.n_trials}")
-    print(f"Time: {search_result.elapsed_seconds:.1f}s")
+    print(f"Best metrics: {search_result.best_metrics}")
+    print(f"Best trial: #{search_result.best_trial_number}")
+    print(f"Total trials: {len(search_result.all_trials)}")
+    print(f"Time: {search_result.total_time_seconds:.1f}s")
 
+    # Trial history
     print(f"\nTop 5 trials:")
-    sorted_trials = sorted(search_result.trials, key=lambda t: t["score"], reverse=True)
+    sorted_trials = sorted(
+        search_result.all_trials,
+        key=lambda t: t.metrics.get("auc", 0),
+        reverse=True,
+    )
     for i, trial in enumerate(sorted_trials[:5]):
-        print(
-            f"  #{i+1}: score={trial['score']:.4f}, "
-            f"lr={trial['params'].get('learning_rate', '?'):.4f}, "
-            f"depth={trial['params'].get('max_depth', '?')}"
-        )
+        score = trial.metrics.get("auc", 0)
+        lr = trial.params.get("learning_rate", "?")
+        depth = trial.params.get("max_depth", "?")
+        lr_str = f"{lr:.4f}" if isinstance(lr, float) else str(lr)
+        print(f"  #{i+1}: score={score:.4f}, lr={lr_str}, depth={depth}")
 
-    return search_result
+    return search_result, conn, registry
 
 
-search_result = asyncio.run(run_search())
+search_result, conn, registry = asyncio.run(run_search())
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: Analyse convergence
 # ══════════════════════════════════════════════════════════════════════
 
-# Extract trial scores and compute running best
-scores = [t["score"] for t in search_result.trials]
-
-# TODO: Compute the running best score using np.maximum.accumulate
+# Plot optimisation convergence
+scores = [t.metrics.get("auc", 0) for t in search_result.all_trials]
+# TODO: Compute the running maximum across trials
 best_so_far = ____  # Hint: np.maximum.accumulate(scores)
 
 viz = ModelVisualizer()
@@ -164,8 +196,8 @@ fig = viz.training_history(
     x_label="Trial",
 )
 fig.update_layout(title="Hyperparameter Search Convergence")
-fig.write_html("ex5_search_convergence.html")
-print("\nSaved: ex5_search_convergence.html")
+fig.write_html("ex7_search_convergence.html")
+print("\nSaved: ex7_search_convergence.html")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -174,44 +206,33 @@ print("\nSaved: ex5_search_convergence.html")
 
 
 async def register_model():
-    conn = ConnectionManager("sqlite:///ascent03_models.db")
-    await conn.initialize()
+    # Train final model with best params
+    best_params = {**search_result.best_params}
+    best_params["random_state"] = 42
+    best_params["verbose"] = -1
 
-    # TODO: Create and initialize a ModelRegistry with the connection
-    registry = ____  # Hint: ModelRegistry(conn)
-    await registry.initialize()
-
-    import lightgbm as lgb
-
-    # TODO: Train the final model using search_result.best_params
-    best_model = lgb.LGBMClassifier(
-        **____,  # Hint: search_result.best_params
-        random_state=42,
-        verbose=-1,
-    )
+    # TODO: Build LGBMClassifier(**best_params) and fit on (X_train, y_train)
+    best_model = ____
     best_model.fit(X_train, y_train)
 
-    import pickle
-    from kailash_ml.types import MetricSpec
-
+    # Serialize the model to bytes
     model_bytes = pickle.dumps(best_model)
+    best_score = search_result.best_metrics.get("auc", 0)
 
-    # TODO: Register the model in ModelRegistry with name, artifact bytes, and metrics
-    model_version = await registry.register_model(
-        name=____,  # Hint: "credit_default_lgbm"
-        artifact=____,  # Hint: model_bytes
-        metrics=[MetricSpec(name="auc_pr", value=search_result.best_score)],
-    )
+    # TODO: Register the model in the registry via registry.register_model(
+    #         name="credit_default_lgbm", artifact=model_bytes,
+    #         metrics=[MetricSpec(name="auc", value=best_score)])
+    model_version = await ____
     model_id = model_version.version
 
     print(f"\n=== Model Registered ===")
-    print(f"Model ID: {model_id}")
-    print(f"Status: staging (not yet production)")
+    print(f"Model: {model_version.name} v{model_id}")
+    print(f"Stage: {model_version.stage} (not yet production)")
 
-    return conn, registry, model_id, best_model
+    return model_id, best_model
 
 
-conn, registry, model_id, best_model = asyncio.run(register_model())
+model_id, best_model = asyncio.run(register_model())
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -220,36 +241,25 @@ conn, registry, model_id, best_model = asyncio.run(register_model())
 
 
 async def promote_model():
-    """
-    Promotion is a governance gate:
-    - A model cannot reach production without explicit promotion
-    - This creates an audit trail: who promoted, when, why
-    - EATP concept: model provenance chain
-    """
-    from sklearn.metrics import roc_auc_score, average_precision_score
+    """Promotion is a governance gate: explicit, audited, threshold-checked."""
 
+    # Verify model quality before promotion
     y_proba = best_model.predict_proba(X_test)[:, 1]
-
-    # TODO: Compute AUC-PR on the test set
-    auc_pr = ____  # Hint: average_precision_score(y_test, y_proba)
-
-    # TODO: Compute AUC-ROC on the test set
-    auc_roc = ____  # Hint: roc_auc_score(y_test, y_proba)
+    auc_pr = average_precision_score(y_test, y_proba)
+    auc_roc = roc_auc_score(y_test, y_proba)
 
     print(f"\n=== Pre-Promotion Validation ===")
     print(f"Test AUC-PR:  {auc_pr:.4f}")
     print(f"Test AUC-ROC: {auc_roc:.4f}")
 
-    min_auc_pr = 0.30
+    # Quality gate: must exceed thresholds
+    min_auc_pr = 0.30  # Reasonable for 12% default rate
     if auc_pr >= min_auc_pr:
-        # TODO: Promote the model to "production" stage with a reason string
-        await registry.promote_model(
-            name=____,  # Hint: "credit_default_lgbm"
-            version=____,  # Hint: model_id
-            target_stage=____,  # Hint: "production"
-            reason=f"Passed quality gate: AUC-PR={auc_pr:.4f} >= {min_auc_pr}",
-        )
-        print(f"Model promoted to PRODUCTION")
+        # TODO: Promote via registry.promote_model(name="credit_default_lgbm",
+        #       version=model_id, target_stage="production",
+        #       reason=f"Passed quality gate: AUC-PR={auc_pr:.4f} >= {min_auc_pr}")
+        promoted = await ____
+        print(f"Model promoted to PRODUCTION (stage={promoted.stage})")
         print(f"  Reason: AUC-PR={auc_pr:.4f} >= {min_auc_pr} threshold")
     else:
         print(f"Model REJECTED: AUC-PR={auc_pr:.4f} < {min_auc_pr} threshold")
@@ -267,25 +277,31 @@ auc_pr, auc_roc = asyncio.run(promote_model())
 
 async def compare_versions():
     """List all registered models and their stages."""
-    # TODO: List all models in the registry using registry.list_models()
-    models = await registry.____()  # Hint: registry.list_models()
+    # TODO: List all registered models via registry.list_models()
+    models = await ____
     print(f"\n=== Model Registry ===")
     for m in models:
         print(
             f"  {m.get('name', '?')} (v{m.get('version', '?')}): "
-            f"stage={m.get('stage', '?')}, "
-            f"AUC-PR={m.get('metrics', {}).get('auc_pr', '?')}"
+            f"stage={m.get('stage', '?')}"
         )
 
-    # TODO: Retrieve the current production model using registry.get_production
-    prod_model = await registry.get_production(____)  # Hint: "credit_default_lgbm"
-    if prod_model:
-        print(
-            f"\nProduction model: {prod_model.get('name')} v{prod_model.get('version')}"
-        )
-        print(f"  Params: {prod_model.get('params', {})}")
-    else:
+    # Get production model
+    try:
+        # TODO: Use registry.get_model("credit_default_lgbm", stage="production")
+        prod_model = await ____
+        print(f"\nProduction model: {prod_model.name} v{prod_model.version}")
+        print(f"  Stage: {prod_model.stage}")
+        for metric in prod_model.metrics:
+            print(f"  {metric.name}: {metric.value:.4f}")
+    except Exception:
         print("\nNo production model found")
+
+    # List all versions
+    versions = await registry.get_model_versions("credit_default_lgbm")
+    print(f"\nAll versions ({len(versions)}):")
+    for v in versions:
+        print(f"  v{v.version}: stage={v.stage}")
 
     await conn.close()
 

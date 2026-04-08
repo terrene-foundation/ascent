@@ -77,15 +77,9 @@ for k, (m, n) in enumerate(zip(true_means, n_per_component)):
 # ══════════════════════════════════════════════════════════════════════
 # Problem: observed data X, latent assignments Z, parameters θ = {π, μ, Σ}
 #
-# Maximum Likelihood: max_{θ} log P(X|θ) = max_{θ} Σ_i log Σ_k π_k N(x_i|μ_k,Σ_k)
-#   → Intractable: log of a sum
-#
 # EM insight: introduce Z, maximise a lower bound (ELBO):
 #   E-step: compute Q(Z|X, θ^old) = P(Z|X, θ^old)  [posterior responsibilities]
 #   M-step: θ^new = argmax_{θ} E_Q[log P(X,Z|θ)]    [weighted ML update]
-#
-# Why it works: each step is guaranteed to increase log P(X|θ).
-# Converges to a local maximum of the likelihood.
 
 print(f"\n=== EM Algorithm Derivation ===")
 print(
@@ -93,12 +87,6 @@ print(
 EM as coordinate ascent on the ELBO:
 
   log P(X|θ) ≥ ELBO = E_Q[log P(X,Z|θ)] + H(Q)   (Jensen's inequality)
-
-  E-step: fix θ, maximise ELBO over Q
-    → Q*(Z) = P(Z|X, θ)  [just compute the posterior]
-
-  M-step: fix Q, maximise ELBO over θ
-    → θ* = argmax E_{Q*}[log P(X,Z|θ)]  [weighted MLE]
 
 For GMMs:
   E-step: r_{ik} = π_k N(x_i|μ_k,Σ_k) / Σ_j π_j N(x_i|μ_j,Σ_j)
@@ -127,36 +115,34 @@ def e_step(
 
     R[i, k] = P(z_i = k | x_i, θ)
              = π_k N(x_i | μ_k, Σ_k) / Σ_j π_j N(x_j | μ_j, Σ_j)
-
-    Returns:
-        R: (n_samples, n_components) responsibility matrix
     """
     n_samples = X.shape[0]
     n_components = len(weights)
     log_probs = np.zeros((n_samples, n_components))
 
-    # TODO: For each component k, compute log π_k + logpdf of the multivariate normal
-    # Use multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True).logpdf(X)
     for k in range(n_components):
+        # TODO: Build the multivariate normal for component k
+        # Hint: multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True)
         try:
-            ____  # Hint: dist = multivariate_normal(mean=means[k], cov=covs[k], allow_singular=True)
-            ____  # Hint: log_probs[:, k] = np.log(weights[k] + 1e-300) + dist.logpdf(X)
+            dist = ____
+            # TODO: Set log_probs[:, k] = log(π_k) + logpdf under component k
+            # Hint: np.log(weights[k] + 1e-300) + dist.logpdf(X)
+            log_probs[:, k] = ____
         except Exception:
             log_probs[:, k] = -np.inf
 
-    # Normalise in log space (log-sum-exp trick for numerical stability)
+    # Log-sum-exp normalisation for numerical stability
     log_probs_max = log_probs.max(axis=1, keepdims=True)
     log_normaliser = (
         np.log(np.exp(log_probs - log_probs_max).sum(axis=1, keepdims=True))
         + log_probs_max
     )
-    # TODO: Compute R by exponentiating the normalised log probs
+    # TODO: Recover responsibilities from log space
     R = ____  # Hint: np.exp(log_probs - log_normaliser)
 
     return R
 
 
-# Test E-step on true parameters
 R_init = e_step(X_synth, true_means, true_covs, true_weights)
 print(f"\n=== E-step Test (true parameters) ===")
 print(f"Responsibility matrix shape: {R_init.shape}")
@@ -185,32 +171,29 @@ def m_step(
     π_k = N_k / N
     μ_k = (Σ_i r_{ik} x_i) / N_k
     Σ_k = (Σ_i r_{ik} (x_i - μ_k)(x_i - μ_k)') / N_k  +  reg_covar * I
-
-    Returns:
-        means:   (n_components, n_features)
-        covs:    (n_components, n_features, n_features)
-        weights: (n_components,)
     """
     n_samples, n_features = X.shape
     n_components = R.shape[1]
 
-    # TODO: Compute effective sample counts N_k, normalised weights, and weighted means
+    # TODO: Effective sample counts per component
     N_k = ____  # Hint: R.sum(axis=0) + 1e-300
+    # TODO: Mixing weights (normalised by total samples)
     weights = ____  # Hint: N_k / n_samples
-    means = ____  # Hint: (R.T @ X) / N_k[:, np.newaxis]  → shape (K, D)
 
-    # TODO: Compute weighted covariance matrix for each component
+    # TODO: Weighted means
+    means = ____  # Hint: (R.T @ X) / N_k[:, np.newaxis]
+
     covs = np.zeros((n_components, n_features, n_features))
     for k in range(n_components):
         diff = X - means[k]  # (N, D)
-        # Hint: covs[k] = (R[:, k:k+1] * diff).T @ diff / N_k[k]
-        ____
+        # TODO: Weighted outer products → covariance for component k
+        # Hint: (R[:, k:k+1] * diff).T @ diff / N_k[k]
+        covs[k] = ____
         covs[k] += reg_covar * np.eye(n_features)  # Regularise for stability
 
     return means, covs, weights
 
 
-# Test M-step: given true responsibilities, should recover near-true params
 R_true = np.zeros((n_synth, 3))
 for i, k in enumerate(z_true):
     R_true[i, k] = 1.0  # Hard assignments from ground truth
@@ -249,7 +232,7 @@ def compute_log_likelihood(
                 np.log(weights[k] + 1e-300) + dist.logpdf(X),
             )
         except Exception:
-            pass
+            log_likelihoods = np.logaddexp(log_likelihoods, np.log(weights[k] + 1e-300))
 
     return log_likelihoods.sum()
 
@@ -261,15 +244,11 @@ def fit_gmm_em(
     tol: float = 1e-4,
     seed: int = 42,
 ) -> dict:
-    """
-    Fit GMM using manual EM loop.
-
-    Initialises with K-means++, then alternates E/M steps
-    until log-likelihood converges.
-    """
+    """Fit GMM using manual EM loop."""
     rng_em = np.random.default_rng(seed)
     n_samples, n_features = X.shape
 
+    # Initialise: random sample = means, identity covs, uniform weights
     idx = rng_em.choice(n_samples, n_components, replace=False)
     means = X[idx].copy()
     covs = np.array([np.eye(n_features)] * n_components)
@@ -278,17 +257,17 @@ def fit_gmm_em(
     log_likelihoods = []
 
     for iteration in range(max_iter):
-        # TODO: Run E-step then M-step, track log-likelihood, check convergence
-        R = ____  # Hint: e_step(X, means, covs, weights)
-        means, covs, weights = ____  # Hint: m_step(X, R)
+        # TODO: Run one E-step (call your e_step function)
+        R = ____
+        # TODO: Run one M-step (call your m_step function)
+        means, covs, weights = ____
 
+        # Track log-likelihood
         ll = compute_log_likelihood(X, means, covs, weights)
         log_likelihoods.append(ll)
 
-        # TODO: Check for convergence (|ll_new - ll_old| < tol)
-        if (
-            iteration > 0 and ____
-        ):  # Hint: abs(log_likelihoods[-1] - log_likelihoods[-2]) < tol
+        # Convergence check
+        if iteration > 0 and abs(log_likelihoods[-1] - log_likelihoods[-2]) < tol:
             print(f"  Converged at iteration {iteration + 1}")
             break
 
@@ -320,9 +299,12 @@ if len(set(em_labels)) > 1:
     sil = silhouette_score(X_synth, em_labels)
     print(f"Silhouette score: {sil:.4f}")
 
+# Log-likelihood convergence plot
 viz = ModelVisualizer()
-# TODO: Visualise EM convergence using viz.training_history
-fig = ____  # Hint: viz.training_history({"Log-Likelihood": em_result["log_likelihoods"]}, x_label="EM Iteration")
+fig = viz.training_history(
+    {"Log-Likelihood": em_result["log_likelihoods"]},
+    x_label="EM Iteration",
+)
 fig.update_layout(title="EM Convergence: Log-Likelihood per Iteration")
 fig.write_html("ex2_em_convergence.html")
 print("Saved: ex2_em_convergence.html")
@@ -346,25 +328,27 @@ X_real, _, _ = to_sklearn_input(
     feature_columns=feature_cols,
 )
 
-scaler = StandardScaler()
-X_real_scaled = scaler.fit_transform(X_real)
+# TODO: Standardise X_real with StandardScaler
+scaler = ____
+X_real_scaled = ____
 
 print(f"\n=== Real Data: E-commerce Customers ===")
 print(f"Shape: {X_real_scaled.shape}")
 
-# Test different numbers of components using BIC/AIC model selection
 print(f"\n=== GMM Model Selection (BIC/AIC) ===")
 print(f"{'K':>4} {'BIC':>12} {'AIC':>12} {'Log-L':>12} {'Silhouette':>12}")
 print("─" * 56)
 
 bic_scores = {}
 for k in range(2, 9):
-    # TODO: Create and fit GaussianMixture with n_components=k, covariance_type="full"
-    gmm = ____  # Hint: GaussianMixture(n_components=k, covariance_type="full", random_state=42, max_iter=200)
-    ____  # Hint: gmm.fit(X_real_scaled)
-    labels = ____  # Hint: gmm.predict(X_real_scaled)
+    # TODO: Create GaussianMixture(n_components=k, covariance_type="full",
+    #       random_state=42, max_iter=200) and fit on X_real_scaled
+    gmm = ____
+    ____  # gmm.fit(X_real_scaled)
+    # TODO: Predict cluster labels
+    labels = ____
 
-    # TODO: Compute BIC, AIC, log-likelihood, and silhouette
+    # TODO: Compute BIC and AIC scores
     bic = ____  # Hint: gmm.bic(X_real_scaled)
     aic = ____  # Hint: gmm.aic(X_real_scaled)
     ll = gmm.score(X_real_scaled) * X_real_scaled.shape[0]
@@ -383,7 +367,6 @@ print("\nBIC vs AIC vs Silhouette:")
 print("  BIC: penalises model complexity (prefer smaller K)")
 print("  AIC: less conservative than BIC (can favour larger K)")
 print("  Silhouette: cluster separation (domain-interpretable)")
-print("  Choose K based on both statistical criteria AND business meaning")
 
 # Best model: fit and profile
 k_final = best_k_bic[0]
@@ -395,15 +378,13 @@ print(f"\n=== Best GMM (K={k_final}) ===")
 print(f"Component weights: {gmm_best.weights_.round(3)}")
 print(f"Average max probability: {soft_probs.max(axis=1).mean():.4f}")
 
-# Profile each component
 customers_with_clusters = customers.drop_nulls(subset=feature_cols).with_columns(
     pl.Series("gmm_cluster", labels_best)
 )
 
 print(f"\n=== Customer Segment Profiles ===")
 for k in range(k_final):
-    # TODO: Filter to cluster k and print per-feature mean vs overall
-    subset = ____  # Hint: customers_with_clusters.filter(pl.col("gmm_cluster") == k)
+    subset = customers_with_clusters.filter(pl.col("gmm_cluster") == k)
     print(f"\nSegment {k} (n={subset.height:,}, weight={gmm_best.weights_[k]:.3f}):")
     for col in feature_cols[:4]:
         mean_val = subset[col].mean()
@@ -422,17 +403,11 @@ from kailash_ml.engines.automl_engine import AutoMLEngine, AutoMLConfig
 
 async def automl_gmm():
     """Use AutoMLEngine to automate GMM hyperparameter search."""
-    # TODO: Create AutoMLConfig for clustering optimising BIC (minimize),
-    # using random search with 15 trials, agent=False, max_llm_cost_usd=0.5
-    config = AutoMLConfig(
-        task_type=____,  # Hint: "clustering"
-        metric_to_optimize=____,  # Hint: "bic"
-        direction=____,  # Hint: "minimize"
-        search_strategy=____,  # Hint: "random"
-        search_n_trials=____,  # Hint: 15
-        agent=False,
-        max_llm_cost_usd=____,  # Hint: 0.5
-    )
+    # TODO: Build AutoMLConfig
+    # task_type="clustering", metric_to_optimize="bic", direction="minimize"
+    # search_strategy="random", search_n_trials=15
+    # agent=False (double opt-in), max_llm_cost_usd=0.5
+    config = ____
 
     print(f"\n=== AutoMLEngine Config ===")
     print(f"Task: {config.task_type}")
@@ -458,8 +433,7 @@ comparison = {
     f"GMM K={k}": {"BIC": v["bic"], "Silhouette": v["silhouette"]}
     for k, v in bic_scores.items()
 }
-# TODO: Create comparison chart and save
-fig_cmp = ____  # Hint: viz.metric_comparison(comparison)
+fig_cmp = viz.metric_comparison(comparison)
 fig_cmp.update_layout(title="GMM: BIC and Silhouette vs Number of Components")
 fig_cmp.write_html("ex2_gmm_comparison.html")
 print("\nSaved: ex2_gmm_comparison.html")

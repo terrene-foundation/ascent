@@ -59,125 +59,47 @@ setup_environment()
 print("=== Compliance Schemas (Regulation -> Assertion Predicates) ===\n")
 
 
-# TODO: Define EUAIActComplianceSignature(Signature) with InputFields:
-#   model_card_exists, bias_audit_conducted, human_oversight_defined, risk_category,
-#   audit_trail_active, drift_monitoring_active
-#   and OutputFields: overall_status, article_verdicts, remediation_actions
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+class EUAIActComplianceSignature(Signature):
+    """EU AI Act compliance check for high-risk AI systems."""
+
+    # TODO: InputFields for model_card_exists, bias_audit_conducted,
+    # TODO: human_oversight_defined, risk_category (str), audit_trail_active,
+    # TODO: drift_monitoring_active.
+    # TODO: OutputFields for overall_status, article_verdicts, remediation_actions.
+    ____
 
 
-# TODO: Define MASTRMComplianceSignature(Signature) with InputFields:
-#   governance_framework_active, audit_trail_integrity, model_risk_documented,
-#   change_management_logged, incident_response_defined
-#   and OutputFields: overall_status, section_verdicts, remediation_actions
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+class MASTRMComplianceSignature(Signature):
+    """MAS Technology Risk Management compliance check."""
+
+    # TODO: InputFields for governance_framework_active, audit_trail_integrity,
+    # TODO: model_risk_documented, change_management_logged, incident_response_defined.
+    # TODO: OutputFields overall_status, section_verdicts, remediation_actions.
+    ____
 
 
-# TODO: Define SGAIVerifySignature(Signature) with InputFields:
-#   accountability_chain, fairness_audit, transparency_docs,
-#   explainability_available, data_governance
 class SGAIVerifySignature(Signature):
     """Singapore AI Verify framework compliance check."""
 
-    accountability_chain: bool = InputField(
-        desc="D/T/R chain traces to human delegator"
-    )
-    fairness_audit: bool = InputField(
-        desc="Bias metrics computed and thresholds defined"
-    )
-    transparency_docs: bool = InputField(desc="Model card and system card published")
-    explainability_available: bool = InputField(
-        desc="Feature importance or SHAP available"
-    )
-    data_governance: bool = InputField(desc="Dataset datasheet and lineage documented")
-
-    overall_status: str = OutputField(desc="COMPLIANT, PARTIAL, NON_COMPLIANT")
-    pillar_verdicts: str = OutputField(desc="Per-pillar pass/fail")
-    remediation_actions: str = OutputField(desc="Required actions")
+    # TODO: InputFields for accountability_chain, fairness_audit, transparency_docs,
+    # TODO: explainability_available, data_governance.
+    # TODO: OutputFields overall_status, pillar_verdicts, remediation_actions.
+    ____
 
 
-# TODO: Define PDPAComplianceSignature(Signature) with InputFields:
-#   consent_documented, data_minimisation, access_controls,
-#   retention_policy, breach_notification
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+class PDPAComplianceSignature(Signature):
+    """Singapore PDPA (Personal Data Protection Act) compliance check."""
+
+    # TODO: InputFields for consent_documented, data_minimisation, access_controls,
+    # TODO: retention_policy, breach_notification.
+    # TODO: OutputFields overall_status, obligation_verdicts, remediation_actions.
+    ____
 
 
-# Define regulation schemas as structured assertion lists
-REGULATION_SCHEMAS = {
-    "EU AI Act": {
-        "assertions": [
-            (
-                "Art 9 - Risk Management",
-                "model_card_exists AND drift_monitoring_active",
-            ),
-            ("Art 10 - Data Governance", "bias_audit_conducted"),
-            ("Art 12 - Record-keeping", "audit_trail_active"),
-            ("Art 13 - Transparency", "model_card_exists"),
-            ("Art 14 - Human Oversight", "human_oversight_defined"),
-        ],
-        "required_risk_categories": ["HIGH"],
-    },
-    "MAS TRM": {
-        "assertions": [
-            ("S7.2 - IT Risk Framework", "governance_framework_active"),
-            ("S7.5 - Audit Trail", "audit_trail_integrity"),
-            ("S8.1 - System Reliability", "drift_monitoring_active"),
-        ],
-    },
-    "SG AI Verify": {
-        "assertions": [
-            ("Accountability", "accountability_chain"),
-            ("Fairness", "fairness_audit"),
-            ("Transparency", "transparency_docs"),
-        ],
-    },
-    "PDPA": {
-        "assertions": [
-            ("Consent Obligation", "consent_documented"),
-            ("Purpose Limitation", "data_minimisation"),
-            ("Access Protection", "access_controls"),
-            ("Retention Limit", "retention_policy"),
-        ],
-    },
-}
+# TODO: Build a REGULATION_SCHEMAS dict mapping each regulation to a list
+# TODO: of (assertion_name, predicate_string) pairs. Predicates use plain
+# TODO: AND logic over artefact keys (e.g. "model_card_exists AND drift_monitoring_active").
+REGULATION_SCHEMAS = ____
 
 for reg_name, schema in REGULATION_SCHEMAS.items():
     print(f"{reg_name}:")
@@ -195,43 +117,17 @@ print(f"=== ComplianceAuditAgent ===")
 print(f"{'=' * 70}\n")
 
 
-# TODO: Implement run_compliance_audit(artefacts: dict) -> dict
-# Hint: for each regulation schema, evaluate each predicate by parsing AND terms
-#        from artefacts dict; mark assertion PASS/FAIL, collect remediation for FAILs
-#        set overall "COMPLIANT" or "NON_COMPLIANT" per regulation and overall
 def run_compliance_audit(artefacts: dict) -> dict:
     """Run compliance audit against all regulation schemas."""
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+    # TODO: For each regulation, evaluate every assertion (AND of artefact terms).
+    # TODO: Collect per-assertion PASS/FAIL, build per-regulation status, gather
+    # TODO: missing artefacts as remediation strings, set overall_status if any fail.
     ____
 
 
-# TODO: Define pipeline_artefacts dict with all artefact flags
-# Most should be True, with 3 intentional gaps (False):
-#   incident_response_defined=False, explainability_available=False, retention_policy=False
+# TODO: Build a pipeline_artefacts dict containing each regulation's required
+# TODO: keys. Set incident_response_defined / explainability_available /
+# TODO: retention_policy to False to surface gaps in the audit.
 pipeline_artefacts = ____
 
 
@@ -239,33 +135,22 @@ pipeline_artefacts = ____
 # TASK 3: Run audit on governed pipeline, generate remediation
 # ══════════════════════════════════════════════════════════════════════
 
-audit_report = run_compliance_audit(pipeline_artefacts)
+# TODO: Run run_compliance_audit on pipeline_artefacts.
+audit_report = ____
 
 print(f"Audit ID: {audit_report['audit_id']}")
 print(f"Timestamp: {audit_report['timestamp']}")
 print(f"Overall Status: {audit_report['overall_status']}\n")
 
-# TODO: Print per-regulation results with PASS/FAIL markers and remediation actions
-for reg_name, reg_result in audit_report["regulations"].items():
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
-    ____
+# TODO: For each regulation print status, per-assertion PASS/FAIL, and
+# TODO: any remediation strings.
+____
 
 print(f"=== Remediation Plan ===")
+# TODO: Aggregate every regulation's remediation entries into a single list
+# TODO: and print as a numbered plan; print "No remediation actions" if empty.
 all_remediation = []
-for reg_name, reg_result in audit_report["regulations"].items():
-    for action in reg_result["remediation"]:
-        all_remediation.append({"regulation": reg_name, "action": action})
-
-if all_remediation:
-    for i, item in enumerate(all_remediation, 1):
-        print(f"  {i}. [{item['regulation']}] {item['action']}")
-else:
-    print(f"  No remediation actions required. All checks PASS.")
+____
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -277,54 +162,41 @@ print(f"=== Continuous Compliance Monitoring ===")
 print(f"{'=' * 70}\n")
 
 rng = np.random.default_rng(42)
-reference_data = rng.normal(0, 1, (1000, 10))
+reference_data = rng.normal(0, 1, (200, 10))
 feature_names = [f"feature_{i}" for i in range(10)]
 
 
-# TODO: Set up DriftMonitor — needs ConnectionManager and async set_reference()
-# Hint: DriftMonitor(conn, psi_threshold=0.2); then await monitor.set_reference(...)
 async def _setup_drift_monitor():
-    conn = ConnectionManager("sqlite:///:memory:")
-    await conn.initialize()
-    mon = ____
-    ref_df = pl.DataFrame(reference_data, schema=feature_names)
-    await mon.set_reference(
-        model_name="compliance_monitor",
-        reference_data=____,
-        feature_columns=____,
-    )
-    return conn, mon
+    # TODO: ConnectionManager(":memory:"), initialise, build DriftMonitor
+    # TODO: at psi_threshold=0.2, set_reference with the polars wrapper.
+    ____
 
 
 drift_conn, monitor = asyncio.run(_setup_drift_monitor())
 
 
-# TODO: Implement on_drift_detected callback
-# Hint: if drift_report.has_drift: set bias_audit_conducted=False in updated_artefacts
-#        return run_compliance_audit(updated_artefacts)
 def on_drift_detected(drift_report, pipeline_artefacts: dict) -> dict:
-    """Callback: when DriftMonitor detects drift, trigger compliance audit."""
-    ____
-    ____
-    ____
-    ____
-    ____
+    """Callback: when drift is flagged, invalidate stale artefacts and audit."""
+    # TODO: Copy artefacts; if drift detected, set bias_audit_conducted=False.
+    # TODO: Re-run run_compliance_audit and return the new report.
     ____
 
 
-stable_data = rng.normal(0, 1, (200, 10))
-stable_report = monitor.check_drift(stable_data)
+# TODO: Simulate a stable week (no drift) and a drifted week, then run
+# TODO: on_drift_detected on the drifted result and print the new audit verdict.
+stable_data = ____
+stable_report = ____
 print(f"Week 1 (stable): drift={stable_report.has_drift}")
 if not stable_report.has_drift:
     print(f"  No compliance audit triggered.\n")
 
-drifted_data = rng.normal(0.8, 1.5, (200, 10))
-drift_report = monitor.check_drift(drifted_data)
+drifted_data = ____
+drift_report = ____
 print(f"Week 2 (drift): drift={drift_report.has_drift}")
 
 if drift_report.has_drift:
     print(f"  Drift detected -> triggering compliance audit...\n")
-    drift_audit = on_drift_detected(drift_report, pipeline_artefacts)
+    drift_audit = ____
     print(f"  Audit Status: {drift_audit['overall_status']}")
     for reg_name, reg_result in drift_audit["regulations"].items():
         if reg_result["status"] != "COMPLIANT":
@@ -345,21 +217,22 @@ print(f"\n{'=' * 70}")
 print(f"=== Nexus Compliance Endpoint ===")
 print(f"{'=' * 70}\n")
 
-app = Nexus()
+# TODO: Instantiate a Nexus app (will register the handler below).
+app = ____
 
 
 async def compliance_check_handler(model_id: str) -> dict:
     """Nexus endpoint: submit model_id, receive compliance report."""
-    artefact_state = pipeline_artefacts.copy()
-    report = run_compliance_audit(artefact_state)
-    report["model_id"] = model_id
-    return report
+    # TODO: Simulate metadata lookup with the existing pipeline_artefacts dict.
+    # TODO: Run run_compliance_audit, attach model_id, return.
+    ____
 
 
 print(f"Nexus endpoint: POST /compliance/check")
 print(f"  Input: {{'model_id': 'credit_fraud_detector_v1'}}")
 
-demo_report = asyncio.run(compliance_check_handler("credit_fraud_detector_v1"))
+# TODO: Call compliance_check_handler('credit_fraud_detector_v1') via asyncio.run.
+demo_report = ____
 
 print(f"  Output:")
 print(f"    audit_id: {demo_report['audit_id']}")
@@ -367,75 +240,44 @@ print(f"    model_id: {demo_report['model_id']}")
 print(f"    overall_status: {demo_report['overall_status']}")
 print(f"    regulations checked: {list(demo_report['regulations'].keys())}")
 
-compliance_org_yaml = """
-org_id: compliance_service
-name: "Compliance Audit Service"
+# TODO: Define a YAML org for the compliance service with audit_admin and
+# TODO: audit_agent (agent: true). Grant clearances at secret/confidential.
+compliance_org_yaml = ____
 
-departments:
-  - id: audit
-    name: "Audit Operations"
+# TODO: Write to temp, load, compile, build GovernanceEngine.
+comp_file = ____
+____
+comp_loaded = ____
+comp_engine = ____
 
-roles:
-  - id: audit_admin
-    name: "Audit Administrator"
-    is_primary_for_unit: audit
-
-  - id: audit_agent
-    name: "Compliance Audit Agent"
-    reports_to: audit_admin
-    agent: true
-
-clearances:
-  - role: audit_admin
-    level: secret
-    compartments: [audit_reports, model_metadata, governance_state]
-  - role: audit_agent
-    level: confidential
-    compartments: [audit_reports, model_metadata]
-"""
-
-# TODO: Load and compile compliance_org_yaml, create GovernanceEngine, build comp_roles dict
-#        Build level_map and grant clearances to all roles in comp_engine
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+comp_compiled = ____
+comp_roles = ____
 ____
 
-# TODO: Create RoleEnvelope for audit_agent with allowed_actions:
-#   ["run_audit","read_model_card","read_drift_status","generate_report"]
-# Then create PactGovernedAgent for audit_agent
+level_map = ____
+# TODO: Grant clearances on the engine for both roles.
+____
+
+# TODO: Set an envelope for audit_agent with allowed actions
+# TODO: [run_audit, read_model_card, read_drift_status, generate_report].
 audit_env = ____
-comp_engine.set_role_envelope(audit_env)
+____
 
+# TODO: Wrap audit_agent in PactGovernedAgent.
 governed_audit = ____
 
 print(f"\nCompliance agent governance:")
 print(f"  Clearance: {governed_audit.context.effective_clearance_level}")
 print(f"  Actions: {sorted(governed_audit.context.allowed_actions)}")
 
-for action in ["run_audit", "generate_report", "modify_model", "delete_audit_log"]:
-    verdict = comp_engine.verify_action(comp_roles["audit_agent"], action)
-    status = "ALLOW" if verdict.level == "auto_approved" else "BLOCK"
-    print(f"  audit_agent -> {action}: {status}")
+# TODO: Verify each action via comp_engine.verify_action and print ALLOW/BLOCK.
+____
 
-integrity = comp_engine.verify_audit_integrity()
+# TODO: Verify audit integrity and clean up the temp YAML file.
+integrity = ____
 print(f"\nAudit integrity: {'VALID' if integrity else 'BROKEN'}")
 
-comp_file.unlink()
+____
 
 print(
     "\n--- Exercise 6 complete: regulatory compliance automation with PACT + Nexus ---"

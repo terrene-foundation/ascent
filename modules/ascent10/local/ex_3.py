@@ -61,19 +61,12 @@ print(f"Columns: {patients.columns}")
 print(patients.head(5))
 
 
-# TODO: Implement generalise_age helper
-# Hint: lower = (age // bin_size) * bin_size; upper = lower + bin_size - 1; return f"{lower}-{upper}"
 def generalise_age(age: int, bin_size: int) -> str:
     """Generalise age into bins (e.g., 25 -> '20-29' for bin_size=10)."""
-    ____
-    ____
+    # TODO: Compute lower = (age // bin_size) * bin_size, upper = lower + bin_size - 1.
     ____
 
 
-# TODO: Implement apply_k_anonymity
-# Hint: 1) drop "patient_id", 2) generalise age via map_elements(generalise_age, bin_size)
-#        3) group_by QI columns, count equivalence classes, filter violations (<k)
-#        4) suppress violating records with anti-join, return (df, stats_dict)
 def apply_k_anonymity(
     df: pl.DataFrame,
     quasi_identifiers: list[str],
@@ -81,10 +74,11 @@ def apply_k_anonymity(
     k: int,
 ) -> tuple[pl.DataFrame, dict]:
     """Apply k-anonymity by generalising quasi-identifiers."""
-    ____
-    ____
-    ____
-    ____
+    # TODO: Drop direct identifier patient_id.
+    # TODO: Generalise age via map_elements -> age_group, drop age.
+    # TODO: Group by quasi_identifiers and count records per equivalence class.
+    # TODO: Suppress (anti-join) records in classes with count < k.
+    # TODO: Return the suppressed DataFrame and a stats dict.
     ____
 
 
@@ -92,15 +86,9 @@ print(f"\n=== k-Anonymity Analysis ===")
 print(f"Quasi-identifiers: age, gender")
 print(f"Direct identifier removed: patient_id\n")
 
-# TODO: For k in [5, 10, 50], call apply_k_anonymity with bin_size=max(5, k//2) and print results
-# Hint: anon_df, s = apply_k_anonymity(patients, quasi_identifiers=["age","gender"], age_bin_size=..., k=k)
-#        print: k, bin_size, s['anonymised_rows'], s['original_rows'], s['suppression_rate'], s['equivalence_classes']
+# TODO: Sweep k in [5, 10, 50] with bin_size = max(5, k // 2);
+# TODO: print rows kept, suppression rate, equivalence class count.
 k_values = [5, 10, 50]
-____
-____
-____
-____
-____
 ____
 
 print(f"\nTrade-off: higher k = stronger privacy, but more data loss (suppression).")
@@ -117,31 +105,56 @@ print(
     f"Method: train shadow model, use confidence scores to train attack classifier.\n"
 )
 
+# TODO: Build a synthetic feature matrix and binary label
+# TODO: (label = age > median age). Use n = patients.height rows.
 rng = np.random.default_rng(42)
 n = patients.height
-features = rng.normal(0, 1, (n, 6))
-median_age = patients["age"].median()
-labels = (patients["age"].to_numpy() > median_age).astype(int)
+features = ____
+median_age = ____
+labels = ____
 
-X_target, X_shadow, y_target, y_shadow = train_test_split(
-    features, labels, test_size=0.5, random_state=42
-)
+# TODO: Split data 50/50 into target_data vs shadow_data via train_test_split.
+X_target, X_shadow, y_target, y_shadow = ____
 
-X_train, X_holdout, y_train, y_holdout = train_test_split(
-    X_target, y_target, test_size=0.5, random_state=42
-)
+# TODO: Split target_data 50/50 again into train and holdout.
+X_train, X_holdout, y_train, y_holdout = ____
 
-# TODO: Implement membership inference attack
-# Hint: 1) train target_model (RandomForestClassifier) on X_train
-#        2) train shadow_model on X_shadow_train
-#        3) build attack dataset: shadow_train_probs (label=1), shadow_test_probs (label=0)
-#        4) train attack_model (LogisticRegression) on attack dataset
-#        5) evaluate on target train/holdout, compute accuracy_score + roc_auc_score
+# TODO: Train target_model = RandomForestClassifier on (X_train, y_train).
+target_model = ____
 ____
+
+# TODO: Split shadow_data 50/50 into shadow_train + shadow_test.
+X_shadow_train, X_shadow_test, y_shadow_train, y_shadow_test = ____
+# TODO: Train shadow_model on (X_shadow_train, y_shadow_train).
+shadow_model = ____
 ____
+
+# TODO: Build attack training set:
+# TODO:   members = predict_proba(shadow_train) (label=1)
+# TODO:   non-members = predict_proba(shadow_test) (label=0)
+shadow_train_probs = ____
+shadow_test_probs = ____
+
+attack_X = ____
+attack_y = ____
+
+# TODO: Fit attack_model = LogisticRegression(random_state=42) on (attack_X, attack_y).
+attack_model = ____
 ____
-____
-____
+
+# TODO: Apply the attack to the target model: predict_proba(X_train) vs
+# TODO: predict_proba(X_holdout); evaluate attack accuracy + AUC.
+target_train_probs = ____
+target_holdout_probs = ____
+
+eval_X = ____
+eval_y = ____
+
+attack_preds = ____
+attack_probs = ____
+
+attack_acc = ____
+attack_auc = ____
 
 print(
     f"Target model accuracy: {accuracy_score(y_holdout, target_model.predict(X_holdout)):.4f}"
@@ -158,24 +171,24 @@ print(f"  {'Vulnerable!' if attack_auc > 0.6 else 'Reasonably private'}")
 
 print(f"\n=== Defence: L2 Regularisation + Early Stopping ===")
 
-# TODO: Retrain with strong regularisation (fewer trees, shallow depth, min_samples_leaf)
-# Hint: RandomForestClassifier(n_estimators=50, max_depth=3, min_samples_leaf=10, random_state=42)
+# TODO: Build a defended model: RandomForestClassifier with fewer trees,
+# TODO: shallow depth, larger min_samples_leaf to fight overfitting.
 defended_model = ____
-defended_model.fit(X_train, y_train)
+____
 
-# TODO: Re-run membership inference attack on defended_model
-# Hint: defended_train_probs = defended_model.predict_proba(X_train)
-#        defended_holdout_probs = defended_model.predict_proba(X_holdout)
-#        defended_eval_X = np.vstack([...]), run attack_model on it, compute acc + auc
-____
-____
-____
-____
-____
-____
-____
-____
-____
+# TODO: Re-run the shadow attack on the defended model and report
+# TODO: the accuracy / AUC reduction vs the original attack.
+defended_train_probs = ____
+defended_holdout_probs = ____
+
+defended_eval_X = ____
+defended_attack_probs = ____
+defended_attack_preds = ____
+
+defended_acc = ____
+defended_auc = ____
+
+model_acc = ____
 
 print(f"Defended model accuracy: {model_acc:.4f}")
 print(f"Attack on defended model:")
@@ -193,25 +206,17 @@ print(f"member and non-member confidence distributions -- making MI harder.")
 print(f"\n=== Synthetic Data Generation (Gaussian Copula) ===")
 
 
-# TODO: Implement fit_gaussian_copula
-# Hint: 1) empirical CDF via stats.rankdata / (n+1), clip to [0.001, 0.999]
-#        2) probit transform: stats.norm.ppf(uniforms)
-#        3) np.corrcoef(normals, rowvar=False) for correlation matrix
-#        4) return (corr_matrix, marginal_means, marginal_stds)
 def fit_gaussian_copula(
     data: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Fit a Gaussian copula by estimating marginal CDFs and correlation."""
-    ____
-    ____
-    ____
-    ____
+    # TODO: Step 1 - rank-normalise each column to uniform marginals (clip to [0.001, 0.999]).
+    # TODO: Step 2 - probit transform via stats.norm.ppf -> standard normals.
+    # TODO: Step 3 - compute corr_matrix via np.corrcoef on the normals.
+    # TODO: Also compute marginal_means and marginal_stds for inverse transform.
     ____
 
 
-# TODO: Implement sample_gaussian_copula
-# Hint: generator.multivariate_normal(zeros, corr_matrix, size=n_samples)
-#       then transform: synthetic = normals * marginal_stds + marginal_means
 def sample_gaussian_copula(
     n_samples: int,
     corr_matrix: np.ndarray,
@@ -220,35 +225,32 @@ def sample_gaussian_copula(
     generator: np.random.Generator,
 ) -> np.ndarray:
     """Generate synthetic data from fitted Gaussian copula."""
-    ____
-    ____
-    ____
-    ____
+    # TODO: Sample from multivariate_normal with the corr matrix.
+    # TODO: Rescale by marginal_stds + marginal_means.
     ____
 
 
-real_data = features[:200]
-corr_mat, means, stds = fit_gaussian_copula(real_data)
-synthetic_data = sample_gaussian_copula(200, corr_mat, means, stds, rng)
+# TODO: Fit copula on first 200 rows of features; sample 200 synthetic rows.
+real_data = ____
+corr_mat, means, stds = ____
+
+synthetic_data = ____
 
 print(f"Real data shape: {real_data.shape}")
 print(f"Synthetic data shape: {synthetic_data.shape}")
 
 print(f"\nMean comparison (real vs synthetic):")
-for i in range(min(6, real_data.shape[1])):
-    print(
-        f"  Feature {i}: {real_data[:, i].mean():.4f} vs {synthetic_data[:, i].mean():.4f}"
-    )
+# TODO: Print real vs synthetic mean for each of the first 6 features.
+____
 
 print(f"\nStd comparison (real vs synthetic):")
-for i in range(min(6, real_data.shape[1])):
-    print(
-        f"  Feature {i}: {real_data[:, i].std():.4f} vs {synthetic_data[:, i].std():.4f}"
-    )
+# TODO: Print real vs synthetic std for each of the first 6 features.
+____
 
-real_corr = np.corrcoef(real_data, rowvar=False)
-synth_corr = np.corrcoef(synthetic_data, rowvar=False)
-corr_diff = np.abs(real_corr - synth_corr).mean()
+# TODO: Compare correlation matrices via mean absolute difference.
+real_corr = ____
+synth_corr = ____
+corr_diff = ____
 print(f"\nMean absolute correlation difference: {corr_diff:.4f}")
 print(f"Correlation structure {'preserved' if corr_diff < 0.1 else 'divergent'}")
 
@@ -260,110 +262,47 @@ print(f"appears in the synthetic dataset (generated from learned distribution)."
 # TASK 5: PACT-governed inference with clearance checking
 # ══════════════════════════════════════════════════════════════════════
 
-privacy_org_yaml = """
-org_id: privacy_governed_inference
-name: "Privacy-Governed ML Service"
+# TODO: Define a YAML org with service_admin, researcher, external_user,
+# TODO: inference_agent (agent: true), and dpo. Grant clearances at
+# TODO: secret/confidential/restricted/top_secret on patient_data,
+# TODO: model_outputs, audit_logs, anonymised_data compartments.
+privacy_org_yaml = ____
 
-departments:
-  - id: ml_service
-    name: "ML Inference Service"
-  - id: data_governance
-    name: "Data Governance"
-
-roles:
-  - id: service_admin
-    name: "Service Administrator"
-    is_primary_for_unit: ml_service
-
-  - id: researcher
-    name: "Research Analyst"
-    reports_to: service_admin
-    agent: false
-
-  - id: external_user
-    name: "External API User"
-    reports_to: service_admin
-    agent: false
-
-  - id: inference_agent
-    name: "Inference Agent"
-    reports_to: service_admin
-    agent: true
-
-  - id: dpo
-    name: "Data Protection Officer"
-    is_primary_for_unit: data_governance
-
-clearances:
-  - role: service_admin
-    level: secret
-    compartments: [patient_data, model_outputs, audit_logs]
-  - role: researcher
-    level: confidential
-    compartments: [model_outputs, anonymised_data]
-  - role: external_user
-    level: restricted
-    compartments: [model_outputs]
-  - role: inference_agent
-    level: confidential
-    compartments: [patient_data, model_outputs]
-  - role: dpo
-    level: top_secret
-    compartments: [patient_data, model_outputs, audit_logs, anonymised_data]
-"""
-
-# TODO: Write privacy_org_yaml to a temp file, load_org_yaml, compile_org,
-#        create GovernanceEngine, and build priv_roles dict (node_id -> address)
-# Hint: priv_file = Path(tempfile.mktemp(suffix=".yaml")); priv_file.write_text(...)
-#        priv_loaded = load_org_yaml(str(priv_file)); priv_compiled = compile_org(priv_loaded.org_definition)
-#        priv_engine = GovernanceEngine(priv_loaded.org_definition)
+# TODO: Write to temp file, load, compile, build GovernanceEngine.
+priv_file = ____
 ____
-____
-____
-____
+priv_loaded = ____
+priv_compiled = ____
+priv_engine = ____
+
+# TODO: Build priv_roles (role_id -> address) for non-vacant nodes.
+priv_roles = ____
 ____
 
-# TODO: Build level_map (restricted/confidential/secret/top_secret -> ConfidentialityLevel)
-#        and grant clearances to all roles in priv_engine
-____
-____
-____
-____
+level_map = ____
+
+# TODO: For each yaml clearance, build RoleClearance + grant on the engine.
 ____
 
-# TODO: Create RoleEnvelope for inference_agent with allowed_actions=["predict","get_model_info","log_request"]
-# Hint: defining_role_address=priv_roles["service_admin"], target=priv_roles["inference_agent"]
+# TODO: Build a RoleEnvelope for inference_agent restricted to predict,
+# TODO: get_model_info, log_request. Apply with priv_engine.set_role_envelope.
 inf_env = ____
-priv_engine.set_role_envelope(inf_env)
+____
 
-# TODO: Create inference_items list of 3 KnowledgeItems:
-#   raw_patient_record (SECRET, patient_data compartment, owned by service_admin)
-#   model_prediction_output (CONFIDENTIAL, model_outputs, owned by inference_agent)
-#   anonymised_dataset (RESTRICTED, anonymised_data, owned by dpo)
-# Hint: KnowledgeItem(item_id=..., classification=ConfidentialityLevel.SECRET,
-#         owning_unit_address=priv_roles.get("service_admin", "R1"), compartments=frozenset([...]))
-____
-____
-____
-____
-____
+# TODO: Build 3 KnowledgeItems at SECRET / CONFIDENTIAL / RESTRICTED levels
+# TODO: with patient_data / model_outputs / anonymised_data compartments.
+inference_items = ____
 
 print(f"\n=== PACT-Governed Inference ===")
 print(f"Access control matrix:\n")
 
-# TODO: Print access control matrix: for each inference_item, for each requester,
-#        call priv_engine.check_access(priv_roles[req_id], item, TrustPosture.SUPERVISED)
-#        and print ALLOW or DENY
-# Hint: requesters = ["researcher", "external_user", "inference_agent", "dpo"]
-____
-____
-____
-____
-____
+requesters = ["researcher", "external_user", "inference_agent", "dpo"]
+# TODO: For each item and each requester role, run check_access with
+# TODO: TrustPosture.SUPERVISED and print ALLOW/DENY rows.
 ____
 
-# TODO: Create PactGovernedAgent for inference_agent
-# Hint: PactGovernedAgent(engine=priv_engine, role_address=priv_roles["inference_agent"])
+# TODO: Wrap inference_agent in a PactGovernedAgent and print its
+# TODO: clearance, allowed_actions and compartments.
 governed_inf = ____
 
 print(f"Governed inference agent:")
@@ -371,15 +310,15 @@ print(f"  Clearance: {governed_inf.context.effective_clearance_level}")
 print(f"  Actions: {sorted(governed_inf.context.allowed_actions)}")
 print(f"  Compartments: {sorted(governed_inf.context.compartments)}")
 
-for action in ["predict", "get_model_info", "export_raw_data", "modify_model"]:
-    verdict = priv_engine.verify_action(priv_roles["inference_agent"], action)
-    status = "ALLOW" if verdict.level == "auto_approved" else "BLOCK"
-    print(f"  Action '{action}': {status}")
+# TODO: For each action in [predict, get_model_info, export_raw_data, modify_model],
+# TODO: call priv_engine.verify_action and print ALLOW/BLOCK.
+____
 
-integrity = priv_engine.verify_audit_integrity()
+# TODO: Verify audit integrity and clean up the temp YAML file.
+integrity = ____
 print(f"\nAudit integrity: {'VALID' if integrity else 'BROKEN'}")
 
-priv_file.unlink()
+____
 
 print(
     "\n--- Exercise 3 complete: privacy-preserving ML with k-anonymity, MI defence, PACT ---"

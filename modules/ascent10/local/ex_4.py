@@ -59,72 +59,43 @@ print(f"Shape: {fraud_data.shape}")
 print(f"Columns: {fraud_data.columns}")
 print(f"Fraud rate: {fraud_data['is_fraud'].mean():.4%}")
 
-feature_cols = [c for c in fraud_data.columns if c.startswith("v")]
-X = fraud_data.select(feature_cols + ["amount"]).to_numpy()
-y = fraud_data["is_fraud"].to_numpy()
+# TODO: Build the design matrix using V-features + amount and the is_fraud target.
+feature_cols = ____
+X = ____
+y = ____
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+# TODO: Stratified 80/20 train/test split with random_state=42.
+X_train, X_test, y_train, y_test = ____
 
-model = GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42)
-model.fit(X_train, y_train)
+# TODO: Train a GradientBoostingClassifier (n_estimators=30, max_depth=4).
+model = ____
+____
 
-y_pred = model.predict(X_test)
-y_proba = model.predict_proba(X_test)[:, 1]
+# TODO: Score the test set: predict + predict_proba[:, 1].
+y_pred = ____
+y_proba = ____
 
-overall_metrics = {
-    "accuracy": accuracy_score(y_test, y_pred),
-    "precision": precision_score(y_test, y_pred),
-    "recall": recall_score(y_test, y_pred),
-    "f1": f1_score(y_test, y_pred),
-    "auc_roc": roc_auc_score(y_test, y_proba),
-}
+# TODO: Compute overall metrics dict (accuracy, precision, recall, f1, auc_roc).
+overall_metrics = ____
 
 print(f"\n=== Fraud Model Trained ===")
 for metric, value in overall_metrics.items():
     print(f"  {metric}: {value:.4f}")
 
 
-# TODO: Define ModelCardSignature using Signature with InputFields and OutputFields
-# Hint: class ModelCardSignature(Signature): with InputField for model_name, version, type, date
-#        and OutputField for intended_use, out_of_scope_uses, performance_summary,
-#        per_group_metrics, limitations, ethical_considerations, regulatory_references
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
-____
+class ModelCardSignature(Signature):
+    """Structured model card following Model Cards for Model Reporting (Mitchell et al., 2019)."""
+
+    # TODO: Declare InputFields for model_name, model_version, model_type, training_date.
+    # TODO: Declare OutputFields for intended_use, out_of_scope_uses, performance_summary,
+    # TODO: per_group_metrics, limitations, ethical_considerations, regulatory_references.
+    ____
 
 
-# TODO: Build model_card dict with all required fields
-# Hint: include intended_use (fraud screening, not autonomous blocking),
-#        regulatory_references (PDPA, MAS TRM, MAS Notice 655, EU AI Act),
-#        limitations (class imbalance, PCA features), ethical_considerations
-model_card = {
-    "model_name": "credit_fraud_detector_v1",
-    "model_version": "1.0.0",
-    "model_type": "GradientBoostingClassifier",
-    "training_date": datetime.now().strftime("%Y-%m-%d"),
-    "intended_use": ____,
-    "out_of_scope_uses": ____,
-    "performance_summary": {k: f"{v:.4f}" for k, v in overall_metrics.items()},
-    "limitations": ____,
-    "ethical_considerations": ____,
-    "regulatory_references": ____,
-}
+# TODO: Build a model_card dict populating every field with text relevant to
+# TODO: a Singapore credit fraud screening model. Cite PDPA, MAS TRM, MAS Notice 655,
+# TODO: and EU AI Act in regulatory_references.
+model_card = ____
 
 print(f"\n=== Model Card ===")
 for key, value in model_card.items():
@@ -145,51 +116,18 @@ print(f"\n{'=' * 70}")
 print(f"=== Bias Audit ===")
 print(f"{'=' * 70}")
 
-amount_test = fraud_data.select("amount").to_numpy().flatten()[: len(y_test)]
-segment_labels = np.where(
-    amount_test < np.percentile(amount_test, 33),
-    "low_value",
-    np.where(
-        amount_test < np.percentile(amount_test, 66),
-        "mid_value",
-        "high_value",
-    ),
-)
+# TODO: Build segment_labels by bucketing test-set transaction amount into
+# TODO: low_value (<33rd pct), mid_value (<66th), high_value (otherwise).
+amount_test = ____
+segment_labels = ____
 
+# TODO: For each segment compute n, fraud_rate, accuracy, precision,
+# TODO: recall, f1, positive_rate (use zero_division=0). Skip groups with
+# TODO: fewer than 2 classes (note='Single class').
 segments = ["low_value", "mid_value", "high_value"]
 bias_report = {}
 
-# TODO: Compute per-segment metrics (accuracy, precision, recall, f1, positive_rate)
-# Hint: for each segment, mask = segment_labels == segment
-#        compute metrics only if len(np.unique(seg_y)) >= 2
-#        include "positive_rate": float(seg_pred.mean()) for demographic parity check
-for segment in segments:
-    mask = segment_labels == segment
-    if mask.sum() == 0:
-        continue
-
-    seg_y = y_test[mask]
-    seg_pred = y_pred[mask]
-    seg_proba = y_proba[mask]
-
-    if len(np.unique(seg_y)) < 2:
-        bias_report[segment] = {
-            "n_samples": int(mask.sum()),
-            "fraud_rate": float(seg_y.mean()),
-            "note": "Single class - metrics undefined",
-        }
-        continue
-
-    seg_metrics = {
-        "n_samples": ____,
-        "fraud_rate": ____,
-        "accuracy": ____,
-        "precision": ____,
-        "recall": ____,
-        "f1": ____,
-        "positive_rate": ____,
-    }
-    bias_report[segment] = seg_metrics
+____
 
 print(f"\nPer-segment metrics:")
 print(
@@ -198,29 +136,20 @@ print(
 )
 print("-" * 80)
 
-for segment, metrics in bias_report.items():
-    if "note" in metrics:
-        print(
-            f"{segment:<15} {metrics['n_samples']:>6} {metrics['fraud_rate']:>8.4f} "
-            f"{'N/A':>8} {'N/A':>8} {'N/A':>8} {'N/A':>8} {'N/A':>10}"
-        )
-    else:
-        print(
-            f"{segment:<15} {metrics['n_samples']:>6} {metrics['fraud_rate']:>8.4f} "
-            f"{metrics['accuracy']:>8.4f} {metrics['precision']:>8.4f} "
-            f"{metrics['recall']:>8.4f} {metrics['f1']:>8.4f} "
-            f"{metrics['positive_rate']:>10.4f}"
-        )
+# TODO: Print one row per segment from bias_report (handle the N/A case).
+____
 
-valid_segments = {k: v for k, v in bias_report.items() if "positive_rate" in v}
+# TODO: Compute demographic parity gap = max(positive_rate) - min(positive_rate).
+# TODO: Compute equalised odds gap on recall similarly. PASS at <= 0.05.
+valid_segments = ____
 if len(valid_segments) >= 2:
-    pos_rates = [v["positive_rate"] for v in valid_segments.values()]
-    max_gap = max(pos_rates) - min(pos_rates)
+    pos_rates = ____
+    max_gap = ____
     print(f"\nDemographic parity gap: {max_gap:.4f}")
     print(f"  {'PASS' if max_gap <= 0.05 else 'FAIL'} (threshold: 0.05)")
 
-    recall_values = [v["recall"] for v in valid_segments.values()]
-    recall_gap = max(recall_values) - min(recall_values)
+    recall_values = ____
+    recall_gap = ____
     print(f"\nEqualised odds (recall gap): {recall_gap:.4f}")
     print(f"  {'PASS' if recall_gap <= 0.05 else 'FAIL'} (threshold: 0.05)")
 
@@ -235,21 +164,13 @@ print(f"\n{'=' * 70}")
 print(f"=== Dataset Datasheet (Gebru et al., 2021) ===")
 print(f"{'=' * 70}")
 
-# TODO: Build datasheet dict with: motivation, composition, collection_process,
-#        preprocessing, uses (intended + not_intended), distribution, maintenance
-# Hint: composition includes instances, columns, data_types, missing_values, categories
-datasheet = {
-    "dataset_name": "sg_company_reports",
-    "version": "1.0.0",
-    "created_date": "2026-01-15",
-    "motivation": ____,
-    "composition": ____,
-    "collection_process": ____,
-    "preprocessing": ____,
-    "uses": ____,
-    "distribution": ____,
-    "maintenance": ____,
-}
+# TODO: Build a datasheet dict following Gebru et al. (2021) structure:
+# TODO:   - dataset_name, version, created_date
+# TODO:   - motivation (purpose, creators, funding)
+# TODO:   - composition (instances, columns, dtypes, missing, categories)
+# TODO:   - collection_process, preprocessing, uses (intended/not_intended)
+# TODO:   - distribution (license=Apache-2.0), maintenance
+datasheet = ____
 
 print(f"\nDataset: {datasheet['dataset_name']} v{datasheet['version']}")
 print(f"\nMotivation:")
@@ -258,6 +179,7 @@ for k, v in datasheet["motivation"].items():
 print(f"\nComposition:")
 print(f"  Instances: {datasheet['composition']['instances']}")
 print(f"  Columns: {datasheet['composition']['columns']}")
+print(f"  Categories: {datasheet['composition']['categories']}")
 print(f"\nIntended uses:")
 for use in datasheet["uses"]["intended"]:
     print(f"  - {use}")
@@ -275,17 +197,11 @@ print(f"\n{'=' * 70}")
 print(f"=== System Card (EU AI Act Risk Mapping) ===")
 print(f"{'=' * 70}")
 
-# TODO: Build system_card dict with:
-#   - components: list of {name, type, risk_category, justification, mitigations}
-#     Include: Fraud Detection Model (HIGH), PACT GovernanceEngine (N/A), Compliance Agent (LIMITED)
-#   - regulatory_mapping: EU AI Act (Art 6-14), MAS TRM (7.2, 7.5, 8.1), PDPA, SG AI Verify
-# Hint: EU AI Act HIGH applies to financial services AI per Annex III
-system_card = {
-    "system_name": "ASCENT Governed Fraud Detection System",
-    "version": "1.0.0",
-    "components": ____,
-    "regulatory_mapping": ____,
-}
+# TODO: Build a system_card dict listing components (Fraud Detection Model,
+# TODO: PACT GovernanceEngine, Compliance Monitoring Agent) with EU AI Act
+# TODO: risk categories (HIGH/N/A/LIMITED), justifications, mitigations.
+# TODO: Include regulatory_mapping for EU AI Act, MAS TRM, PDPA, SG AI Verify.
+system_card = ____
 
 print(f"\nSystem: {system_card['system_name']} v{system_card['version']}")
 print(f"\nComponents and EU AI Act risk categories:")
@@ -315,31 +231,26 @@ print(f"{'=' * 70}")
 feature_names = feature_cols + ["amount"]
 
 
-# TODO: Set up DriftMonitor — needs ConnectionManager, then await monitor.set_reference()
-# Hint: DriftMonitor(conn, psi_threshold=0.2); then set_reference(model_name=, reference_data=, feature_columns=)
 async def _setup_monitor():
-    conn = ConnectionManager("sqlite:///:memory:")
-    await conn.initialize()
-    mon = ____
-    ref_df = pl.DataFrame(X_train[:2000], schema=feature_names)
-    await mon.set_reference(
-        model_name="fraud_detector_v1",
-        reference_data=____,
-        feature_columns=____,
-    )
-    return conn, mon
+    # TODO: Build a ConnectionManager(":memory:"), initialise it,
+    # TODO: instantiate DriftMonitor(conn, psi_threshold=0.2),
+    # TODO: convert X_train[:2000] to a polars DataFrame and call
+    # TODO: monitor.set_reference(model_name, reference_data, feature_columns).
+    ____
 
 
 conn, monitor = asyncio.run(_setup_monitor())
 
+# TODO: Simulate 3 weeks of production data: stable (X_test[:500]),
+# TODO: mild drift (amount * 1.3), significant drift (amount * 2.0 + V1 shift).
 rng = np.random.default_rng(42)
 
-week1_data = X_test[:500]
-week2_data = X_test[500:1000].copy()
-week2_data[:, -1] *= 1.3
-week3_data = X_test[1000:1500].copy()
-week3_data[:, -1] *= 2.0
-week3_data[:, 0] += rng.normal(0.5, 0.2, 500)
+week1_data = ____
+week2_data = ____
+____
+week3_data = ____
+____
+____
 
 weeks = [
     ("Week 1 (stable)", week1_data),
@@ -347,22 +258,9 @@ weeks = [
     ("Week 3 (significant drift)", week3_data),
 ]
 
-# TODO: For each week, call monitor.check_drift(data) and print drift status + PSI scores
-# Hint: report = monitor.check_drift(data); report.has_drift, report.feature_scores
-for week_name, data in weeks:
-    report = ____
-    print(f"\n{week_name}:")
-    print(f"  Drift detected: {report.has_drift}")
-
-    if report.feature_scores:
-        drifted = {k: v for k, v in report.feature_scores.items() if v > 0.1}
-        if drifted:
-            print(f"  Drifted features (PSI > 0.1):")
-            for feat, psi in sorted(drifted.items(), key=lambda x: -x[1]):
-                flag = " [ALERT]" if psi > 0.2 else " [WARNING]"
-                print(f"    {feat}: PSI={psi:.4f}{flag}")
-        else:
-            print(f"  All features stable (PSI < 0.1)")
+# TODO: For each week, call monitor.check_drift, print has_drift,
+# TODO: and list any feature with PSI > 0.1 with [WARNING] / [ALERT] tags.
+____
 
 print(f"\nMonitoring thresholds:")
 print(f"  PSI < 0.1:  Stable (no action)")

@@ -44,19 +44,15 @@ print(f"Default rate: {credit['default'].mean():.2%}")
 
 # For regression demonstration, we'll predict credit utilisation ratio
 target_col = (
-    "credit_utilisation" if "credit_utilisation" in credit.columns else "annual_income"
+    "credit_utilization" if "credit_utilization" in credit.columns else "income_sgd"
 )
 
-pipeline = PreprocessingPipeline()
-result = pipeline.setup(
-    data=credit,
-    target=target_col,
-    train_size=0.8,
-    seed=42,
-    normalize=True,  # Ridge/Lasso require normalised features
-    categorical_encoding="ordinal",
-    imputation_strategy="median",
-)
+# TODO: Instantiate PreprocessingPipeline (no args)
+pipeline = ____  # Hint: PreprocessingPipeline()
+
+# TODO: Call pipeline.setup(...) with data=credit, target=target_col, train_size=0.8,
+#       seed=42, normalize=True, categorical_encoding="ordinal", imputation_strategy="median"
+result = ____
 
 print(f"\nTask type: {result.task_type}")
 print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
@@ -98,8 +94,11 @@ print("─" * 52)
 
 degree_results = {}
 for degree in [1, 2, 4, 9, 15, 20]:
-    # TODO: Build a Pipeline with PolynomialFeatures(degree), StandardScaler, LinearRegression
-    poly_pipe = ____  # Hint: Pipeline([("poly", PolynomialFeatures(...)), ("scaler", ...), ("model", ...)])
+    # TODO: Build a Pipeline with three steps:
+    #   ("poly", PolynomialFeatures(degree)),
+    #   ("scaler", StandardScaler()),
+    #   ("model", LinearRegression())
+    poly_pipe = ____
 
     poly_pipe.fit(x_train_2d, y_1d_train)
 
@@ -147,9 +146,8 @@ def bias_variance_decomposition(
         idx = rng.choice(len(y_1d_train), len(y_1d_train), replace=True)
         x_b, y_b = x_train_2d[idx], y_1d_train[idx]
 
-        # TODO: Build and fit a Pipeline(PolynomialFeatures, StandardScaler, LinearRegression)
-        model = ____  # Hint: Pipeline([("poly", PolynomialFeatures(degree)), ("scaler", StandardScaler()), ("lr", LinearRegression())])
-
+        # TODO: Build Pipeline(PolynomialFeatures(degree), StandardScaler, LinearRegression)
+        model = ____
         model.fit(x_b, y_b)
         all_preds.append(model.predict(x_test_2d))
 
@@ -196,20 +194,20 @@ print("  Sweet spot = where Bias² ≈ Variance")
 # Geometry: the L2 penalty defines a sphere in coefficient space.
 # The solution is where the MSE ellipsoid first touches the sphere.
 # Result: all coefficients shrink uniformly toward zero, none exactly zero.
-#
-# Bayesian interpretation: L2 penalty ≡ Gaussian prior N(0, 1/α) on β.
 
-# TODO: Define a list of alpha values spanning several orders of magnitude
-alphas = ____  # Hint: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+alphas = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
 
 ridge_results = {}
 for alpha in alphas:
-    # TODO: Create a Ridge model with this alpha and fit it
+    # TODO: Create a Ridge model with this alpha
     ridge = ____  # Hint: Ridge(alpha=alpha)
-    ridge.fit(X_train, y_train)
 
-    train_mse = mean_squared_error(y_train, ridge.predict(X_train))
-    test_mse = mean_squared_error(y_test, ridge.predict(X_test))
+    # TODO: Fit ridge to X_train, y_train
+    ____
+
+    # TODO: Compute train MSE and test MSE
+    train_mse = ____  # Hint: mean_squared_error(y_train, ridge.predict(X_train))
+    test_mse = ____  # Hint: mean_squared_error(y_test, ridge.predict(X_test))
 
     # TODO: Compute the L2 norm of the coefficients
     coef_norm = ____  # Hint: np.linalg.norm(ridge.coef_)
@@ -246,25 +244,21 @@ print("\nL2 Key Properties:")
 print("  1. Shrinks all coefficients toward zero (never exactly zero)")
 print("  2. Equivalent to MAP estimate with Gaussian prior: β ~ N(0, σ²/α)")
 print("  3. Ridge closed-form: β = (X'X + αI)⁻¹X'y")
-print("  4. Always invertible — regularisation fixes multicollinearity")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: L1 Regularisation (Lasso) — sparsity and feature selection
 # ══════════════════════════════════════════════════════════════════════
 # Lasso objective: min ||y - Xβ||² + α||β||₁
-#
-# Geometry: the L1 penalty defines a diamond (hypercube corners in high-d).
-# The MSE ellipsoid is likely to first touch the diamond at a corner,
-# where some coordinates are exactly zero → SPARSITY.
-#
-# Bayesian interpretation: L1 penalty ≡ Laplace prior on β.
+# Geometry: the L1 penalty defines a diamond — corners give exact zeros.
 
 lasso_results = {}
 for alpha in alphas:
-    # TODO: Create a Lasso model with this alpha, max_iter=10_000, and fit it
+    # TODO: Create a Lasso model with this alpha and max_iter=10_000
     lasso = ____  # Hint: Lasso(alpha=alpha, max_iter=10_000)
-    lasso.fit(X_train, y_train)
+
+    # TODO: Fit lasso to X_train, y_train
+    ____
 
     train_mse = mean_squared_error(y_train, lasso.predict(X_train))
     test_mse = mean_squared_error(y_test, lasso.predict(X_test))
@@ -306,7 +300,6 @@ print("\nL1 Key Properties:")
 print("  1. Produces SPARSE solutions — some β_i exactly = 0")
 print("  2. Acts as built-in feature selection")
 print("  3. Equivalent to MAP estimate with Laplace prior: β ~ Laplace(0, 1/α)")
-print("  4. No closed-form solution — requires coordinate descent or ADMM")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -317,14 +310,16 @@ print("  4. No closed-form solution — requires coordinate descent or ADMM")
 
 en_results = {}
 for l1_ratio in [0.1, 0.3, 0.5, 0.7, 0.9]:
-    # TODO: Create ElasticNet with alpha=0.1, the given l1_ratio, max_iter=10_000, and fit
+    # TODO: Create ElasticNet with alpha=0.1, l1_ratio=l1_ratio, max_iter=10_000
     en = ____  # Hint: ElasticNet(alpha=0.1, l1_ratio=l1_ratio, max_iter=10_000)
-    en.fit(X_train, y_train)
+
+    # TODO: Fit en to X_train, y_train
+    ____
 
     train_mse = mean_squared_error(y_train, en.predict(X_train))
     test_mse = mean_squared_error(y_test, en.predict(X_test))
 
-    # TODO: Count near-zero coefficients for this ElasticNet model
+    # TODO: Count near-zero coefficients
     n_zero = ____  # Hint: (np.abs(en.coef_) < 1e-6).sum()
 
     en_results[l1_ratio] = {
@@ -350,45 +345,15 @@ print("  - l1_ratio is a hyperparameter to tune")
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Bayesian Interpretation — L2 as Gaussian Prior
 # ══════════════════════════════════════════════════════════════════════
-# MAP (Maximum A Posteriori) estimate:
-# β_MAP = argmax P(β|y) = argmax P(y|β) P(β)
-#
-# If P(y|β) = N(Xβ, σ²I)  → log-likelihood = -||y-Xβ||²/(2σ²)
-# If P(β) = N(0, τ²I)      → log-prior = -||β||²/(2τ²)
-#
-# Then:
-# β_MAP = argmin ||y-Xβ||² / σ² + ||β||² / τ²
-#       = argmin ||y-Xβ||² + (σ²/τ²) ||β||²
-#
-# This is exactly Ridge with α = σ²/τ²
-# → Stronger prior (smaller τ²) = stronger regularisation (larger α)
+# β_MAP = argmin ||y-Xβ||² + (σ²/τ²) ||β||²  ← Ridge with α = σ²/τ²
 
 print(f"\n=== Bayesian Interpretation of L2 Regularisation ===")
 print(
     """
 MAP estimate under Gaussian prior:
-
-  Prior:      β ~ N(0, τ²I)   (belief that β is close to zero)
+  Prior:      β ~ N(0, τ²I)
   Likelihood: y|β ~ N(Xβ, σ²I)
-
-  MAP objective:
-  β_MAP = argmin_{β} ||y - Xβ||² + (σ²/τ²)||β||²
-                               ↑
-                        This is exactly α in Ridge!
-
-Interpretation table:
-  ┌─────────────────────────────────────────────────────────┐
-  │ α (Ridge) │  τ (prior std) │  Belief                  │
-  │───────────┼────────────────┼──────────────────────────│
-  │  large    │  small τ       │  Strong: β ≈ 0           │
-  │  small    │  large τ       │  Weak: β can be anything │
-  │  0        │  τ → ∞         │  Flat prior (OLS)        │
-  └─────────────────────────────────────────────────────────┘
-
-Why this matters:
-  1. Choosing α is equivalent to specifying prior beliefs about β
-  2. Cross-validation finds α that balances data evidence vs prior
-  3. Bayesian ML = probabilistic regularisation selection
+  → β_MAP = argmin ||y - Xβ||² + (σ²/τ²)||β||²    # this is α in Ridge
 """
 )
 
@@ -430,12 +395,10 @@ for i, name in enumerate(feature_names[:10]):
 # Final visualisation
 viz = ModelVisualizer()
 
-# Regularisation path: coefficient trajectories as α varies
-coef_matrix = np.array([ridge_results[a]["coef"] for a in alphas])
-fig = viz.training_history(
-    {f"||β||₂": [ridge_results[a]["coef_norm"] for a in alphas]},
-    x_label="Regularisation Strength (α)",
-)
+# TODO: Build a training_history figure showing ||β||₂ vs alpha
+#       Pass {f"||β||₂": [ridge_results[a]["coef_norm"] for a in alphas]}
+#       and x_label="Regularisation Strength (α)"
+fig = ____
 fig.update_layout(title="Ridge: Coefficient Norm vs Regularisation Strength")
 fig.write_html("ex1_ridge_path.html")
 

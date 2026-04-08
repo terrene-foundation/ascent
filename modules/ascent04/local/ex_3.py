@@ -69,34 +69,26 @@ print(f"Feature names: {feature_cols}")
 # TASK 1: PCA via SVD — the connection explained
 # ══════════════════════════════════════════════════════════════════════
 # PCA finds directions of maximum variance (principal components).
-# It is equivalent to computing the Singular Value Decomposition (SVD):
-#
-#   X = U S V'
-#
-# where:
-#   U : (n, n) — left singular vectors (sample coordinates)
-#   S : (n, p) — diagonal matrix of singular values σ_1 ≥ σ_2 ≥ ... ≥ 0
-#   V : (p, p) — right singular vectors (principal directions in feature space)
+# It is equivalent to SVD: X = U S V'
 #
 # Connection to PCA:
 #   - Columns of V = principal component directions (loadings)
 #   - Scores (projected data) = U S  or equivalently  X V
 #   - Explained variance for PC_k = σ_k² / (n - 1)
-#   - Total variance = Σ_k σ_k² / (n - 1) = Σ_j Var(X_j)
 
 print(f"\n=== PCA via SVD ===")
 
-# TODO: Compute full SVD on the standardised data X (full_matrices=False)
-U, S, Vt = ____  # Hint: np.linalg.svd(X, full_matrices=False)
+# TODO: Compute the SVD of X (use full_matrices=False for thin SVD)
+# Hint: U, S, Vt = np.linalg.svd(X, full_matrices=False)
+U, S, Vt = ____
 
-# TODO: Compute explained variance from singular values:
-#   explained_variance = S**2 / (n_samples - 1)
-#   explained_variance_ratio = explained_variance / total_variance
-#   cumulative_evr = np.cumsum(explained_variance_ratio)
-explained_variance = ____  # Hint: S**2 / (n_samples - 1)
+# TODO: Convert singular values into explained variance
+# Hint: explained_variance = S**2 / (n_samples - 1)
+explained_variance = ____
 total_variance = explained_variance.sum()
+# TODO: Normalise to get the explained-variance ratio
 explained_variance_ratio = ____  # Hint: explained_variance / total_variance
-cumulative_evr = ____  # Hint: np.cumsum(explained_variance_ratio)
+cumulative_evr = np.cumsum(explained_variance_ratio)
 
 print(f"Total variance (should ≈ n_features={n_features}): {total_variance:.2f}")
 print(f"\nTop 10 Principal Components:")
@@ -110,9 +102,10 @@ for i in range(min(10, n_features)):
         f"{explained_variance_ratio[i]:>11.2%} {cumulative_evr[i]:>13.2%}"
     )
 
-# Verify against sklearn PCA
-pca_full = PCA(n_components=n_features)
-pca_full.fit(X)
+# TODO: Cross-check with sklearn PCA(n_components=n_features) and fit
+# Hint: pca_full = PCA(n_components=n_features); pca_full.fit(X)
+pca_full = ____
+____  # pca_full.fit(X)
 max_diff = np.abs(pca_full.explained_variance_ratio_ - explained_variance_ratio).max()
 print(f"\nSVD vs sklearn PCA max difference: {max_diff:.2e} (should be ≈ 0)")
 
@@ -124,15 +117,12 @@ print(f"  ||PC1|| = {np.linalg.norm(Vt[0]):.6f} (should be 1.0 — unit vector)"
 # ══════════════════════════════════════════════════════════════════════
 # TASK 2: Scree plot and choosing n_components
 # ══════════════════════════════════════════════════════════════════════
-# The scree plot shows explained variance ratio per component.
-# "Elbow" = the point where marginal variance explained drops sharply.
-# A common rule: retain components until cumulative variance ≥ 90-95%.
 
-# TODO: Find the number of components needed for 80%, 90%, 95% variance
-# Use np.searchsorted on cumulative_evr
-n_95 = ____  # Hint: np.searchsorted(cumulative_evr, 0.95) + 1
-n_90 = ____  # Hint: np.searchsorted(cumulative_evr, 0.90) + 1
-n_80 = ____  # Hint: np.searchsorted(cumulative_evr, 0.80) + 1
+# TODO: Find the smallest number of components needed to reach 95% / 90% / 80% variance
+# Hint: np.searchsorted(cumulative_evr, 0.95) + 1
+n_95 = ____
+n_90 = ____
+n_80 = ____
 
 print(f"\n=== Variance Thresholds ===")
 print(f"Components for 80% variance: {n_80}")
@@ -143,13 +133,16 @@ print(f"  (Original: {n_features} features → {n_95}x compression for 95% reten
 # Kaiser criterion: retain components with eigenvalue > 1
 n_kaiser = (explained_variance > 1.0).sum()
 print(f"\nKaiser criterion (eigenvalue > 1): {n_kaiser} components")
-print(f"  Eigenvalue = explained variance per component")
-print(f"  Threshold 1.0 means the component captures more than one original feature")
 
 viz = ModelVisualizer()
 
-# TODO: Build scree plot using viz.training_history with explained_variance_ratio and cumulative_evr
-fig_scree = ____  # Hint: viz.training_history({"Explained Variance %": ..., "Cumulative %": ...}, x_label="Principal Component")
+fig_scree = viz.training_history(
+    {
+        "Explained Variance %": (explained_variance_ratio[:20] * 100).tolist(),
+        "Cumulative %": (cumulative_evr[:20] * 100).tolist(),
+    },
+    x_label="Principal Component",
+)
 fig_scree.update_layout(title="Scree Plot: Explained Variance by Component")
 fig_scree.write_html("ex3_scree_plot.html")
 print("\nSaved: ex3_scree_plot.html")
@@ -158,16 +151,11 @@ print("\nSaved: ex3_scree_plot.html")
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: PCA loadings — feature contributions to each PC
 # ══════════════════════════════════════════════════════════════════════
-# Loadings = correlation between original features and principal components.
-# Loading[j, k] = Vt[k, j] * sqrt(explained_variance[k]) / std(X_j)
-# (for standardised data this simplifies to Vt[k, j] * sqrt(λ_k))
-#
-# |Loading| close to 1 → feature j strongly drives PC_k
-# |Loading| close to 0 → feature j barely contributes to PC_k
 
 n_components_to_inspect = min(5, n_features)
-# TODO: Extract loadings matrix: transpose of top-K rows of Vt → shape (n_features, n_pcs)
-loadings = ____  # Hint: Vt[:n_components_to_inspect, :].T
+# TODO: Loadings = transpose of the first n_components_to_inspect rows of Vt
+# Hint: Vt[:n_components_to_inspect, :].T → shape (n_features, n_pcs)
+loadings = ____
 
 print(f"\n=== PCA Loadings (top {n_components_to_inspect} PCs) ===")
 print(f"{'Feature':<30}", end="")
@@ -185,26 +173,21 @@ for j, feat in enumerate(feature_cols):
     print()
 
 print("\n★ = strong loading (|loading| > 0.4)")
-print("\nInterpretation:")
-print("  PC1: the direction capturing most customer variation")
-print("  Features with large |loading| on PC1 are the primary drivers")
-print("  Features with near-zero loading on PC1 are orthogonal to it")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4: Reconstruction error as a function of retained components
 # ══════════════════════════════════════════════════════════════════════
-# Reconstruction: X̂ = X_proj @ Vt[:k, :]  (project and back-project)
-# Reconstruction MSE = ||X - X̂||² / (n * p)
 
 n_components_range = list(range(1, min(n_features + 1, 31)))
 reconstruction_errors = []
 
 for k in n_components_range:
-    # TODO: Fit PCA with k components, project and inverse-transform, compute MSE
+    # TODO: Fit PCA(n_components=k), project then back-project to reconstruct X
     pca_k = ____  # Hint: PCA(n_components=k)
     X_proj = ____  # Hint: pca_k.fit_transform(X)
     X_recon = ____  # Hint: pca_k.inverse_transform(X_proj)
+    # TODO: Mean squared error between X and reconstruction
     mse = ____  # Hint: np.mean((X - X_recon) ** 2)
     reconstruction_errors.append(mse)
 
@@ -215,16 +198,16 @@ for k, mse in zip(n_components_range[::3], reconstruction_errors[::3]):
     pct_retained = 1.0 - mse / np.mean(X**2)
     print(f"{k:>12} {mse:>12.4f} {pct_retained:>21.2%}")
 
-# TODO: Visualise reconstruction error with viz.training_history
-fig_recon = ____  # Hint: viz.training_history({"Reconstruction MSE": reconstruction_errors}, x_label="Number of PCA Components")
+fig_recon = viz.training_history(
+    {"Reconstruction MSE": reconstruction_errors},
+    x_label="Number of PCA Components",
+)
 fig_recon.update_layout(title="PCA: Reconstruction Error vs Components Retained")
 fig_recon.write_html("ex3_reconstruction_error.html")
 print("\nSaved: ex3_reconstruction_error.html")
 
-# Pre-reduce with PCA before t-SNE/UMAP
-n_for_embedding = n_90
+n_for_embedding = n_90  # Retain 90% variance before applying t-SNE/UMAP
 print(f"\nUsing {n_for_embedding} PCA components (90% variance) as t-SNE/UMAP input")
-print("  Pre-reducing with PCA improves t-SNE/UMAP speed and removes noise")
 
 pca_pre = PCA(n_components=n_for_embedding, random_state=42)
 X_pca = pca_pre.fit_transform(X)
@@ -234,38 +217,30 @@ print(f"  Reduced: {X.shape} → {X_pca.shape}")
 # ══════════════════════════════════════════════════════════════════════
 # TASK 5: t-SNE — local structure, perplexity
 # ══════════════════════════════════════════════════════════════════════
-# t-SNE minimises KL divergence between:
-#   - High-dimensional pairwise similarity (Gaussian kernel)
-#   - Low-dimensional pairwise similarity (Student-t kernel)
-#
-# Properties:
-#   - Preserves LOCAL structure (nearby points stay nearby)
-#   - Global distances are NOT preserved (clusters can appear far apart)
-#   - No out-of-sample extension (must refit for new points)
-#
-# Key hyperparameter: perplexity — roughly effective nearest neighbours
-#   - Low (5-10): focuses on very local structure, isolates small clusters
-#   - High (50-100): more global perspective, smoother embeddings
+# Key hyperparameter: perplexity
+#   - Roughly: effective number of nearest neighbours
+#   - Low (5-10): focuses on very local structure
+#   - High (50-100): smoother, more global
 
-# Subsample for speed (t-SNE is slow on large datasets)
 rng = np.random.default_rng(42)
 n_tsne = min(3000, n_samples)
 idx_tsne = rng.choice(n_samples, n_tsne, replace=False)
 X_tsne_input = X_pca[idx_tsne]
 
-import time
-
 print(f"\n=== t-SNE (n={n_tsne}) ===")
 print(f"{'Perplexity':>12} {'KL Divergence':>16} {'Time':>8}")
 print("─" * 40)
 
+import time
+
 tsne_results = {}
 for perplexity in [5, 30, 50]:
     t0 = time.time()
-    # TODO: Create TSNE with 2 components, the given perplexity, random_state=42,
-    # init="pca", learning_rate="auto", max_iter=1000
-    tsne = ____  # Hint: TSNE(n_components=2, perplexity=perplexity, max_iter=1000, random_state=42, init="pca", learning_rate="auto")
-    embedding = ____  # Hint: tsne.fit_transform(X_tsne_input)
+    # TODO: Build TSNE with n_components=2, perplexity=perplexity, max_iter=1000,
+    #       random_state=42, init="pca", learning_rate="auto"
+    tsne = ____
+    # TODO: Fit-transform X_tsne_input
+    embedding = ____
     elapsed = time.time() - t0
 
     tsne_results[perplexity] = {
@@ -282,29 +257,15 @@ for perplexity in [5, 30, 50]:
     print(f"{perplexity:>12} {tsne.kl_divergence_:>16.4f} {elapsed:>7.1f}s")
     print(f"  Silhouette in 2D embedding: {sil:.4f}")
 
-print("\nt-SNE perplexity guidance:")
-print("  perplexity=5  : micro-clusters, many small tight groups")
-print("  perplexity=30 : balanced (default recommendation)")
-print("  perplexity=50 : smoother, fewer isolated clusters")
-print("  NEVER interpret inter-cluster distances — not meaningful!")
-
 print("\nt-SNE pitfalls:")
 print("  1. Cluster sizes in t-SNE do NOT reflect real cluster sizes")
 print("  2. Distances between clusters are NOT meaningful")
-print("  3. Different runs give different layouts (random seed matters)")
-print("  4. No out-of-sample extension — new points require full refit")
+print("  3. No out-of-sample extension — new points require full refit")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: UMAP — global structure, hyperparameter tuning
 # ══════════════════════════════════════════════════════════════════════
-# UMAP uses a fuzzy topological approach:
-#   1. Build a weighted k-NN graph (high-dimensional)
-#   2. Optimise a low-dimensional layout to match graph structure
-#
-# Key hyperparameters:
-#   n_neighbors: size of local neighbourhood (like perplexity in t-SNE)
-#   min_dist: minimum distance between points in embedding
 
 print(f"\n=== UMAP Hyperparameter Comparison ===")
 
@@ -318,12 +279,13 @@ if UMAP_AVAILABLE:
     umap_results = {}
     for cfg in umap_configs:
         t0 = time.time()
-        # TODO: Create UMAP reducer with 2 components, n_neighbors, min_dist,
-        # random_state=42, metric="euclidean"
-        reducer = ____  # Hint: umap_lib.UMAP(n_components=2, n_neighbors=cfg["n_neighbors"], min_dist=cfg["min_dist"], random_state=42, metric="euclidean")
-        # TODO: Fit on subsample, then transform full dataset (out-of-sample extension)
-        ____  # Hint: reducer.fit(X_pca[idx_tsne])
-        embedding_full = ____  # Hint: reducer.transform(X_pca)
+        # TODO: Build umap_lib.UMAP with n_components=2, the cfg's n_neighbors and
+        #       min_dist, random_state=42, metric="euclidean"
+        reducer = ____
+        # TODO: Fit on X_pca[idx_tsne], then transform full X_pca
+        # Hint: reducer.fit(X_pca[idx_tsne]); embedding_full = reducer.transform(X_pca)
+        ____
+        embedding_full = ____
         elapsed = time.time() - t0
 
         km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(
@@ -343,16 +305,13 @@ if UMAP_AVAILABLE:
         print(f"  {cfg['label']:<30}: silhouette={sil:.4f}, time={elapsed:.1f}s")
 
     print("\nOut-of-sample: UMAP supports reducer.transform(new_X)")
-    print("  This is critical for production — new customers can be embedded")
-    print("  without refitting the entire model")
-    print("\nUMAP vs t-SNE decision guide:")
+    print("UMAP vs t-SNE decision guide:")
     print("  Use t-SNE:  exploratory visualisation, understanding local clusters")
     print(
         "  Use UMAP:   need out-of-sample transform, large datasets, global structure"
     )
 
 else:
-    # PCA fallback for environments without umap-learn
     pca_2d = PCA(n_components=2, random_state=42)
     embedding_2d = pca_2d.fit_transform(X_pca)
     km_labels = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(
@@ -366,7 +325,6 @@ else:
     }
 
     print("\nInstall umap-learn to run UMAP: pip install umap-learn")
-    print("UMAP benefits: preserves global structure, out-of-sample transform")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -389,11 +347,9 @@ Practical Recommendations:
   2. PCA for production: interpretable loadings, fast, invertible
   3. t-SNE for exploration: visualise cluster structure in 2D
   4. UMAP for production embedding: out-of-sample transform available
-  5. Report n_components chosen and % variance retained
 """
 )
 
-# Visualise PCA 2D projection
 pca_2d_final = PCA(n_components=2, random_state=42)
 X_pca_2d = pca_2d_final.fit_transform(X)
 
@@ -406,7 +362,6 @@ fig_pca2d.update_layout(
 )
 fig_pca2d.write_html("ex3_pca_2d.html")
 
-# Method silhouette comparison
 method_silhouettes = {}
 for perp, res in tsne_results.items():
     km_l = KMeans(n_clusters=4, random_state=42, n_init=5).fit_predict(res["embedding"])
@@ -422,8 +377,7 @@ method_silhouettes[f"PCA {n_for_embedding}d"] = {
     "Silhouette": silhouette_score(X_pca, km_pca_labels)
 }
 
-# TODO: Create method comparison chart
-fig_methods = ____  # Hint: viz.metric_comparison(method_silhouettes)
+fig_methods = viz.metric_comparison(method_silhouettes)
 fig_methods.update_layout(
     title="Dimensionality Reduction: 2D Cluster Quality Comparison"
 )
@@ -432,9 +386,3 @@ print("Saved: ex3_scree_plot.html, ex3_reconstruction_error.html")
 print("Saved: ex3_pca_2d.html, ex3_method_comparison.html")
 
 print("\n✓ Exercise 3 complete — PCA via SVD + t-SNE + UMAP")
-print("  Key takeaways:")
-print("  1. PCA = SVD; explained variance = σ_k²/(n-1); scree plot → choose k")
-print("  2. Loadings reveal which features drive each principal component")
-print("  3. Reconstruction error = unexplained variance = Σ_{i>k} σ_i²")
-print("  4. t-SNE: local structure only, no out-of-sample transform")
-print("  5. UMAP: global + local, supports transform() — production-ready")

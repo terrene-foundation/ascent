@@ -36,10 +36,10 @@ from shared import ASCENTDataLoader
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 
-pipeline = PreprocessingPipeline()
-result = pipeline.setup(
-    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
-)
+# TODO: Instantiate PreprocessingPipeline and call setup() with credit,
+#       target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+pipeline = ____
+result = ____
 
 X_train, y_train, col_info = to_sklearn_input(
     result.train_data,
@@ -53,15 +53,11 @@ X_test, y_test, _ = to_sklearn_input(
 )
 feature_names = col_info["feature_columns"]
 
-# Train best model from Exercise 2
-model = lgb.LGBMClassifier(
-    n_estimators=500,
-    learning_rate=0.1,
-    max_depth=6,
-    scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
-    random_state=42,
-    verbose=-1,
-)
+# Train best model from Exercise 1
+# TODO: Build LGBMClassifier with n_estimators=500, learning_rate=0.1, max_depth=6,
+#       scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
+#       random_state=42, verbose=-1
+model = ____
 model.fit(X_train, y_train)
 
 y_proba = model.predict_proba(X_test)[:, 1]
@@ -72,14 +68,12 @@ print(f"Model AUC-ROC: {roc_auc_score(y_test, y_proba):.4f}")
 # TASK 1: Compute TreeSHAP values
 # ══════════════════════════════════════════════════════════════════════
 # TreeSHAP computes exact Shapley values in polynomial time (O(TLD²))
-# vs exponential time for exact Shapley.
-# Key insight: tree structure allows efficient path-based computation.
 
-# TODO: Create a TreeExplainer for the trained model
-explainer = ____  # Hint: shap.TreeExplainer(model)
+# TODO: Create a shap.TreeExplainer for the model
+explainer = ____
 
-# TODO: Compute SHAP values for the test set
-shap_values = ____  # Hint: explainer.shap_values(X_test)
+# TODO: Compute SHAP values on X_test via explainer.shap_values(X_test)
+shap_values = ____
 
 # For binary classification, shap_values may be a list [class_0, class_1]
 if isinstance(shap_values, list):
@@ -101,7 +95,7 @@ shap_sum = shap_vals[sample_idx].sum() + (
 model_output = model.predict_proba(X_test[sample_idx : sample_idx + 1])[:, 1][0]
 print(f"Sample 0: SHAP sum = {shap_sum:.4f}, model output = {model_output:.4f}")
 print(
-    f"  Additivity check: {'PASS' if abs(shap_sum - model_output) < 0.01 else 'FAIL'}"
+    f"  Additivity check: {'✓ PASS' if abs(shap_sum - model_output) < 0.01 else '✗ FAIL'}"
 )
 
 
@@ -109,7 +103,7 @@ print(
 # TASK 2: Global interpretation — feature importance ranking
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Compute mean absolute SHAP values per feature (global importance)
+# TODO: Compute mean absolute SHAP values across samples (axis=0)
 mean_abs_shap = ____  # Hint: np.abs(shap_vals).mean(axis=0)
 
 importance_ranking = sorted(
@@ -125,9 +119,8 @@ for name, imp in importance_ranking[:15]:
 
 # Visualise with ModelVisualizer
 viz = ModelVisualizer()
-
-# TODO: Generate feature importance figure using viz.feature_importance, top_n=15
-fig = ____  # Hint: viz.feature_importance(model, feature_names, top_n=15)
+# TODO: Build viz.feature_importance(model, feature_names, top_n=15)
+fig = ____
 fig.update_layout(title="SHAP Feature Importance: Credit Default Prediction")
 fig.write_html("ex3_shap_importance.html")
 print("Saved: ex3_shap_importance.html")
@@ -146,8 +139,9 @@ for feat in top_features:
     feat_vals = X_test[:, feat_idx]
     feat_shap = shap_vals[:, feat_idx]
 
-    # TODO: Compute Pearson correlation between feature values and their SHAP values
-    corr = ____  # Hint: np.corrcoef(feat_vals[~np.isnan(feat_vals)], feat_shap[~np.isnan(feat_vals)])[0, 1]
+    # TODO: Compute the Pearson correlation between feature value and SHAP value
+    #       Use np.corrcoef on the non-NaN entries; pick element [0, 1]
+    corr = ____
     direction = "↑ increases default risk" if corr > 0 else "↑ decreases default risk"
     print(f"  {feat}: correlation = {corr:.3f} ({direction})")
 
@@ -157,12 +151,11 @@ for feat in top_features:
 # ══════════════════════════════════════════════════════════════════════
 
 # SHAP interaction values (O(TL²D²) — more expensive)
-# For efficiency, use a sample
 sample_size = min(1000, X_test.shape[0])
 X_sample = X_test[:sample_size]
 
-# TODO: Compute SHAP interaction values for X_sample
-shap_interaction = ____  # Hint: explainer.shap_interaction_values(X_sample)
+# TODO: Compute interaction values via explainer.shap_interaction_values(X_sample)
+shap_interaction = ____
 if isinstance(shap_interaction, list):
     shap_interaction = shap_interaction[1]
 
@@ -184,29 +177,24 @@ for f1, f2, strength in interaction_strengths[:10]:
 # ══════════════════════════════════════════════════════════════════════
 # TASK 4 (LIME): Model-agnostic local linear approximations
 # ══════════════════════════════════════════════════════════════════════
-# LIME (Local Interpretable Model-agnostic Explanations):
-# For a single prediction x, LIME:
-#   1. Generates perturbed samples around x
-#   2. Weights them by proximity to x (exponential kernel)
-#   3. Fits a sparse linear model on the weighted samples
-# The linear model coefficients are the local feature importances.
-#
-# Key difference from SHAP:
-#   SHAP = global consistency via Shapley values (game theory)
-#   LIME = local fidelity only; explanations may vary across calls
+# LIME generates perturbed samples around x, weights by proximity, and
+# fits a sparse linear model. Coefficients = local feature importances.
 
 try:
     from lime.lime_tabular import LimeTabularExplainer  # type: ignore
 
-    # TODO: Create a LimeTabularExplainer for the training data
-    lime_explainer = ____  # Hint: LimeTabularExplainer(training_data=X_train, feature_names=feature_names, class_names=["no_default", "default"], mode="classification", discretize_continuous=True, random_state=42)
+    # TODO: Build LimeTabularExplainer with training_data=X_train,
+    #       feature_names=feature_names, class_names=["no_default", "default"],
+    #       mode="classification", discretize_continuous=True, random_state=42
+    lime_explainer = ____
 
     # Explain the highest-risk prediction with LIME
     risk_order_lime = np.argsort(y_proba)
     high_risk_idx_lime = risk_order_lime[-1]
 
-    # TODO: Use lime_explainer.explain_instance to explain the highest-risk sample
-    lime_exp = ____  # Hint: lime_explainer.explain_instance(X_test[high_risk_idx_lime], model.predict_proba, num_features=10, top_labels=1)
+    # TODO: Call lime_explainer.explain_instance with X_test[high_risk_idx_lime],
+    #       model.predict_proba, num_features=10, top_labels=1
+    lime_exp = ____
 
     print(f"\n=== LIME Explanation (highest-risk sample) ===")
     print(f"P(default) = {y_proba[high_risk_idx_lime]:.4f}")
@@ -216,17 +204,12 @@ try:
         print(f"  {feat_desc:<45} {weight:+.4f} ({direction})")
 
     print("\nLIME vs SHAP:")
-    print("  LIME: fast, model-agnostic, but can be unstable (different perturbations)")
-    print("  SHAP: theoretically grounded (Shapley values), exact for trees")
-    print(
-        "  Production recommendation: use TreeSHAP for tree models; LIME for black-boxes"
-    )
+    print("  LIME: fast, model-agnostic, but can be unstable")
+    print("  SHAP: theoretically grounded, exact for trees")
 
 except ImportError:
     print("\n=== LIME (lime not installed) ===")
     print("Install with: pip install lime")
-    print("LIME: generates perturbed samples near x, fits sparse local linear model")
-    print("Coefficient of the local model = feature importance for that prediction")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -241,8 +224,8 @@ low_risk_idx = risk_order[0]
 
 for label, idx in [("Highest Risk", high_risk_idx), ("Lowest Risk", low_risk_idx)]:
     print(f"\n=== {label} (predicted P(default) = {y_proba[idx]:.4f}) ===")
-    # TODO: Extract this sample's SHAP values from shap_vals
-    sample_shap = ____  # Hint: shap_vals[idx]
+    # Top contributing features for this prediction
+    sample_shap = shap_vals[idx]
     sorted_contrib = sorted(
         zip(feature_names, sample_shap, X_test[idx]),
         key=lambda x: abs(x[1]),
@@ -256,7 +239,6 @@ for label, idx in [("Highest Risk", high_risk_idx), ("Lowest Risk", low_risk_idx
 # ══════════════════════════════════════════════════════════════════════
 # TASK 6: Fairness audit — SHAP across protected attributes
 # ══════════════════════════════════════════════════════════════════════
-# Governance question: does the model treat protected groups fairly?
 
 # Check if protected attributes are in the features
 protected_candidates = ["age", "gender", "ethnicity", "marital_status"]
@@ -265,12 +247,11 @@ protected_in_model = [f for f in protected_candidates if f in feature_names]
 if protected_in_model:
     print(f"\n=== Fairness Audit ===")
     print(f"Protected attributes in model: {protected_in_model}")
-    print("These features may encode bias. Check SHAP contributions:")
+    print("⚠ These features may encode bias. Check SHAP contributions:")
 
     for attr in protected_in_model:
         attr_idx = feature_names.index(attr)
-
-        # TODO: Extract the SHAP values for this attribute across all test samples
+        # TODO: Slice shap_vals to get the SHAP column for this attribute
         attr_shap = ____  # Hint: shap_vals[:, attr_idx]
         print(f"\n  {attr}:")
         print(f"    Mean |SHAP|: {np.abs(attr_shap).mean():.4f}")

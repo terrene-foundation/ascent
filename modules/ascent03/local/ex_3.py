@@ -43,10 +43,10 @@ from shared import ASCENTDataLoader
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 
-pipeline = PreprocessingPipeline()
-result = pipeline.setup(
-    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
-)
+# TODO: Instantiate PreprocessingPipeline and call setup() with credit,
+#       target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+pipeline = ____
+result = ____
 
 X_train, y_train, col_info = to_sklearn_input(
     result.train_data,
@@ -69,14 +69,10 @@ print(
 # TASK 1: Baseline — no imbalance handling
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create and fit a baseline LGBMClassifier with n_estimators=300
-baseline = (
-    ____  # Hint: lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
-)
+# TODO: Build lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+baseline = ____
 baseline.fit(X_train, y_train)
-
-# TODO: Get predicted probabilities for the positive class
-y_proba_base = ____  # Hint: baseline.predict_proba(X_test)[:, 1]
+y_proba_base = baseline.predict_proba(X_test)[:, 1]
 
 print(f"\n=== Baseline (no correction) ===")
 print(f"AUC-ROC: {roc_auc_score(y_test, y_proba_base):.4f}")
@@ -88,27 +84,23 @@ print(f"Brier:   {brier_score_loss(y_test, y_proba_base):.4f}")
 # TASK 2: SMOTE — and why it often fails
 # ══════════════════════════════════════════════════════════════════════
 # SMOTE creates synthetic minority examples by interpolating between
-# nearest neighbours. Problems:
-# 1. Lipschitz violation: interpolation assumes smooth decision boundary
-# 2. Noisy minority: amplifies noise in the minority class
-# 3. High-dimensional collapse: in high dimensions, nearest neighbours
-#    are nearly equidistant, making interpolation meaningless
+# nearest neighbours. Problems: Lipschitz violation, noisy minority,
+# high-dimensional collapse.
 
 from imblearn.over_sampling import SMOTE
 
-# TODO: Create a SMOTE instance and resample the training data
-smote = ____  # Hint: SMOTE(random_state=42)
-X_smote, y_smote = smote.fit_resample(X_train, y_train)
-
+# TODO: Create SMOTE(random_state=42) and call fit_resample(X_train, y_train)
+smote = ____
+X_smote, y_smote = ____  # Hint: smote.fit_resample(X_train, y_train)
 print(f"\n=== SMOTE ===")
 print(f"Before SMOTE: {len(y_train):,} (pos={y_train.sum():.0f})")
 print(f"After SMOTE:  {len(y_smote):,} (pos={y_smote.sum():.0f})")
 
-smote_model = lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+# TODO: Build a fresh LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
+#       and fit it to (X_smote, y_smote)
+smote_model = ____
 smote_model.fit(X_smote, y_smote)
-
-# TODO: Get predicted probabilities from the SMOTE-trained model
-y_proba_smote = ____  # Hint: smote_model.predict_proba(X_test)[:, 1]
+y_proba_smote = smote_model.predict_proba(X_test)[:, 1]
 
 print(f"AUC-ROC: {roc_auc_score(y_test, y_proba_smote):.4f}")
 print(f"AUC-PR:  {average_precision_score(y_test, y_proba_smote):.4f}")
@@ -118,21 +110,19 @@ print("\nSMOTE Failure Taxonomy:")
 print("  1. Lipschitz: interpolated samples may cross decision boundary")
 print("  2. Noise: noisy minority examples get amplified")
 print("  3. Dimensionality: with 45 features, NN distances converge")
-print(f"  → 92% citation rate in papers, ~6% production deployment")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 3: Cost-sensitive learning (sample weights)
 # ══════════════════════════════════════════════════════════════════════
-# Weight minority class higher in the loss function.
-# LightGBM supports scale_pos_weight and sample_weight.
 
 # Method A: scale_pos_weight
-# TODO: Compute scale_pos_weight as ratio of negative to positive rate
-scale_weight = ____  # Hint: (1 - pos_rate) / pos_rate
+# TODO: Compute scale_weight = (1 - pos_rate) / pos_rate
+scale_weight = ____
 
-# TODO: Create LGBMClassifier with scale_pos_weight set
-cost_model_a = ____  # Hint: lgb.LGBMClassifier(n_estimators=300, scale_pos_weight=scale_weight, random_state=42, verbose=-1)
+# TODO: Build LGBMClassifier with n_estimators=300, scale_pos_weight=scale_weight,
+#       random_state=42, verbose=-1
+cost_model_a = ____
 cost_model_a.fit(X_train, y_train)
 y_proba_cost_a = cost_model_a.predict_proba(X_test)[:, 1]
 
@@ -141,15 +131,11 @@ y_proba_cost_a = cost_model_a.predict_proba(X_test)[:, 1]
 cost_fn = 10_000
 cost_fp = 100
 
-# TODO: Create sample_weights array: cost_fn for positives, cost_fp for negatives
-sample_weights = ____  # Hint: np.where(y_train == 1, cost_fn, cost_fp)
+# TODO: Build sample_weights via np.where(y_train == 1, cost_fn, cost_fp)
+sample_weights = ____
 
 cost_model_b = lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1)
-
-# TODO: Fit cost_model_b with the sample_weight argument
-cost_model_b.fit(
-    X_train, y_train, sample_weight=____
-)  # Hint: sample_weight=sample_weights
+cost_model_b.fit(X_train, y_train, sample_weight=sample_weights)
 y_proba_cost_b = cost_model_b.predict_proba(X_test)[:, 1]
 
 print(f"\n=== Cost-Sensitive Learning ===")
@@ -166,8 +152,6 @@ print(f"  AUC-PR:  {average_precision_score(y_test, y_proba_cost_b):.4f}")
 # ══════════════════════════════════════════════════════════════════════
 # Focal Loss: FL(p) = -α(1-p)^γ log(p)
 # γ > 0 down-weights easy examples (well-classified)
-# γ = 0 reduces to standard cross-entropy
-# γ = 2 is the original setting (Lin et al., 2017)
 
 
 def focal_loss_lgb(y_true, y_pred, gamma=2.0, alpha=0.25):
@@ -186,14 +170,22 @@ def focal_loss_lgb(y_true, y_pred, gamma=2.0, alpha=0.25):
     return grad, hess
 
 
-# TODO: Create LGBMClassifier with a custom focal loss objective (gamma=2.0)
-#       Pass objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0)
-focal_model = ____  # Hint: lgb.LGBMClassifier(n_estimators=300, random_state=42, verbose=-1, objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0))
+# Train with focal loss
+focal_model = lgb.LGBMClassifier(
+    n_estimators=300,
+    random_state=42,
+    verbose=-1,
+    objective=lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=2.0),
+)
 focal_model.fit(X_train, y_train)
-y_raw_focal = focal_model.predict_proba(X_test)[:, 1]
+_focal_preds = focal_model.predict_proba(X_test)
+_focal_raw = _focal_preds[:, 1] if _focal_preds.ndim == 2 else _focal_preds
+y_raw_focal = (
+    1.0 / (1.0 + np.exp(-_focal_raw))
+    if _focal_raw.max() > 1.0 or _focal_raw.min() < 0.0
+    else _focal_raw
+)
 
-# Note: custom objective outputs are not calibrated probabilities
-# Need post-hoc calibration
 print(f"\n=== Focal Loss (γ=2.0) ===")
 print(f"AUC-ROC: {roc_auc_score(y_test, y_raw_focal):.4f}")
 print(f"AUC-PR:  {average_precision_score(y_test, y_raw_focal):.4f}")
@@ -201,18 +193,22 @@ print(
     f"Brier:   {brier_score_loss(y_test, y_raw_focal):.4f} (uncalibrated — expected to be poor)"
 )
 
+
 # Compare γ values
+def _make_focal_obj(g):
+    return lambda y_true, y_pred: focal_loss_lgb(y_true, y_pred, gamma=g)
+
+
 for gamma in [0.0, 0.5, 1.0, 2.0, 5.0]:
     m = lgb.LGBMClassifier(
         n_estimators=300,
         random_state=42,
         verbose=-1,
-        objective=lambda y_true, y_pred, g=gamma: focal_loss_lgb(
-            y_true, y_pred, gamma=g
-        ),
+        objective=_make_focal_obj(gamma),
     )
     m.fit(X_train, y_train)
-    y_p = m.predict_proba(X_test)[:, 1]
+    _preds = m.predict_proba(X_test)
+    y_p = _preds[:, 1] if _preds.ndim == 2 else _preds
     print(f"  γ={gamma:.1f}: AUC-PR={average_precision_score(y_test, y_p):.4f}")
 
 
@@ -225,7 +221,7 @@ for gamma in [0.0, 0.5, 1.0, 2.0, 5.0]:
 # Use best model so far
 best_proba = y_proba_cost_a
 
-# TODO: Derive the optimal threshold from the cost matrix
+# TODO: Derive the closed-form optimal threshold from the cost matrix
 optimal_threshold = ____  # Hint: cost_fp / (cost_fp + cost_fn)
 print(f"\n=== Threshold Optimisation ===")
 print(f"Cost matrix: FP=${cost_fp:,}, FN=${cost_fn:,}")
@@ -241,7 +237,8 @@ for t in thresholds:
     y_pred_t = (best_proba >= t).astype(int)
     fp = ((y_pred_t == 1) & (y_test == 0)).sum()
     fn = ((y_pred_t == 0) & (y_test == 1)).sum()
-    total_cost = fp * cost_fp + fn * cost_fn
+    # TODO: Compute total_cost = fp * cost_fp + fn * cost_fn
+    total_cost = ____
     if total_cost < best_cost:
         best_cost = total_cost
         best_t = t
@@ -264,13 +261,15 @@ print(
 # TASK 6: Post-hoc calibration
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create a Platt-scaled (sigmoid) calibrated version of cost_model_a using cv=5
-platt_model = ____  # Hint: CalibratedClassifierCV(cost_model_a, method="sigmoid", cv=5)
+# Platt scaling (logistic regression on predicted probabilities)
+# TODO: Build CalibratedClassifierCV(cost_model_a, method="sigmoid", cv=5) and fit it
+platt_model = ____
 platt_model.fit(X_train, y_train)
 y_proba_platt = platt_model.predict_proba(X_test)[:, 1]
 
-# TODO: Create an isotonic regression calibrated version of cost_model_a using cv=5
-iso_model = ____  # Hint: CalibratedClassifierCV(cost_model_a, method="isotonic", cv=5)
+# Isotonic regression (non-parametric)
+# TODO: Build CalibratedClassifierCV(cost_model_a, method="isotonic", cv=5) and fit it
+iso_model = ____
 iso_model.fit(X_train, y_train)
 y_proba_iso = iso_model.predict_proba(X_test)[:, 1]
 
@@ -295,7 +294,8 @@ for name, proba in [
     ("Platt", y_proba_platt),
     ("Isotonic", y_proba_iso),
 ]:
-    fig = viz.calibration_curve(y_test, proba)
+    # TODO: Build viz.calibration_curve(y_test, proba)
+    fig = ____
     fig.update_layout(title=f"Calibration: {name}")
     fig.write_html(f"ex2_calibration_{name.lower()}.html")
 
@@ -323,7 +323,8 @@ all_results = {
     },
 }
 
-fig = viz.metric_comparison(all_results)
+# TODO: Build viz.metric_comparison(all_results)
+fig = ____
 fig.update_layout(title="Class Imbalance Methods Comparison")
 fig.write_html("ex2_imbalance_comparison.html")
 print("\nSaved: ex2_imbalance_comparison.html")

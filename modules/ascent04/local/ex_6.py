@@ -40,12 +40,11 @@ loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
 
 pipeline = PreprocessingPipeline()
-# TODO: Run pipeline.setup() with target="default", seed=42, normalize=False,
-# categorical_encoding="ordinal"
-result = ____  # Hint: pipeline.setup(credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal")
+result = pipeline.setup(
+    credit, target="default", seed=42, normalize=False, categorical_encoding="ordinal"
+)
 
-# TODO: Extract feature columns (all columns except "default")
-feature_cols = ____  # Hint: [c for c in result.train_data.columns if c != "default"]
+feature_cols = [c for c in result.train_data.columns if c != "default"]
 print(f"=== Credit Scoring Data ===")
 print(f"Features: {len(feature_cols)}")
 print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
@@ -55,11 +54,11 @@ print(f"Train: {result.train_data.shape}, Test: {result.test_data.shape}")
 # TASK 1: Establish reference distribution
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Extract the reference feature distribution from the training data
-reference_data = ____  # Hint: result.train_data.select(feature_cols)
+# TODO: Reference = training data restricted to feature columns
+# Hint: result.train_data.select(feature_cols)
+reference_data = ____
 print(f"\nReference distribution: {reference_data.shape}")
 print("This represents the data the model was trained on.")
-print("Any significant deviation from this distribution = potential drift.")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -68,17 +67,17 @@ print("Any significant deviation from this distribution = potential drift.")
 
 
 async def setup_monitoring():
-    # TODO: Create ConnectionManager for SQLite and initialize it
-    conn = ____  # Hint: ConnectionManager("sqlite:///ascent04_drift.db")
-    ____  # Hint: await conn.initialize()
+    conn = ConnectionManager("sqlite:///ascent04_drift.db")
+    await conn.initialize()
 
-    # TODO: Create DriftMonitor with psi_threshold=0.1, ks_threshold=0.05,
-    # performance_threshold=0.1
-    monitor = ____  # Hint: DriftMonitor(conn, psi_threshold=0.1, ks_threshold=0.05, performance_threshold=0.1)
+    # TODO: Build DriftMonitor with psi_threshold=0.1, ks_threshold=0.05,
+    #       performance_threshold=0.1
+    monitor = ____
 
-    # TODO: Set the reference distribution for the model using monitor.set_reference()
-    # model_name="credit_default_lgbm", reference_data=reference_data, feature_columns=feature_cols
-    await ____  # Hint: monitor.set_reference(model_name="credit_default_lgbm", reference_data=reference_data, feature_columns=feature_cols)
+    # TODO: Set the reference distribution for "credit_default_lgbm"
+    # Hint: await monitor.set_reference(model_name=..., reference_data=...,
+    #         feature_columns=feature_cols)
+    ____
 
     print(f"\n=== DriftMonitor Configured ===")
     print(f"PSI threshold: 0.1 (>0.2 = severe)")
@@ -101,38 +100,35 @@ conn, monitor = asyncio.run(setup_monitoring())
 
 rng = np.random.default_rng(42)
 
-# Scenario A: No drift (control — test data from same distribution)
-# TODO: Select only feature_cols from the test data for the no-drift baseline
-no_drift = ____  # Hint: result.test_data.select(feature_cols)
+# Scenario A: No drift (control)
+# TODO: Just take feature columns from the test set
+no_drift = ____
 
-# TODO: Scenario B — moderate feature drift: income drops 20%, debt rises 15%
-# Use with_columns to scale annual_income * 0.8 and total_debt * 1.15
-moderate_drift = result.test_data.select(feature_cols).with_columns(
-    (
-        ____  # Hint: (pl.col("annual_income") * 0.8).alias("annual_income") if "annual_income" in feature_cols else pl.lit(0).alias("_placeholder_b")
-    ),
-    (
-        ____  # Hint: (pl.col("total_debt") * 1.15).alias("total_debt") if "total_debt" in feature_cols else pl.lit(0).alias("_placeholder_b2")
-    ),
-)
+# Scenario B: Moderate drift (income drops 20%, debt rises 15%)
+# TODO: Use with_columns to multiply annual_income by 0.8 and total_debt by 1.15
+# Hint: result.test_data.select(feature_cols).with_columns(
+#         (pl.col("annual_income") * 0.8).alias("annual_income")
+#             if "annual_income" in feature_cols else pl.lit(0).alias("_fallback_income"),
+#         (pl.col("total_debt") * 1.15).alias("total_debt")
+#             if "total_debt" in feature_cols else pl.lit(0).alias("_fallback_debt"),
+#     )
+moderate_drift = ____
 
-# TODO: Scenario C — severe drift: apply random scale/shift to each float column
+# Scenario C: Severe drift (multiple features shifted)
 severe_drift_cols = []
 for col in feature_cols:
     dtype = result.test_data[col].dtype
     if dtype in (pl.Float64, pl.Float32):
-        shift = rng.uniform(-0.3, 0.3)
-        scale = rng.uniform(0.8, 1.5)
-        severe_drift_cols.append(
-            ____  # Hint: (pl.col(col) * scale + pl.col(col).mean() * shift).alias(col)
-        )
+        # TODO: Random shift in [-0.3, 0.3] and random scale in [0.8, 1.5]
+        shift = ____
+        scale = ____
+        # TODO: Build expression: pl.col(col) * scale + pl.col(col).mean() * shift
+        severe_drift_cols.append(____)
     else:
         severe_drift_cols.append(pl.col(col))
 
-# TODO: Apply the severe_drift_cols transformations using with_columns
-severe_drift = (
-    ____  # Hint: result.test_data.select(feature_cols).with_columns(severe_drift_cols)
-)
+# TODO: Apply the column expressions to test data to create the severe drift df
+severe_drift = ____
 
 print(f"\n=== Simulated Drift Scenarios ===")
 print(f"A) No drift: test data from same distribution")
@@ -154,10 +150,8 @@ async def check_all_scenarios():
 
     all_reports = {}
     for name, data in scenarios:
-        # TODO: Call monitor.check_drift() with the model name and current data
-        report = (
-            await ____
-        )  # Hint: monitor.check_drift(model_name="credit_default_lgbm", current_data=data)
+        # TODO: Call monitor.check_drift for credit_default_lgbm with current_data=data
+        report = ____
 
         all_reports[name] = report
 
@@ -165,7 +159,8 @@ async def check_all_scenarios():
         print(f"Overall drift: {report.overall_drift_detected}")
         print(f"Severity: {report.overall_severity}")
 
-        drifted = [r for r in report.feature_results if r.drift_detected]
+        # TODO: Filter feature_results for r.drift_detected == True
+        drifted = ____
         print(f"Features with drift: {len(drifted)} / {len(report.feature_results)}")
 
         if drifted:
@@ -196,18 +191,13 @@ print(f"  0.1-0.2: Moderate drift — investigate")
 print(f"  > 0.2  : Severe drift — retrain model")
 
 for name, report in all_reports.items():
-    # TODO: Extract PSI values from all feature_results, compute mean and max
-    psi_values = ____  # Hint: [r.psi for r in report.feature_results]
+    # TODO: Collect r.psi for every entry in report.feature_results
+    psi_values = ____
     print(f"\n{name}:")
     print(f"  Mean PSI: {np.mean(psi_values):.4f}")
     print(f"  Max PSI:  {max(psi_values):.4f}")
-    # TODO: Count features where PSI > 0.1 and PSI > 0.2
-    print(
-        f"  Features above 0.1: {____}"
-    )  # Hint: sum(1 for p in psi_values if p > 0.1)
-    print(
-        f"  Features above 0.2: {____}"
-    )  # Hint: sum(1 for p in psi_values if p > 0.2)
+    print(f"  Features above 0.1: {sum(1 for p in psi_values if p > 0.1)}")
+    print(f"  Features above 0.2: {sum(1 for p in psi_values if p > 0.2)}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -231,12 +221,9 @@ Pipeline: DriftMonitor → alert → retrain (M3 pipeline) → promote (ModelReg
 )
 
 
-# TODO: Retrieve and display drift check history for the credit model
 async def show_history():
-    # Hint: monitor.get_drift_history("credit_default_lgbm", limit=10)
-    history = (
-        await ____
-    )  # Hint: monitor.get_drift_history("credit_default_lgbm", limit=10)
+    # TODO: Get last 10 drift checks via monitor.get_drift_history
+    history = ____
     print(f"Drift check history: {len(history)} entries")
     for h in history[:5]:
         print(f"  {h.get('checked_at', '?')}: severity={h.get('severity', '?')}")
@@ -246,18 +233,16 @@ async def show_history():
 asyncio.run(show_history())
 
 viz = ModelVisualizer()
-# TODO: Build comparison chart of mean PSI, max PSI, and drifted features per scenario
-comparison = {
-    name: {
-        "Mean_PSI": ____,  # Hint: np.mean([r.psi for r in report.feature_results])
-        "Max_PSI": ____,  # Hint: max(r.psi for r in report.feature_results)
-        "Drifted_Features": ____,  # Hint: sum(1 for r in report.feature_results if r.drift_detected)
-    }
-    for name, report in all_reports.items()
-}
-fig = ____  # Hint: viz.metric_comparison(comparison)
+# TODO: Build a comparison dict mapping each scenario to its Mean_PSI, Max_PSI,
+# and number of drifted features
+# Hint: {name: {"Mean_PSI": np.mean([r.psi for r in report.feature_results]),
+#               "Max_PSI": max(r.psi for r in report.feature_results),
+#               "Drifted_Features": sum(1 for r in report.feature_results if r.drift_detected)}
+#        for name, report in all_reports.items()}
+comparison = ____
+fig = viz.metric_comparison(comparison)
 fig.update_layout(title="Drift Detection: Scenario Comparison")
-fig.write_html("ex6_drift_comparison.html")
-print("\nSaved: ex6_drift_comparison.html")
+fig.write_html("ex4_drift_comparison.html")
+print("\nSaved: ex4_drift_comparison.html")
 
 print("\n✓ Exercise 6 complete — DriftMonitor for production model monitoring")

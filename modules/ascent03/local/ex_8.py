@@ -8,7 +8,7 @@
 #   workflow orchestration, persistence, model card, conformal prediction.
 #
 # TASKS:
-#   1. Build complete pipeline: load -> preprocess -> train -> evaluate -> persist
+#   1. Build complete pipeline: load → preprocess → train → evaluate → persist
 #   2. Generate model card (Mitchell et al. template)
 #   3. Conformal prediction for uncertainty quantification
 #   4. Cross-validate and analyse bias-variance trade-off
@@ -19,6 +19,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 from datetime import datetime
 
 import numpy as np
@@ -47,7 +49,7 @@ from shared.kailash_helpers import setup_environment
 setup_environment()
 
 
-# -- Data Loading ------------------------------------------------------------------
+# ── Data Loading ──────────────────────────────────────────────────────
 
 loader = ASCENTDataLoader()
 credit = loader.load("ascent03", "sg_credit_scoring.parquet")
@@ -70,52 +72,38 @@ X_test, y_test, _ = to_sklearn_input(
 feature_names = col_info["feature_columns"]
 
 
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
 # TASK 1: Train final production model
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
 
-# Best hyperparameters from Exercise 7 (Bayesian optimization)
-# TODO: Instantiate LGBMClassifier with the production hyperparameters
-model = lgb.LGBMClassifier(
-    n_estimators=____,       # Hint: 500
-    learning_rate=____,      # Hint: 0.05
-    max_depth=____,          # Hint: 7
-    num_leaves=____,         # Hint: 63
-    min_child_samples=____,  # Hint: 20
-    subsample=0.8,
-    colsample_bytree=0.8,
-    reg_alpha=0.1,
-    reg_lambda=1.0,
-    scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
-    random_state=42,
-    verbose=-1,
-)
+# Best hyperparameters from Exercise 5 (Bayesian optimization)
+# TODO: Build LGBMClassifier with: n_estimators=500, learning_rate=0.05, max_depth=7,
+#       num_leaves=63, min_child_samples=20, subsample=0.8, colsample_bytree=0.8,
+#       reg_alpha=0.1, reg_lambda=1.0,
+#       scale_pos_weight=(1 - y_train.mean()) / y_train.mean(),
+#       random_state=42, verbose=-1
+model = ____
 model.fit(X_train, y_train)
 
-# TODO: Calibrate the model using CalibratedClassifierCV with method="isotonic" and cv=5
-calibrated_model = CalibratedClassifierCV(model, method=____, cv=____)  # Hint: method="isotonic", cv=5
+# Calibrate
+# TODO: Wrap the model in CalibratedClassifierCV(model, method="isotonic", cv=5)
+calibrated_model = ____
 calibrated_model.fit(X_train, y_train)
 
 y_proba = calibrated_model.predict_proba(X_test)[:, 1]
 y_pred = (y_proba >= 0.5).astype(int)
 
-metrics = {
-    "accuracy": accuracy_score(y_test, y_pred),
-    "f1": f1_score(y_test, y_pred),
-    "auc_roc": roc_auc_score(y_test, y_proba),
-    "auc_pr": average_precision_score(y_test, y_proba),
-    "log_loss": log_loss(y_test, y_proba),
-    "brier": brier_score_loss(y_test, y_proba),
-}
+# TODO: Build the metrics dict (accuracy, f1, auc_roc, auc_pr, log_loss, brier)
+metrics = ____
 
 print("=== Final Model Metrics ===")
 for k, v in metrics.items():
     print(f"  {k}: {v:.4f}")
 
 
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
 # TASK 2: Generate model card (Mitchell et al.)
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
 
 model_card = f"""
 # Model Card: Singapore Credit Default Prediction
@@ -152,8 +140,8 @@ model_card = f"""
 - Model should be monitored for drift in protected group performance
 
 ## Limitations
-- Trained on synthetic data -- validate on production data before deployment
-- Singapore-specific -- do not apply to other markets without retraining
+- Trained on synthetic data — validate on production data before deployment
+- Singapore-specific — do not apply to other markets without retraining
 - Point-in-time: model performance may degrade as economic conditions change
 
 ## Monitoring
@@ -164,17 +152,17 @@ model_card = f"""
 print("\n=== Model Card ===")
 print(model_card)
 
-with open("ex8_model_card.md", "w") as f:
+# Save model card
+with open("ex6_model_card.md", "w") as f:
     f.write(model_card)
-print("Saved: ex8_model_card.md")
+print("Saved: ex6_model_card.md")
 
 
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
 # TASK 3: Conformal prediction for uncertainty quantification
-# ==============================================================================
-# Conformal prediction provides distribution-free prediction sets with
-# guaranteed coverage: P(Y in C(X)) >= 1 - alpha
-# No distributional assumptions needed.
+# ══════════════════════════════════════════════════════════════════════
+# Conformal prediction provides distribution-free prediction sets:
+# P(Y ∈ C(X)) ≥ 1 - α  — no distributional assumptions needed.
 
 # Split calibration set from test set
 n_cal = X_test.shape[0] // 2
@@ -183,47 +171,48 @@ y_cal, y_eval = y_test[:n_cal], y_test[n_cal:]
 
 # Compute nonconformity scores on calibration set
 cal_proba = calibrated_model.predict_proba(X_cal)[:, 1]
-# Score = 1 - predicted probability of the true class
-cal_scores = np.where(y_cal == 1, 1 - cal_proba, cal_proba)
+# TODO: Score = 1 - predicted probability of the true class
+#       Use np.where(y_cal == 1, 1 - cal_proba, cal_proba)
+cal_scores = ____
 
-# TODO: Set alpha for 90% coverage
-alpha = ____  # Hint: 0.10
-
+# Quantile for desired coverage
+alpha = 0.10  # 90% coverage
 n_cal_size = len(cal_scores)
-# TODO: Compute quantile_level using the conformal formula: ceil((n+1)*(1-alpha)) / n
-quantile_level = ____  # Hint: np.ceil((n_cal_size + 1) * (1 - alpha)) / n_cal_size
-# TODO: Compute q_hat as the quantile of cal_scores clamped to 1.0
-q_hat = ____  # Hint: np.quantile(cal_scores, min(quantile_level, 1.0))
+# TODO: Compute quantile_level = ceil((n_cal_size + 1) * (1 - alpha)) / n_cal_size
+quantile_level = ____
+q_hat = np.quantile(cal_scores, min(quantile_level, 1.0))
 
 # Prediction sets on evaluation data
 eval_proba = calibrated_model.predict_proba(X_eval)[:, 1]
 
+# For each sample, include classes where score ≤ q_hat
 prediction_sets = []
 for i in range(len(y_eval)):
     pred_set = set()
-    if (1 - eval_proba[i]) <= q_hat:
+    if (1 - eval_proba[i]) <= q_hat:  # Include class 1
         pred_set.add(1)
-    if eval_proba[i] <= q_hat:
+    if eval_proba[i] <= q_hat:  # Include class 0
         pred_set.add(0)
-    if not pred_set:
+    if not pred_set:  # Always include most likely class
         pred_set.add(1 if eval_proba[i] >= 0.5 else 0)
     prediction_sets.append(pred_set)
 
-coverage = np.mean([y_eval[i] in ps for i, ps in enumerate(prediction_sets)])
+# TODO: Compute coverage = mean over i of (y_eval[i] in prediction_sets[i])
+coverage = ____
 avg_set_size = np.mean([len(ps) for ps in prediction_sets])
 singleton_rate = np.mean([len(ps) == 1 for ps in prediction_sets])
 
-print(f"\n=== Conformal Prediction (alpha={alpha}) ===")
-print(f"Calibration quantile (q_hat): {q_hat:.4f}")
+print(f"\n=== Conformal Prediction (α={alpha}) ===")
+print(f"Calibration quantile (q̂): {q_hat:.4f}")
 print(f"Coverage: {coverage:.4f} (target: {1 - alpha:.4f})")
 print(f"Average set size: {avg_set_size:.3f}")
 print(f"Singleton rate: {singleton_rate:.1%} (precise predictions)")
 print(f"Ambiguous rate: {1 - singleton_rate:.1%} (both classes possible)")
 
 
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
 # TASK 4: Cross-validation bias-variance analysis
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
 
 complexities = [
     (
@@ -248,11 +237,12 @@ complexities = [
 
 print(f"\n=== Bias-Variance Analysis ===")
 print(f"{'Model':<25} {'CV Mean':>10} {'CV Std':>10} {'Train':>10} {'Gap':>10}")
-print("-" * 70)
+print("─" * 70)
 
 for name, m in complexities:
-    # TODO: Run 5-fold cross-validation scoring="average_precision"
-    cv_scores = cross_val_score(m, X_train, y_train, cv=____, scoring=____)  # Hint: cv=5, scoring="average_precision"
+    # TODO: Compute cv_scores via cross_val_score(m, X_train, y_train, cv=5,
+    #       scoring="average_precision")
+    cv_scores = ____
     m.fit(X_train, y_train)
     train_score = average_precision_score(y_train, m.predict_proba(X_train)[:, 1])
     gap = train_score - cv_scores.mean()
@@ -261,57 +251,48 @@ for name, m in complexities:
     )
 
 print("\nInterpretation:")
-print("  Small gap + low score -> high bias (underfitting)")
-print("  Large gap + high train score -> high variance (overfitting)")
+print("  Small gap + low score → high bias (underfitting)")
+print("  Large gap + high train score → high variance (overfitting)")
 print("  The 'Medium' model typically offers the best bias-variance trade-off")
 
 
-# ==============================================================================
-# TASK 5: Persist final model and log experiment
-# ==============================================================================
+# ══════════════════════════════════════════════════════════════════════
+# TASK 5: Persist everything and generate artifacts
+# ══════════════════════════════════════════════════════════════════════
 
 
 async def persist_final():
-    conn = ConnectionManager("sqlite:///ascent03_models.db")
+    _db_path = os.path.join(tempfile.gettempdir(), "ascent03_models.db")
+    conn = ConnectionManager(f"sqlite:///{_db_path}")
     await conn.initialize()
 
-    # TODO: Create and initialize ModelRegistry and ExperimentTracker
-    registry = ____  # Hint: ModelRegistry(conn)
-    await registry.initialize()
-    tracker = ____  # Hint: ExperimentTracker(conn)
+    # TODO: Build a ModelRegistry over conn and call its initialize()
+    registry = ____
+    await ____
+
+    tracker = ExperimentTracker(conn)
     await tracker.initialize()
 
+    # Register calibrated model (serialize to bytes)
     import pickle
     from kailash_ml.types import MetricSpec
 
     model_bytes = pickle.dumps(calibrated_model)
+    # TODO: Register the calibrated model under name "credit_default_production" with
+    #       MetricSpec entries for auc_pr and brier
+    model_version = await ____
 
-    # TODO: Register the calibrated model with name, artifact, and two MetricSpec items
-    model_version = await registry.register_model(
-        name=____,      # Hint: "credit_default_production"
-        artifact=____,  # Hint: model_bytes
-        metrics=[
-            MetricSpec(name="auc_pr", value=metrics["auc_pr"]),
-            MetricSpec(name="brier", value=metrics["brier"]),
-        ],
-    )
-
-    # TODO: Promote the model to "production" stage
-    await registry.promote_model(
-        name=____,         # Hint: "credit_default_production"
-        version=____,      # Hint: model_version.version
-        target_stage=____,  # Hint: "production"
-        reason=f"Passed all quality gates: AUC-PR={metrics['auc_pr']:.4f}, "
-        f"Brier={metrics['brier']:.4f}, Coverage={coverage:.4f}",
-    )
+    # TODO: Promote the registered model to production via registry.promote_model(...)
+    #       reason should mention auc_pr, brier, and conformal coverage
+    await ____
     model_id = model_version.version
 
-    # TODO: Create an experiment and log a run with params, metrics, and a "stage" tag
+    # Log to experiment tracker
     exp_id = await tracker.create_experiment(
-        name=____,  # Hint: "ascent03_e2e_pipeline"
+        name="ascent03_e2e_pipeline",
         description="End-to-end supervised ML pipeline",
     )
-    async with tracker.run(exp_id, run_name=____) as run:  # Hint: run_name="production_model_v1"
+    async with tracker.run(exp_id, run_name="production_model_v1") as run:
         await run.log_param("model", "lgbm_calibrated_conformal")
         await run.log_metrics({**metrics, "conformal_coverage": coverage})
         await run.set_tag("stage", "production")
@@ -319,7 +300,7 @@ async def persist_final():
     print(f"\n=== Final Artifacts ===")
     print(f"Model registered: {model_id}")
     print(f"Stage: production")
-    print(f"Model card: ex8_model_card.md")
+    print(f"Model card: ex6_model_card.md")
 
     await conn.close()
 
@@ -328,11 +309,15 @@ asyncio.run(persist_final())
 
 # Final visualisation
 viz = ModelVisualizer()
-fig = viz.metric_comparison({"Final Model": metrics})
+fig = viz.metric_comparison(
+    {
+        "Final Model": metrics,
+    }
+)
 fig.update_layout(title="Production Model: Credit Default Prediction")
-fig.write_html("ex8_final_metrics.html")
-print("Saved: ex8_final_metrics.html")
+fig.write_html("ex6_final_metrics.html")
+print("Saved: ex6_final_metrics.html")
 
-print("\nExercise 8 complete -- end-to-end supervised ML pipeline")
-print("  Pipeline: preprocess -> train -> calibrate -> conformal -> persist -> deploy")
+print("\n✓ Exercise 8 complete — end-to-end supervised ML pipeline")
+print("  Pipeline: preprocess → train → calibrate → conformal → persist → deploy")
 print("  Module 3 complete: 8 exercises covering supervised ML theory to production")

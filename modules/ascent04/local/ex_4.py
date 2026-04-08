@@ -57,15 +57,16 @@ X, y, col_info = to_sklearn_input(
     target_column="is_fraud",
 )
 
-scaler = ____  # Hint: StandardScaler()
-X_scaled = ____  # Hint: scaler.fit_transform(X)
+# TODO: Standardise X with StandardScaler
+scaler = ____
+X_scaled = ____
 
 
 # ══════════════════════════════════════════════════════════════════════
 # TASK 1: Dimensionality reduction with UMAP
 # ══════════════════════════════════════════════════════════════════════
 
-# Sample for visualisation (UMAP on full 284K is slow)
+# Sample for visualisation (UMAP on 284K rows is slow)
 rng = np.random.default_rng(42)
 sample_size = min(20_000, len(y))
 idx = rng.choice(len(y), sample_size, replace=False)
@@ -73,10 +74,10 @@ X_sample = X_scaled[idx]
 y_sample = y[idx]
 
 if umap is not None:
-    # TODO: Create UMAP reducer with 2 components, n_neighbors=15, min_dist=0.1, random_state=42
-    # and fit_transform on X_sample
-    reducer = ____  # Hint: umap.UMAP(n_components=2, n_neighbors=15, min_dist=0.1, random_state=42)
-    embedding_umap = ____  # Hint: reducer.fit_transform(X_sample)
+    # TODO: Build umap.UMAP(n_components=2, n_neighbors=15, min_dist=0.1, random_state=42)
+    reducer = ____
+    # TODO: Fit-transform X_sample
+    embedding_umap = ____
     print(f"\nUMAP embedding: {embedding_umap.shape}")
 else:
     from sklearn.decomposition import PCA
@@ -91,10 +92,10 @@ else:
 
 from sklearn.manifold import TSNE
 
-# TODO: Create TSNE with 2 components, perplexity=30, random_state=42
-# Fit_transform on first 5000 samples of X_sample (t-SNE is O(n²))
-tsne = ____  # Hint: TSNE(n_components=2, perplexity=30, random_state=42)
-embedding_tsne = ____  # Hint: tsne.fit_transform(X_sample[:5000])
+# TODO: Build TSNE(n_components=2, perplexity=30, random_state=42)
+tsne = ____
+# TODO: fit_transform on X_sample[:5000] (t-SNE is O(n²))
+embedding_tsne = ____
 
 print(f"t-SNE embedding: {embedding_tsne.shape}")
 print("\nUMAP vs t-SNE:")
@@ -106,15 +107,17 @@ print("  t-SNE: better local structure, O(n²), no out-of-sample transform")
 # TASK 3: Isolation Forest
 # ══════════════════════════════════════════════════════════════════════
 # Theory: anomalies are isolated in fewer random partitions.
-# Average path length in random trees is shorter for outliers.
 
-# TODO: Create IsolationForest with n_estimators=200, contamination=0.002,
-# random_state=42, n_jobs=-1. Fit on X_scaled and compute anomaly scores.
-iso_forest = ____  # Hint: IsolationForest(n_estimators=200, contamination=0.002, random_state=42, n_jobs=-1)
-iso_scores = ____  # Hint: -iso_forest.fit(X_scaled).score_samples(X_scaled)  # Higher = more anomalous
-iso_labels = ____  # Hint: iso_forest.predict(X_scaled)  # -1 = anomaly, 1 = normal
+# TODO: Build IsolationForest(n_estimators=200, contamination=0.002,
+#       random_state=42, n_jobs=-1)
+iso_forest = ____
+# TODO: Fit on X_scaled and compute anomaly scores
+# Hint: -iso_forest.fit(X_scaled).score_samples(X_scaled) — higher = more anomalous
+iso_scores = ____
+# TODO: Predict labels (-1 = anomaly, 1 = normal)
+iso_labels = ____  # Hint: iso_forest.predict(X_scaled)
 
-# TODO: Compute AUC-ROC and Average Precision
+# TODO: Compute ROC-AUC and average precision against y
 iso_auc = ____  # Hint: roc_auc_score(y, iso_scores)
 iso_ap = ____  # Hint: average_precision_score(y, iso_scores)
 
@@ -129,17 +132,16 @@ print(f"True frauds: {y.sum():.0f}")
 # TASK 4: Local Outlier Factor
 # ══════════════════════════════════════════════════════════════════════
 
-# TODO: Create LocalOutlierFactor with n_neighbors=20, contamination=0.002, novelty=False
-# Fit_predict on X_scaled and extract the negative_outlier_factor_ scores
-lof = (
-    ____  # Hint: LocalOutlierFactor(n_neighbors=20, contamination=0.002, novelty=False)
-)
-lof_labels = ____  # Hint: lof.fit_predict(X_scaled)
-lof_scores = ____  # Hint: -lof.negative_outlier_factor_  (higher = more anomalous)
+# TODO: Build LocalOutlierFactor(n_neighbors=20, contamination=0.002, novelty=False)
+lof = ____
+# TODO: fit_predict on X_scaled
+lof_labels = ____
+# TODO: Negate the negative_outlier_factor_ so higher = more anomalous
+lof_scores = ____  # Hint: -lof.negative_outlier_factor_
 
-# TODO: Compute AUC-ROC and Average Precision for LOF
-lof_auc = ____  # Hint: roc_auc_score(y, lof_scores)
-lof_ap = ____  # Hint: average_precision_score(y, lof_scores)
+# TODO: Compute ROC-AUC and average precision
+lof_auc = ____
+lof_ap = ____
 
 print(f"\n=== Local Outlier Factor ===")
 print(f"AUC-ROC: {lof_auc:.4f}")
@@ -149,8 +151,6 @@ print(f"Average Precision: {lof_ap:.4f}")
 # ══════════════════════════════════════════════════════════════════════
 # TASK 5: Ensemble anomaly scores with EnsembleEngine.blend()
 # ══════════════════════════════════════════════════════════════════════
-# EnsembleEngine.blend() averages predictions from multiple estimators.
-# For anomaly detection, we normalise scores to [0,1] and blend.
 
 
 def normalise_scores(scores: np.ndarray) -> np.ndarray:
@@ -160,11 +160,12 @@ def normalise_scores(scores: np.ndarray) -> np.ndarray:
 iso_norm = normalise_scores(iso_scores)
 lof_norm = normalise_scores(lof_scores)
 
-# AUC-weighted blending weights
+# Method A: AUC-weighted average
 w_iso = iso_auc / (iso_auc + lof_auc)
 w_lof = lof_auc / (iso_auc + lof_auc)
+ensemble_scores_manual = w_iso * iso_norm + w_lof * lof_norm
 
-# Method B: EnsembleEngine.blend() on supervised anomaly wrappers
+# Method B: EnsembleEngine.blend() with sklearn-compatible wrappers
 from kailash_ml import EnsembleEngine
 from sklearn.base import BaseEstimator, ClassifierMixin
 
@@ -199,23 +200,23 @@ class AnomalyScorer(BaseEstimator, ClassifierMixin):
 iso_scorer = AnomalyScorer(iso_forest, iso_scores)
 lof_scorer = AnomalyScorer(lof, lof_scores)
 
-# TODO: Create EnsembleEngine and blend the two anomaly scorers
-# Build a polars DataFrame from the scaled features + target
-engine = ____  # Hint: EnsembleEngine()
+# TODO: Instantiate the EnsembleEngine
+engine = ____
 blend_df = pl.DataFrame(
     {f"f{i}": X_scaled[:, i] for i in range(X_scaled.shape[1])}
 ).with_columns(pl.Series("is_fraud", y))
 
-# TODO: Call engine.blend() with models, data, target, weights, method="soft"
-blend_result = ____  # Hint: engine.blend(models=[iso_scorer, lof_scorer], data=blend_df, target="is_fraud", weights=[w_iso, w_lof], method="soft")
+# TODO: Call engine.blend with both scorers, target="is_fraud", weights=[w_iso, w_lof],
+#       method="soft"
+blend_result = ____
 
-# Use the ensemble model to predict on all data for evaluation
 blend_features = blend_df.drop("is_fraud")
 X_blend = blend_features.to_numpy()
 ensemble_scores = blend_result.ensemble_model.predict_proba(X_blend)[:, 1]
 
-ensemble_auc = roc_auc_score(y, ensemble_scores)
-ensemble_ap = average_precision_score(y, ensemble_scores)
+# TODO: Compute ensemble ROC-AUC and average precision
+ensemble_auc = ____
+ensemble_ap = ____
 
 print(f"\n=== Ensemble via EnsembleEngine.blend() ===")
 print(f"Weights: IF={w_iso:.3f}, LOF={w_lof:.3f}")
@@ -239,28 +240,23 @@ print("  boost()  — sequential boosting on residuals")
 
 viz = ModelVisualizer()
 
-# TODO: Build ROC curve for each detector using viz.roc_curve
 for name, scores in [
     ("IsolationForest", iso_scores),
     ("LOF", lof_scores),
     ("Ensemble", ensemble_scores),
 ]:
-    fig = ____  # Hint: viz.roc_curve(y, scores)
+    fig = viz.roc_curve(y, scores)
     fig.update_layout(title=f"ROC: {name}")
-    fig.write_html(f"ex4_roc_{name.lower()}.html")
+    fig.write_html(f"ex2_roc_{name.lower()}.html")
 
-# TODO: Create comparison chart across all detectors
-comparison = {
-    "Isolation Forest": {"AUC_ROC": iso_auc, "Avg_Precision": iso_ap},
-    "LOF": {"AUC_ROC": lof_auc, "Avg_Precision": lof_ap},
-    "Ensemble": {"AUC_ROC": ensemble_auc, "Avg_Precision": ensemble_ap},
-}
-fig = ____  # Hint: viz.metric_comparison(comparison)
+# TODO: Build the comparison dict for metric_comparison
+# Hint: keys = "Isolation Forest", "LOF", "Ensemble"; values = {"AUC_ROC": ..., "Avg_Precision": ...}
+comparison = ____
+fig = viz.metric_comparison(comparison)
 fig.update_layout(title="Anomaly Detection Comparison")
-fig.write_html("ex4_anomaly_comparison.html")
-print("\nSaved: ex4_anomaly_comparison.html")
+fig.write_html("ex2_anomaly_comparison.html")
+print("\nSaved: ex2_anomaly_comparison.html")
 
-# Precision-recall at different thresholds
 precision, recall, thresholds = precision_recall_curve(y, ensemble_scores)
 idx_80 = min(np.searchsorted(-recall[::-1], -0.80), len(precision) - 1)
 print(f"\nAt recall=0.80: precision={precision[idx_80]:.4f}")
