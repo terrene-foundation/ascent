@@ -56,5 +56,7 @@ node_modules/
 /sentiment_*.html
 .kailash_ml/
 
-# Claude Code
-.claude/worktrees/
+# Claude Code — COC artifacts (not public)
+.claude/
+scripts/hooks/
+.session-notes
